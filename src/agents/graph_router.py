@@ -28,7 +28,7 @@ def build_graph(*, process_mode: ProcessMode = "api", eval_method: EvalMethod = 
     """
 
     if process_mode == "api":
-        from ..merge_pipeline import pipeline as _pipe
+        from ..merge_pipeline import pipeline_api as _pipe
     elif process_mode == "clone":
         from ..merge_pipeline import pipeline_clone as _pipe
     else:

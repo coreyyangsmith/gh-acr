@@ -21,6 +21,7 @@ def main(
     ],
     mode: Literal["api", "clone"] = "api",
     eval_method: Literal["agent", "base"] = "agent",
+    model_name: str | None = None,
 ):
     """Run the merge-resolution pipeline for a single *scenario_id*.
 
@@ -36,17 +37,17 @@ def main(
         "base"  – use the baseline parent-A resolver.
     """
     asyncio.run(
-        _run(scenario_id=scenario_id, mode=mode, eval_method=eval_method),
+        _run(scenario_id=scenario_id, mode=mode, eval_method=eval_method, model_name=model_name),
     )
 
 
-async def _run(scenario_id: str, mode: str, eval_method: str):
+async def _run(scenario_id: str, mode: str, eval_method: str, model_name: str | None):
     """Internal async runner."""
 
     app = build_graph(process_mode=mode, eval_method=eval_method)
     output_root = Path.cwd() / "data" / "output"
     
-    per_file_results = await run_and_save_report(app, scenario_id, output_root, eval_method=eval_method)
+    per_file_results = await run_and_save_report(app, scenario_id, output_root, eval_method=eval_method, model_name=model_name)
 
     # Append the evaluation to a CSV (one row per file)
     results_path = Path.cwd() / "data" / "results.csv"

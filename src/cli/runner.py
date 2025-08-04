@@ -13,7 +13,7 @@ import time
 from src.config.model_costs import MODEL_COSTS
 
 
-async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str):
+async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str, model_name: str | None = None):
     """Run the pipeline for one scenario and save its report to disk.
 
     The console output will be the final evaluation summary, plus a confirmation
@@ -24,6 +24,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         "scenario_id": scenario_id,
         "status": "start",
         "logs": [],
+        "model_name": model_name,
     }
 
     start_ts = time.perf_counter()
@@ -85,7 +86,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     # -------------------------------------------------------------------
 
     token_map: Dict[str, Dict[str, int]] = result.get("token_counts", {})  # per-file token stats
-    model_name = os.getenv("OPENAI_MODEL", "gpt-4.1-nano-2025-04-14")
+    model_name = model_name or os.getenv("OPENAI_MODEL", "gpt-4.1-nano-2025-04-14")
     model_cfg = MODEL_COSTS.get(model_name, {})
     input_cost_rate = float(model_cfg.get("input_cost_per_1k", 0.0))
     output_cost_rate = float(model_cfg.get("output_cost_per_1k", 0.0))

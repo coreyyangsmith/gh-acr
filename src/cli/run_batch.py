@@ -19,6 +19,7 @@ def main(
     max_scenarios: int | None = None,
     mode: Literal["api", "clone"] = "api",
     eval_method: Literal["agent", "base"] = "agent",
+    model_name: str | None = None,
     n_easy: int | None = None,
     n_medium: int | None = None,
     n_hard: int | None = None,
@@ -39,6 +40,7 @@ def main(
             max_scenarios=max_scenarios,
             mode=mode,
             eval_method=eval_method,
+            model_name=model_name,
             n_easy=n_easy,
             n_medium=n_medium,
             n_hard=n_hard,
@@ -46,7 +48,7 @@ def main(
     )
 
 
-async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, n_easy: int | None, n_medium: int | None, n_hard: int | None):
+async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_name: str | None, n_easy: int | None, n_medium: int | None, n_hard: int | None):
     """Internal async runner."""
 
     app = build_graph(process_mode=mode, eval_method=eval_method)
@@ -86,7 +88,7 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, n_easy
     async def process_and_append(row):
         # `run_and_save_report` now returns a **list** of per-file dictionaries.
         try:
-            results = await run_and_save_report(app, row["id"], output_root, eval_method=eval_method)
+            results = await run_and_save_report(app, row["id"], output_root, eval_method=eval_method, model_name=model_name)
         except Exception as exc:
             print(f"[run_batch] Error processing scenario {row['id']}: {exc}")
             return []
