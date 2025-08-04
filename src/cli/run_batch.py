@@ -18,7 +18,7 @@ from src.agents.graph_router import build_graph
 def main(
     max_scenarios: int | None = None,
     mode: Literal["api", "clone"] = "api",
-    eval_method: Literal["agent", "base"] = "agent",
+    eval_method: Literal["agent", "base", "multi"] = "agent",
     model_name: str | None = None,
     n_easy: int | None = None,
     n_medium: int | None = None,

@@ -18,6 +18,7 @@ import tiktoken  # type: ignore
 
 # Updated import location per latest LangChain split
 from langchain_core.prompts import PromptTemplate
+from ..llm_base import get_backend, count_tokens
 
 load_dotenv()
 
@@ -106,7 +107,13 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
 
     model_name: str = state.get("model_name") or _DEFAULT_MODEL
 
-    encoder, runnable = _get_runnable(model_name)
+    encoder, llm_backend = get_backend(model_name)
+
+    if llm_backend is not None:
+        from langchain_core.prompts import PromptTemplate as _PT
+        runnable = _PT.from_template(_PROMPT_STR) | llm_backend
+    else:
+        runnable = None
 
     # No credentials or failed initialisation → naive fallback.
     if runnable is None:
@@ -123,17 +130,18 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
         diff_b_text = state["diffs_b"].get(path, "")
 
         pre_token_usage = {
-            "system_prompt": _count_tokens(encoder, _PROMPT_STR),
-            "original": _count_tokens(encoder, original_text),
-            "diff_a": _count_tokens(encoder, diff_a_text),
-            "diff_b": _count_tokens(encoder, diff_b_text),
+            "system_prompt": count_tokens(encoder, _PROMPT_STR),
+            "original": count_tokens(encoder, original_text),
+            "diff_a": count_tokens(encoder, diff_a_text),
+            "diff_b": count_tokens(encoder, diff_b_text),
         }
 
         result = runnable.invoke(  # type: ignore[attr-defined]
             {
                 "file_path": path,
-                "version_a": parent_a.get(path, ""),
-                "version_b": parent_b.get(path, ""),
+                "original": original_text,
+                "diff_a": diff_a_text,
+                "diff_b": diff_b_text,
             }
         )
 
@@ -141,7 +149,7 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
         merged_clean = merged_content.strip("\n")
         resolved[path] = merged_clean
 
-        token_usage = {**pre_token_usage, "output": _count_tokens(encoder, merged_clean)}
+        token_usage = {**pre_token_usage, "output": count_tokens(encoder, merged_clean)}
         state.setdefault("token_counts", {})[path] = token_usage
 
     state["resolved_contents"] = resolved

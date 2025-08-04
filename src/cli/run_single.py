@@ -20,7 +20,7 @@ def main(
         "Identifier matching the **id** column (integer) *or* the scenario's slug.",
     ],
     mode: Literal["api", "clone"] = "api",
-    eval_method: Literal["agent", "base"] = "agent",
+    eval_method: Literal["agent", "base", "multi"] = "agent",
     model_name: str | None = None,
 ):
     """Run the merge-resolution pipeline for a single *scenario_id*.

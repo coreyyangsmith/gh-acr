@@ -26,6 +26,7 @@ from ..eval.rouge_l import per_file as rouge_per_file, overall as rouge_overall
 # Import the dedicated merge agent node
 from ..agents.simple_agent import resolve_conflict_agent_node
 from ..agents.base_agent import resolve_conflict_base_node
+from ..agents.multi_agent import resolve_conflict_multi_agent_node
 
 # Local logger for this module
 logger = logging.getLogger(__name__)
@@ -191,6 +192,9 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     elif eval_method == "base":
         resolver_node_name = "resolve_base"
         sg.add_node(resolver_node_name, resolve_conflict_base_node)
+    elif eval_method == "multi":
+        resolver_node_name = "resolve_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_multi_agent_node)
     else:
         raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent' or 'base'.")
 

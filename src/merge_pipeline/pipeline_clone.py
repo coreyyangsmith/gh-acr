@@ -22,6 +22,7 @@ from langgraph.pregel import Pregel
 # Agent resolver node
 from ..agents.simple_agent import resolve_conflict_agent_node
 from ..agents.base_agent import resolve_conflict_base_node
+from ..agents.multi_agent import resolve_conflict_multi_agent_node
 from ..dataset.loader import DATA_PATH, load_benchmark
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
 from ..eval.bleu import per_file as bleu_per_file, overall as bleu_overall
@@ -210,9 +211,29 @@ def evaluate_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     )
     pred_contents: FileContents = state["resolved_contents"]
 
+    # -------------------------------------------------------------------
+    # Compute diffs between the ancestor version and the ground-truth merge
+    # result so that we can persist them to disk later (ground_truth.diff).
+    # -------------------------------------------------------------------
+    diffs_truth: Dict[str, str] = {}
+    ancestor_contents: FileContents = state.get("ancestor_contents", {})
+    for path in scenario["files_in_merge_conflict"]:
+        anc_lines = ancestor_contents.get(path, "").splitlines(keepends=True)
+        truth_lines = truth_contents.get(path, "").splitlines(keepends=True)
+        diffs_truth[path] = "".join(
+            difflib.unified_diff(
+                anc_lines,
+                truth_lines,
+                fromfile=f"ancestor/{path}",
+                tofile=f"ground_truth/{path}",
+            )
+        )
+
     ratios = {path: _diff_ratio(pred_contents.get(path, ""), truth) for path, truth in truth_contents.items()}
 
+    # Store results back into state for downstream consumers (runner.py)
     state["truth_contents"] = truth_contents
+    state["diffs_truth"] = diffs_truth
     state["evaluation"] = {
         "similarity": ratios,
         "exact_match": em_per_file(pred_contents, truth_contents),
@@ -251,8 +272,11 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "base":
         resolver_node_name = "resolve_base"
         sg.add_node(resolver_node_name, resolve_conflict_base_node)
+    elif eval_method == "multi":
+        resolver_node_name = "resolve_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent' or 'base'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base', or 'multi'.")
 
     sg.add_node("evaluate", evaluate_node)
 

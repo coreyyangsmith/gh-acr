@@ -9,9 +9,7 @@ from pathlib import Path
 from typing import Dict, Any
 import os
 import time
-
 from src.config.model_costs import MODEL_COSTS
-
 
 async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str, model_name: str | None = None):
     """Run the pipeline for one scenario and save its report to disk.
@@ -45,6 +43,18 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     scenario_dir = output_root / str(df_index)
     files = sample_row["scenario_json"]["files_in_merge_conflict"]
 
+    # -------------------------------------------------------------------
+    # Prepare per-eval-method LLM output directory (simple/, multi/, …)
+    # -------------------------------------------------------------------
+    if eval_method != "base":
+        llm_out_dir = scenario_dir / eval_method
+        llm_out_dir.mkdir(parents=True, exist_ok=True)
+
+        # For multi-agent we will create sub-folders for each stage
+        if eval_method == "multi":
+            (llm_out_dir / "summaries").mkdir(exist_ok=True)
+            (llm_out_dir / "reviews").mkdir(exist_ok=True)
+
     for file_path in files:
         file_slug = file_path.replace("/", "_").replace("\\", "_")
         file_dir = scenario_dir / file_slug
@@ -69,9 +79,31 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         (file_dir / "ground_truth.txt").write_text(
             result["truth_contents"].get(file_path, ""), encoding="utf-8"
         )
-        (file_dir / "llm_response.txt").write_text(
-            result["resolved_contents"].get(file_path, ""), encoding="utf-8"
+        # Persist diff between ancestor and ground-truth merge result
+        (file_dir / "ground_truth.diff").write_text(
+            result.get("diffs_truth", {}).get(file_path, ""), encoding="utf-8"
         )
+
+        # Duplicate LLM output into central per-method directory (simple/, multi/)
+        if eval_method != "base":
+            (llm_out_dir / f"{file_slug}.txt").write_text(
+                result["resolved_contents"].get(file_path, ""), encoding="utf-8"
+            )
+
+            # ---------------- multi-agent extra outputs -------------------
+            if eval_method == "multi":
+                summaries = result.get("summaries", {}).get(file_path, {})
+                (llm_out_dir / "summaries" / f"{file_slug}_A.txt").write_text(
+                    summaries.get("summary_a", ""), encoding="utf-8"
+                )
+                (llm_out_dir / "summaries" / f"{file_slug}_B.txt").write_text(
+                    summaries.get("summary_b", ""), encoding="utf-8"
+                )
+                reviews = result.get("reviews", {})
+                if reviews:
+                    (llm_out_dir / "reviews" / f"{file_slug}.txt").write_text(
+                        reviews.get(file_path, ""), encoding="utf-8"
+                    )
 
     eval_ = result.get("evaluation", {})
 
@@ -92,8 +124,14 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     output_cost_rate = float(model_cfg.get("output_cost_per_1k", 0.0))
 
     if token_map:
-        total_in_tokens = sum(v["system_prompt"] + v["original"] + v["diff_a"] + v["diff_b"] for v in token_map.values())
-        total_out_tokens = sum(v["output"] for v in token_map.values())
+        total_in_tokens = sum(
+            v.get("system_prompt", 0)
+            + v.get("original", 0)
+            + v.get("diff_a", 0)
+            + v.get("diff_b", 0)
+            for v in token_map.values()
+        )
+        total_out_tokens = sum(v.get("output", 0) for v in token_map.values())
     else:
         total_in_tokens = total_out_tokens = 0
 
