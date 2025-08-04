@@ -1,0 +1,10 @@
+MODEL_COSTS = {
+    # Example cost structure; update as needed when OpenAI publishes new pricing.
+    "gpt-4.1-nano-2025-04-14": {
+        "input_limit": 128_000,
+        "output_limit": 16_000,
+        "input_cost_per_1k": 0.0001,
+        "output_cost_per_1k": 0.0004,
+        "tokenizer": "o200k_base_encoding"
+    },
+} 
