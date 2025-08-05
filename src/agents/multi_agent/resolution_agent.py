@@ -10,6 +10,7 @@ import os
 from langchain_core.prompts import PromptTemplate
 
 from ..llm_base import get_backend
+from ...utils.logger import logger
 
 __all__ = ["resolution_agent_node"]
 
@@ -27,6 +28,7 @@ _prompt = PromptTemplate.from_template(_MERGE_PROMPT_STR)
 
 
 def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
+    logger.info("Resolution agent started.")
     plan: Dict[str, str] = state["conflict_plan"]
     parent_a = state["parent_a_contents"]
     parent_b = state["parent_b_contents"]
@@ -38,9 +40,14 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
 
     for path, choice in plan.items():
         if choice in ("A", "B") or llm is None:
+            if llm is None and choice not in ("A", "B"):
+                logger.warning(f"No LLM backend available to merge {path}, falling back to parent A.")
+                choice = "A"
+            logger.info(f"Resolving conflict for {path} by selecting parent {choice}.")
             resolved[path] = parent_a.get(path, "") if choice == "A" else parent_b.get(path, "")
             continue
-
+        
+        logger.info(f"Resolving conflict for {path} using LLM.")
         runnable = _prompt | llm  # type: ignore[operator]
         result = runnable.invoke(
             {
@@ -54,4 +61,5 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
 
     state["resolved_contents"] = resolved
     state["status"] = "resolved_multi"
+    logger.info("Resolution agent finished.")
     return state

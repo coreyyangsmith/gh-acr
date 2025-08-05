@@ -6,6 +6,7 @@ import os
 from langchain_core.prompts import PromptTemplate
 
 from ..llm_base import get_backend
+from ...utils.logger import logger
 
 __all__ = ["review_agent_node"]
 
@@ -21,6 +22,7 @@ _prompt = PromptTemplate.from_template(_REVIEW_PROMPT_STR)
 
 
 def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
+    logger.info("Review agent started.")
     resolved: Dict[str, str] = state["resolved_contents"]
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
     _, llm = get_backend(model_name)
@@ -28,12 +30,15 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     reviews: Dict[str, str] = {}
 
     for path, content in resolved.items():
+        logger.info(f"Reviewing {path}.")
         if llm is None:
             reviews[path] = "ACCEPT – heuristic stub (no LLM)."
+            logger.warning(f"No LLM backend available, using heuristic for {path}.")
             continue
         res = (_prompt | llm).invoke({"file_path": path, "merged": content})
         reviews[path] = res.content if hasattr(res, "content") else str(res)
 
     state["reviews"] = reviews
     state["status"] = "reviewed"
+    logger.info("Review agent finished.")
     return state

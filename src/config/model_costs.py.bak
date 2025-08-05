@@ -7,11 +7,4 @@ MODEL_COSTS = {
         "output_cost_per_1k": 0.0004,
         "tokenizer": "o200k_base_encoding"
     },
-    "openai/gpt-4o-mini": {
-        "input_limit": 128_000,
-        "output_limit": 16_000,
-        "input_cost_per_1k": 0.00015,
-        "output_cost_per_1k": 0.0006,
-        "tokenizer": "o200k_base"
-    },
-}
+} 

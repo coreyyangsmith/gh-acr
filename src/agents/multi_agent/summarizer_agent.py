@@ -10,7 +10,8 @@ import os
 
 from langchain_core.prompts import PromptTemplate
 
-from ..llm_base import get_backend, count_tokens
+from ..llm_base import get_backend
+from ...utils.logger import logger
 
 __all__ = ["summarizer_agent_node"]
 
@@ -42,18 +43,20 @@ def _fallback_summary(diff_text: str) -> str:  # noqa: D401
 
 
 def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
+    logger.info("Summarizer agent started.")
     diffs_a: Dict[str, str] = state["diffs_a"]
     diffs_b: Dict[str, str] = state["diffs_b"]
     ancestor_contents: Dict[str, str] = state["ancestor_contents"]
 
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
-    encoder, llm = get_backend(model_name)
+    _, llm = get_backend(model_name)
 
     summaries: Dict[str, Dict[str, str]] = {}
 
     for path in set(diffs_a) | set(diffs_b):
         original_text = ancestor_contents.get(path, "")
         summary_pair: Dict[str, str] = {}
+        logger.info(f"Summarizing changes for {path}.")
 
         for parent_label, diff_text in (("A", diffs_a.get(path, "")), ("B", diffs_b.get(path, ""))):
             if not diff_text:
@@ -61,6 +64,7 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 continue
 
             if llm is None:
+                logger.warning(f"No LLM backend available, using heuristic for {path}.")
                 summary_pair[f"summary_{parent_label.lower()}"] = _fallback_summary(diff_text)
             else:
                 prompt_vars = {
@@ -72,16 +76,9 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 content = result.content if hasattr(result, "content") else str(result)
                 summary_pair[f"summary_{parent_label.lower()}"] = content.strip()
 
-            # token accounting (optional)
-            token_stats = {
-                "prompt_tokens": count_tokens(encoder, _SUMMARY_PROMPT_STR.format(**{k: "" for k in _prompt.input_variables})),
-                "diff_tokens": count_tokens(encoder, diff_text),
-                "output_tokens": count_tokens(encoder, summary_pair[f"summary_{parent_label.lower()}"]),
-            }
-            state.setdefault("token_counts", {}).setdefault(path, {}).setdefault(f"summary_{parent_label.lower()}", token_stats)
-
         summaries[path] = summary_pair
 
     state["summaries"] = summaries
     state["status"] = "summarised"
+    logger.info("Summarizer agent finished.")
     return state

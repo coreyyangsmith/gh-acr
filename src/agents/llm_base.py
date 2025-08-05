@@ -21,6 +21,10 @@ from typing import Any, Tuple, Optional
 import os
 import logging
 
+from ..config.model_costs import MODEL_COSTS
+from langchain_core.runnables import Runnable, RunnableConfig
+from langchain_core.messages import AIMessage
+
 logger = logging.getLogger(__name__)
 
 
@@ -32,6 +36,11 @@ try:
     import tiktoken  # type: ignore
 except ImportError:  # pragma: no cover
     tiktoken = None  # type: ignore
+
+try:
+    from langchain_community.callbacks import get_openai_callback
+except ImportError: # pragma: no cover
+    get_openai_callback = None
 
 
 @lru_cache(maxsize=None)
@@ -48,6 +57,71 @@ def _tiktoken_encoder(model_name: str):  # noqa: D401
             return None
 
 
+# ---------------------------------------------------------------------------
+# Cost-logging wrapper
+# ---------------------------------------------------------------------------
+
+class CostLoggingWrapper(Runnable):
+    """Wrapper to log token usage and cost for an LLM."""
+
+    def __init__(self, llm: Any, encoder: Any, model_name: str):
+        self.llm = llm
+        self.encoder = encoder
+        self.model_name = model_name
+        self.logger = logging.getLogger(__name__)
+
+    def invoke(self, prompt: Any, config: Optional[RunnableConfig] = None) -> AIMessage:
+        """Invoke the LLM, logging token usage and cost."""
+        # Note: this is a simplified cost-logger. For production, you will
+        # likely want to use a more robust callback-based solution.
+        
+        backend_name = self.model_name.split("/", 1)[1] if "/" in self.model_name else self.model_name
+
+        if self.model_name.startswith("openai/") and get_openai_callback is not None:
+            with get_openai_callback() as cb:
+                result = self.llm.invoke(prompt, config)
+                self.logger.info(
+                    "LLM call to %s completed.\n  *  Tokens: %d prompt, %d completion (%d total)\n  *  Cost:   $%.4f",
+                    backend_name,
+                    cb.prompt_tokens,
+                    cb.completion_tokens,
+                    cb.total_tokens,
+                    cb.total_cost,
+                )
+        else:
+            # Fallback for non-OpenAI models
+            prompt_text = str(prompt)
+            prompt_tokens = count_tokens(self.encoder, prompt_text)
+            
+            result = self.llm.invoke(prompt, config)
+            
+            content = result.content if hasattr(result, 'content') else str(result)
+            completion_tokens = count_tokens(self.encoder, content)
+            
+            total_tokens = prompt_tokens + completion_tokens
+            
+            cost_info = MODEL_COSTS.get(self.model_name, {})
+            if not cost_info:
+                 cost_info = MODEL_COSTS.get(f"openai/{backend_name}", {})
+
+
+            input_cost_per_1k = cost_info.get("input_cost_per_1k", 0)
+            output_cost_per_1k = cost_info.get("output_cost_per_1k", 0)
+            
+            total_cost = ((prompt_tokens / 1000) * input_cost_per_1k) + ((completion_tokens / 1000) * output_cost_per_1k)
+
+            self.logger.info(
+                "LLM call to %s completed.\n  *  Tokens: %d prompt, %d completion (%d total)\n  *  Cost:   $%.4f (estimated)",
+                backend_name,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                total_cost,
+            )
+            
+        return result
+
+
 @lru_cache(maxsize=None)
 def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa: D401
     """Return *(encoder, llm)* for *model_name*.
@@ -55,6 +129,8 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
     • If no suitable backend/credentials, returns (None, None).
     • Backends are cached so multiple calls with the same name are cheap.
     """
+    raw_llm: Optional[Any] = None
+    enc: Optional[Any] = None
 
     # OpenAI -----------------------------------------------------------------
     if model_name.startswith("openai/"):
@@ -67,12 +143,11 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             from langchain_openai import ChatOpenAI  # type: ignore
         except ImportError:
             from langchain_community.chat_models import ChatOpenAI  # type: ignore
-        llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
+        raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
         enc = _tiktoken_encoder(backend_name)
-        return enc, llm
 
     # HuggingFace Hosted model ----------------------------------------------
-    if model_name.startswith("hf_hub:"):
+    elif model_name.startswith("hf_hub:"):
         repo_id = model_name.split(":", 1)[1]
         try:
             from langchain_community.chat_models import HuggingFaceHub  # type: ignore
@@ -80,12 +155,11 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             logger.warning("HuggingFaceHub import failed: %s", exc)
             return None, None
         hf_token = os.getenv("HF_API_TOKEN")
-        llm = HuggingFaceHub(repo_id=repo_id, huggingfacehub_api_token=hf_token, model_kwargs={"temperature": 0})  # type: ignore[call-arg]
+        raw_llm = HuggingFaceHub(repo_id=repo_id, huggingfacehub_api_token=hf_token, model_kwargs={"temperature": 0})  # type: ignore[call-arg]
         enc = None  # transformers tokeniser not used for counting here
-        return enc, llm
 
     # Local transformers model ----------------------------------------------
-    if model_name.startswith("local:"):
+    elif model_name.startswith("local:"):
         model_path = model_name.split(":", 1)[1]
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
@@ -96,12 +170,18 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         tok = AutoTokenizer.from_pretrained(model_path)
         model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto")
         hf_pipe = pipeline("text-generation", model=model, tokenizer=tok, max_new_tokens=1024)
-        llm = HuggingFacePipeline(pipeline=hf_pipe)  # type: ignore[call-arg]
+        raw_llm = HuggingFacePipeline(pipeline=hf_pipe)  # type: ignore[call-arg]
         enc = tok
-        return enc, llm
+    
+    else:
+        logger.warning("Unknown model_name scheme %s", model_name)
+        return None, None
 
-    logger.warning("Unknown model_name scheme %s", model_name)
-    return None, None
+    if raw_llm is None:
+        return None, None
+
+    llm = CostLoggingWrapper(llm=raw_llm, encoder=enc, model_name=model_name)
+    return enc, llm
 
 
 # ---------------------------------------------------------------------------
