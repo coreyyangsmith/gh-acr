@@ -227,18 +227,11 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             from langchain_openai import ChatOpenAI  # type: ignore
         except ImportError:
             from langchain_community.chat_models import ChatOpenAI  # type: ignore
-        # Try to respect per-request output token limits if configured
+        # Respect per-request output token limits using max_tokens (Chat Completions)
         model_cfg = MODEL_COSTS.get(model_name, {}) or MODEL_COSTS.get(f"openai/{backend_name}", {})
         max_out = int(model_cfg.get("output_limit", 0))
-        raw_llm = None
         if max_out > 0:
-            try:
-                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0, max_output_tokens=max_out)  # type: ignore[call-arg]
-            except TypeError:
-                try:
-                    raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0, max_tokens=max_out)  # type: ignore[call-arg]
-                except TypeError:
-                    raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
+            raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0, max_tokens=max_out)  # type: ignore[call-arg]
         else:
             raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
         enc = _tiktoken_encoder(backend_name)

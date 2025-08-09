@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 from pathlib import Path
+import shutil
 from typing import Literal
 
 import pandas as pd
@@ -97,29 +98,49 @@ async def _run_all(
     if results_path.exists():
         results_path.unlink()
 
-    for method in methods_to_run:
-        print(f"\n=== Running method: {method} (mode={mode}) ===")
-        app = build_graph(process_mode=mode, eval_method=method)
+    # Process in batches of 10 scenarios
+    BATCH_SIZE = 10
+    total = len(benchmark_df)
+    for start in range(0, total, BATCH_SIZE):
+        batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
 
-        async def process_row(row):
-            try:
-                return await run_and_save_report(app, row["id"], output_root, eval_method=method, model_name=model_name)
-            except Exception as exc:  # pragma: no cover – runtime resilience
-                print(f"[run_all] Error processing scenario {row['id']} ({method}): {exc}")
-                return []
+        for method in methods_to_run:
+            print(f"\n=== Running method: {method} (mode={mode}) batch {start+1}-{min(start+BATCH_SIZE, total)} ===")
+            app = build_graph(process_mode=mode, eval_method=method)
 
-        tasks = [process_row(row) for _, row in benchmark_df.iterrows()]
-        per_file_results_lists = await tqdm.gather(*tasks)
+            async def process_row(row):
+                try:
+                    return await run_and_save_report(app, row["id"], output_root, eval_method=method, model_name=model_name)
+                except Exception as exc:  # pragma: no cover – runtime resilience
+                    print(f"[run_all] Error processing scenario {row['id']} ({method}): {exc}")
+                    return []
 
-        # Flatten and persist
-        flat_records = [rec for sub in per_file_results_lists for rec in (sub or [])]
-        if flat_records:
-            df = pd.DataFrame(flat_records)
-            header = not results_path.exists() or results_path.stat().st_size == 0
-            df.to_csv(results_path, mode="a", header=header, index=False)
-            print(f"Method {method}: appended {len(flat_records)} file-level rows to {results_path}")
-        else:
-            print(f"Method {method}: no results to append.")
+            tasks = [process_row(row) for _, row in batch_df.iterrows()]
+            per_file_results_lists = await tqdm.gather(*tasks)
+
+            # Flatten and persist
+            flat_records = [rec for sub in per_file_results_lists for rec in (sub or [])]
+            if flat_records:
+                df = pd.DataFrame(flat_records)
+                header = not results_path.exists() or results_path.stat().st_size == 0
+                df.to_csv(results_path, mode="a", header=header, index=False)
+                print(f"Method {method}: appended {len(flat_records)} file-level rows to {results_path}")
+            else:
+                print(f"Method {method}: no results to append.")
+
+        # Cleanup batch repos (clone mode only)
+        if mode == "clone":
+            repos_root = Path.cwd() / "repos"
+            for _, row in batch_df.iterrows():
+                name = str(row.get("name", "")).replace("/", "___")
+                if not name:
+                    continue
+                repo_dir = repos_root / name
+                if repo_dir.exists():
+                    try:
+                        shutil.rmtree(repo_dir, ignore_errors=True)
+                    except Exception:
+                        pass
 
     print(f"\nAll evaluations complete. Consolidated results saved to {results_path}")
 

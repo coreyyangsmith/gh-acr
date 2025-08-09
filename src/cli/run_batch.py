@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+import shutil
 import datetime
 from typing import Literal
 
@@ -99,14 +100,38 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_
         df.to_csv(results_path, mode="a", header=header, index=False)
         return results
 
-    tasks = [
-        process_and_append(row)
-        for _, row in benchmark_df.iterrows()
-    ]
-    
-    await tqdm.gather(*tasks)
+    # -------------------------------------------------------------------
+    # Process in batches of 10 scenarios to control repo clone footprint
+    # -------------------------------------------------------------------
+    BATCH_SIZE = 10
+    total = len(benchmark_df)
+    processed = 0
 
-    print(f"\nBatch evaluation complete. Metrics for {len(tasks)} scenarios appended to {results_path}")
+    for start in range(0, total, BATCH_SIZE):
+        batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
+
+        tasks = [process_and_append(row) for _, row in batch_df.iterrows()]
+        await tqdm.gather(*tasks)
+
+        processed += len(batch_df)
+
+        # Cleanup cloned repos for this batch (clone mode only)
+        if mode == "clone":
+            repos_root = Path.cwd() / "repos"
+            for _, row in batch_df.iterrows():
+                name = str(row.get("name", "")).replace("/", "___")
+                if not name:
+                    continue
+                repo_dir = repos_root / name
+                if repo_dir.exists():
+                    try:
+                        shutil.rmtree(repo_dir, ignore_errors=True)
+                    except Exception:
+                        pass
+
+        print(f"Processed {processed}/{total} scenarios; results appended to {results_path}")
+
+    print(f"\nBatch evaluation complete. Metrics for {total} scenarios appended to {results_path}")
 
 
 if __name__ == "__main__":
