@@ -112,11 +112,12 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     eval_ = result.get("evaluation", {})
 
-    logger.info("Report for %s (%s)", scenario_id, df_index)
-    logger.info("    - Full report saved to: %s", scenario_dir)
-    logger.info("    - Overall exact match: %s", eval_["overall_exact_match"])
-    logger.info("    - Overall BLEU-3: %s", eval_.get("overall_bleu3", "N/A"))
-    logger.info("    - Overall ROUGE-L: %s", eval_.get("overall_rouge_l", "N/A"))
+    method_tag = f"[method={eval_method}]"
+    logger.info("%s Report for %s (%s)", method_tag, scenario_id, df_index)
+    logger.info("%s     - Full report saved to: %s", method_tag, scenario_dir)
+    logger.info("%s     - Overall exact match: %s", method_tag, eval_["overall_exact_match"])
+    logger.info("%s     - Overall BLEU-3: %s", method_tag, eval_.get("overall_bleu3", "N/A"))
+    logger.info("%s     - Overall ROUGE-L: %s", method_tag, eval_.get("overall_rouge_l", "N/A"))
 
     # -------------------------------------------------------------------
     # Token usage / cost estimation (if available)
@@ -131,36 +132,55 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     output_cost_rate = float(model_cfg.get("output_cost_per_1k", 0.0))
 
     if token_map:
-        total_in_tokens = sum(
-            v.get("system_prompt", 0)
-            + v.get("original", 0)
-            + v.get("diff_a", 0)
-            + v.get("diff_b", 0)
-            for v in token_map.values()
-        )
-        total_out_tokens = sum(v.get("output", 0) for v in token_map.values())
+        # Accumulate across all files; include any numeric inputs from any agent stage
+        total_in_tokens = 0
+        total_out_tokens = 0
+        for v in token_map.values():
+            if not isinstance(v, dict):
+                continue
+            for k, val in v.items():
+                try:
+                    num = int(val)
+                except Exception:
+                    continue
+                if k == "output":
+                    total_out_tokens += num
+                else:
+                    total_in_tokens += num
     else:
         total_in_tokens = total_out_tokens = 0
 
-    cost_in = (total_in_tokens / 1000) * input_cost_rate
-    cost_out = (total_out_tokens / 1000) * output_cost_rate
+    # Compute cost using the model that actually ran for this scenario
+    # Normalize model_name to the key used in MODEL_COSTS
+    if model_name and not model_name.startswith("openai/"):
+        price_key = f"openai/{model_name}"
+    else:
+        price_key = model_name
+    model_cfg = MODEL_COSTS.get(price_key or "", {}) or MODEL_COSTS.get(model_name or "", {})
+    input_cost_rate = float(model_cfg.get("input_cost_per_1k", 0.0))
+    output_cost_rate = float(model_cfg.get("output_cost_per_1k", 0.0))
+
+    cost_in = (float(total_in_tokens) / 1000.0) * input_cost_rate
+    cost_out = (float(total_out_tokens) / 1000.0) * output_cost_rate
     total_cost = cost_in + cost_out
 
-    logger.info("    - Tokens in: %s  | cost: $%.4f", total_in_tokens, cost_in)
-    logger.info("    - Tokens out: %s | cost: $%.4f", total_out_tokens, cost_out)
-    logger.info("    - Estimated total LLM cost: $%.4f (model: %s)", total_cost, model_name)
+    if eval_method not in ("base_a", "base_b"):
+        logger.info("%s     - Tokens in: %s  | cost: $%.4f", method_tag, total_in_tokens, cost_in)
+        logger.info("%s     - Tokens out: %s | cost: $%.4f", method_tag, total_out_tokens, cost_out)
+        logger.info("%s     - Estimated total LLM cost: $%.4f (model: %s)", method_tag, total_cost, model_name)
 
-    logger.info("    - Processing time: %.2f s", elapsed_sec)
+    logger.info("%s     - Processing time: %.2f s", method_tag, elapsed_sec)
 
     # -------------------------------------------------------------------
     # Rate limiter metrics (if any LLM calls were made)
     # -------------------------------------------------------------------
     rl_metrics = LimiterRegistry.metrics()
     if rl_metrics:
-        logger.info("    - Rate limit activity:")
+        logger.info("%s     - Rate limit activity:", method_tag)
         for key, m in rl_metrics.items():
             logger.info(
-                "        · %s: waits=%s total_wait=%.2fs retries=%s last_delay=%.2fs",
+                "%s         · %s: waits=%s total_wait=%.2fs retries=%s last_delay=%.2fs",
+                method_tag,
                 key,
                 m['wait_events'],
                 m['total_wait_time_s'],

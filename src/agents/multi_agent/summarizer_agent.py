@@ -10,7 +10,7 @@ import os
 
 from langchain_core.prompts import PromptTemplate
 
-from ..llm_base import get_backend
+from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
 
 __all__ = ["summarizer_agent_node"]
@@ -49,7 +49,7 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
     ancestor_contents: Dict[str, str] = state["ancestor_contents"]
 
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
-    _, llm = get_backend(model_name)
+    encoder, llm = get_backend(model_name)
 
     summaries: Dict[str, Dict[str, str]] = {}
 
@@ -75,6 +75,17 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 result = (_prompt | llm).invoke(prompt_vars)
                 content = result.content if hasattr(result, "content") else str(result)
                 summary_pair[f"summary_{parent_label.lower()}"] = content.strip()
+                # Track token usage per file/parent label for overall accounting (accumulate)
+                counts = state.setdefault("token_counts", {}).setdefault(
+                    path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}
+                )
+                counts["system_prompt"] += count_tokens(encoder, _SUMMARY_PROMPT_STR)
+                counts["original"] += count_tokens(encoder, original_text)
+                if parent_label == "A":
+                    counts["diff_a"] += count_tokens(encoder, diff_text)
+                else:
+                    counts["diff_b"] += count_tokens(encoder, diff_text)
+                counts["output"] += count_tokens(encoder, summary_pair[f"summary_{parent_label.lower()}"])
 
         summaries[path] = summary_pair
 

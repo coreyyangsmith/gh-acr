@@ -8,7 +8,7 @@ from typing import Any, Dict
 import os
 from langchain_core.prompts import PromptTemplate
 
-from ..llm_base import get_backend
+from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
 
 __all__ = ["conflict_agent_node"]
@@ -29,7 +29,7 @@ def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     logger.info("Conflict agent started.")
     summaries: Dict[str, Dict[str, str]] = state["summaries"]
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
-    _, llm = get_backend(model_name)
+    encoder, llm = get_backend(model_name)
 
     if llm is None:
         logger.warning("No LLM backend available, falling back to heuristic.")
@@ -51,6 +51,13 @@ def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             logger.error("Failed to parse LLM output as JSON, falling back to heuristic.")
             # Fallback to heuristic if parsing fails
             plan = {p: "merge" for p in summaries}
+        # Token accounting per-file for planning prompt/response (accumulate)
+        for path in summaries.keys():
+            counts = state.setdefault("token_counts", {}).setdefault(
+                path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}
+            )
+            counts["system_prompt"] += count_tokens(encoder, _PLAN_PROMPT_STR)
+            counts["output"] += count_tokens(encoder, content)
 
     logger.info(f"Generated merge plan: {plan}")
     state["conflict_plan"] = plan

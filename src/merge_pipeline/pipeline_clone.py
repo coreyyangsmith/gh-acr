@@ -15,6 +15,8 @@ import logging
 from typing import Any, Dict, List
 import os
 import time
+import shutil
+import stat
 
 from git import Repo, GitCommandError
 from langgraph.graph import END, StateGraph
@@ -72,6 +74,29 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
     if not acquired:
         logger.warning("Timeout acquiring lock for %s; proceeding without lock", dest)
 
+    def _force_remove_dir(path: Path, *, retries: int = 20, delay_s: float = 0.25) -> bool:
+        def _on_rm_error(func, p, exc_info):  # make read-only writable and retry
+            try:
+                os.chmod(p, stat.S_IWRITE)
+            except Exception:
+                pass
+            try:
+                func(p)
+            except Exception:
+                pass
+
+        for _ in range(retries):
+            try:
+                shutil.rmtree(path, onerror=_on_rm_error)
+            except FileNotFoundError:
+                return True
+            except Exception:
+                time.sleep(delay_s)
+            if not path.exists():
+                return True
+            time.sleep(delay_s)
+        return not path.exists()
+
     try:
         if dest.exists():
             try:
@@ -87,11 +112,10 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                 logger.warning("Existing directory at %s has unexpected origin; deleting and recloning", dest)
             except Exception:
                 logger.warning("Existing directory at %s is not a valid git repo; deleting and recloning", dest)
-            try:
-                import shutil
-                shutil.rmtree(dest, ignore_errors=True)
-            except Exception:
-                logger.exception("Failed to remove invalid repo directory: %s", dest)
+            removed = _force_remove_dir(dest)
+            if not removed and dest.exists():
+                logger.error("Failed to remove invalid repo directory after retries: %s", dest)
+                raise RuntimeError(f"Cannot remove stale repo directory: {dest}")
 
         logger.info("Cloning %s → %s", repo_url, dest)
 
@@ -113,12 +137,23 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                     return repo
                 except Exception:
                     logger.warning("Destination exists but not a valid repo; removing and retrying: %s", dest)
+                    removed = _force_remove_dir(dest)
+                    if not removed and dest.exists():
+                        logger.error("Failed to remove directory before retry after multiple attempts: %s", dest)
+                        raise
+                    # Second attempt wrapped to re-handle race conditions
                     try:
-                        import shutil
-                        shutil.rmtree(dest, ignore_errors=True)
-                    except Exception:
-                        logger.exception("Failed to remove directory before retry: %s", dest)
-                    return Repo.clone_from(repo_url, dest)
+                        return Repo.clone_from(repo_url, dest)
+                    except GitCommandError as exc2:
+                        msg2 = str(exc2)
+                        if "already exists and is not an empty directory" in msg2:
+                            try:
+                                repo = Repo(dest)
+                                logger.info("Concurrent clone finished during retry; reusing %s", dest)
+                                return repo
+                            except Exception:
+                                logger.error("Clone retry failed and repo still invalid at %s", dest)
+                        raise
             raise
     finally:
         # Release lock

@@ -9,7 +9,7 @@ from typing import Any, Dict
 import os
 from langchain_core.prompts import PromptTemplate
 
-from ..llm_base import get_backend
+from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
 
 __all__ = ["resolution_agent_node"]
@@ -34,17 +34,32 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
     parent_b = state["parent_b_contents"]
 
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
-    _, llm = get_backend(model_name)
+    encoder, llm = get_backend(model_name)
 
     resolved: Dict[str, str] = {}
 
+    ancestor_contents = state.get("ancestor_contents", {})
+    diffs_a = state.get("diffs_a", {})
+    diffs_b = state.get("diffs_b", {})
+
     for path, choice in plan.items():
+        # Precompute token usage comparable to simple agent for cost accounting (accumulate)
+        counts = state.setdefault("token_counts", {}).setdefault(
+            path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}
+        )
+        counts["system_prompt"] += count_tokens(encoder, _MERGE_PROMPT_STR)
+        counts["original"] += count_tokens(encoder, ancestor_contents.get(path, ""))
+        counts["diff_a"] += count_tokens(encoder, diffs_a.get(path, ""))
+        counts["diff_b"] += count_tokens(encoder, diffs_b.get(path, ""))
         if choice in ("A", "B") or llm is None:
             if llm is None and choice not in ("A", "B"):
                 logger.warning(f"No LLM backend available to merge {path}, falling back to parent A.")
                 choice = "A"
             logger.info(f"Resolving conflict for {path} by selecting parent {choice}.")
-            resolved[path] = parent_a.get(path, "") if choice == "A" else parent_b.get(path, "")
+            merged_text = parent_a.get(path, "") if choice == "A" else parent_b.get(path, "")
+            resolved[path] = merged_text
+            # Record output tokens accumulatively
+            counts["output"] += count_tokens(encoder, merged_text)
             continue
         
         logger.info(f"Resolving conflict for {path} using LLM.")
@@ -57,7 +72,9 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
             }
         )
         content = result.content if hasattr(result, "content") else str(result)
-        resolved[path] = content.strip("\n")
+        merged_text = content.strip("\n")
+        resolved[path] = merged_text
+        counts["output"] += count_tokens(encoder, merged_text)
 
     state["resolved_contents"] = resolved
     state["status"] = "resolved_multi"

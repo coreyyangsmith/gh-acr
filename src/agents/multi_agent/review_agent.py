@@ -5,7 +5,7 @@ from typing import Any, Dict
 import os
 from langchain_core.prompts import PromptTemplate
 
-from ..llm_base import get_backend
+from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
 
 __all__ = ["review_agent_node"]
@@ -25,7 +25,7 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     logger.info("Review agent started.")
     resolved: Dict[str, str] = state["resolved_contents"]
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
-    _, llm = get_backend(model_name)
+    encoder, llm = get_backend(model_name)
 
     reviews: Dict[str, str] = {}
 
@@ -36,7 +36,14 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             logger.warning(f"No LLM backend available, using heuristic for {path}.")
             continue
         res = (_prompt | llm).invoke({"file_path": path, "merged": content})
-        reviews[path] = res.content if hasattr(res, "content") else str(res)
+        text = res.content if hasattr(res, "content") else str(res)
+        reviews[path] = text
+        # Token accounting: accumulate review prompt and output tokens
+        counts = state.setdefault("token_counts", {}).setdefault(
+            path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}
+        )
+        counts["system_prompt"] += count_tokens(encoder, _REVIEW_PROMPT_STR)
+        counts["output"] += count_tokens(encoder, text)
 
     state["reviews"] = reviews
     state["status"] = "reviewed"

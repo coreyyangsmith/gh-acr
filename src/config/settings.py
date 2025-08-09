@@ -17,7 +17,7 @@ REQUEST_INTERVAL: float = float(os.getenv("GITHUB_REQUEST_INTERVAL", "1.0"))
 
 # Number of scenarios to process per batch when running dataset jobs.
 # Can be overridden via environment variable BATCH_SIZE (must be >=1).
-_batch_size_env = os.getenv("BATCH_SIZE", "10")
+_batch_size_env = os.getenv("BATCH_SIZE", "2")
 try:
     _batch_size_val = int(_batch_size_env)
 except ValueError:

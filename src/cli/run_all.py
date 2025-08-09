@@ -104,49 +104,51 @@ async def _run_all(
         logger.info("Removing existing results file: %s", results_path)
         results_path.unlink()
 
-    # Process in batches of 10 scenarios
+    # Process in batches, streaming results to CSV as they complete
     total = len(benchmark_df)
     for start in range(0, total, BATCH_SIZE):
         batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
+        try:
+            for method in methods_to_run:
+                logger.info("=== Running method: %s (mode=%s) batch %s-%s ===", method, mode, start + 1, min(start + BATCH_SIZE, total))
+                app = build_graph(process_mode=mode, eval_method=method)
 
-        for method in methods_to_run:
-            logger.info("=== Running method: %s (mode=%s) batch %s-%s ===", method, mode, start + 1, min(start + BATCH_SIZE, total))
-            app = build_graph(process_mode=mode, eval_method=method)
-
-            async def process_row(row):
-                try:
-                    return await run_and_save_report(app, row["id"], output_root, eval_method=method, model_name=model_name)
-                except Exception as exc:  # pragma: no cover – runtime resilience
-                    logger.exception("[run_all] Error processing scenario %s (%s)", row.get("id"), method)
-                    return []
-
-            tasks = [process_row(row) for _, row in batch_df.iterrows()]
-            per_file_results_lists = await tqdm.gather(*tasks)
-
-            # Flatten and persist
-            flat_records = [rec for sub in per_file_results_lists for rec in (sub or [])]
-            if flat_records:
-                df = pd.DataFrame(flat_records)
-                header = not results_path.exists() or results_path.stat().st_size == 0
-                df.to_csv(results_path, mode="a", header=header, index=False)
-                logger.info("Method %s: appended %s file-level rows to %s", method, len(flat_records), results_path)
-            else:
-                logger.warning("Method %s: no results to append.", method)
-
-        # Cleanup batch repos (clone mode only)
-        if mode == "clone":
-            repos_root = Path.cwd() / "repos"
-            for _, row in batch_df.iterrows():
-                name = str(row.get("name", "")).replace("/", "___")
-                if not name:
-                    continue
-                repo_dir = repos_root / name
-                if repo_dir.exists():
+                async def process_row(row):
                     try:
-                        shutil.rmtree(repo_dir, ignore_errors=True)
-                        logger.info("Cleaned cloned repo: %s", repo_dir)
-                    except Exception:
-                        logger.exception("Failed to remove repo directory: %s", repo_dir)
+                        return await run_and_save_report(app, row["id"], output_root, eval_method=method, model_name=model_name)
+                    except Exception as exc:  # pragma: no cover – runtime resilience
+                        logger.exception("[run_all] Error processing scenario %s (%s)", row.get("id"), method)
+                        return []
+
+                tasks = [process_row(row) for _, row in batch_df.iterrows()]
+
+                # Stream append as scenarios finish
+                completed = 0
+                for fut in asyncio.as_completed(tasks):
+                    per_file_results = await fut
+                    if per_file_results:
+                        df = pd.DataFrame(per_file_results)
+                        header = not results_path.exists() or results_path.stat().st_size == 0
+                        df.to_csv(results_path, mode="a", header=header, index=False)
+                        completed += 1
+                        logger.info("Appended %s rows for scenario (%s/%s) → %s", len(per_file_results), completed, len(tasks), results_path)
+                if completed == 0:
+                    logger.warning("Method %s: no results to append in this batch.", method)
+        finally:
+            # Cleanup batch repos (clone mode only)
+            if mode == "clone":
+                repos_root = Path.cwd() / "repos"
+                for _, row in batch_df.iterrows():
+                    name = str(row.get("name", "")).replace("/", "___")
+                    if not name:
+                        continue
+                    repo_dir = repos_root / name
+                    if repo_dir.exists():
+                        try:
+                            shutil.rmtree(repo_dir, ignore_errors=True)
+                            logger.info("Cleaned cloned repo: %s", repo_dir)
+                        except Exception:
+                            logger.exception("Failed to remove repo directory: %s", repo_dir)
 
     logger.info("All evaluations complete. Consolidated results saved to %s", results_path)
 

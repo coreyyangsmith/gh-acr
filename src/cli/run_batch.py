@@ -105,35 +105,37 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_
         return results
 
     # -------------------------------------------------------------------
-    # Process in batches of 10 scenarios to control repo clone footprint
+    # Process in batches; stream-append each scenario's results as they complete
     # -------------------------------------------------------------------
     total = len(benchmark_df)
     processed = 0
 
     for start in range(0, total, BATCH_SIZE):
         batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
+        try:
+            tasks = [process_and_append(row) for _, row in batch_df.iterrows()]
 
-        tasks = [process_and_append(row) for _, row in batch_df.iterrows()]
-        await tqdm.gather(*tasks)
-
-        processed += len(batch_df)
-
-        # Cleanup cloned repos for this batch (clone mode only)
-        if mode == "clone":
-            repos_root = Path.cwd() / "repos"
-            for _, row in batch_df.iterrows():
-                name = str(row.get("name", "")).replace("/", "___")
-                if not name:
-                    continue
-                repo_dir = repos_root / name
-                if repo_dir.exists():
-                    try:
-                        shutil.rmtree(repo_dir, ignore_errors=True)
-                        logger.info("Cleaned cloned repo: %s", repo_dir)
-                    except Exception:
-                        logger.exception("Failed to remove repo directory: %s", repo_dir)
-
-        logger.info("Processed %s/%s scenarios; results appended to %s", processed, total, results_path)
+            completed = 0
+            for fut in tqdm.as_completed(tasks):
+                res = await fut
+                completed += 1 if res else 0
+                processed += 1 if res else 0
+            logger.info("Processed %s/%s scenarios; results appended to %s", processed, total, results_path)
+        finally:
+            # Cleanup cloned repos for this batch (clone mode only)
+            if mode == "clone":
+                repos_root = Path.cwd() / "repos"
+                for _, row in batch_df.iterrows():
+                    name = str(row.get("name", "")).replace("/", "___")
+                    if not name:
+                        continue
+                    repo_dir = repos_root / name
+                    if repo_dir.exists():
+                        try:
+                            shutil.rmtree(repo_dir, ignore_errors=True)
+                            logger.info("Cleaned cloned repo: %s", repo_dir)
+                        except Exception:
+                            logger.exception("Failed to remove repo directory: %s", repo_dir)
 
     logger.info("Batch evaluation complete. Metrics for %s scenarios appended to %s", total, results_path)
 
