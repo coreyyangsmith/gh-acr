@@ -18,7 +18,7 @@ from src.agents.graph_router import build_graph
 def main(
     max_scenarios: int | None = None,
     mode: Literal["api", "clone"] = "api",
-    eval_method: Literal["agent", "base", "multi"] = "agent",
+    eval_method: Literal["base_a", "base_b", "agent", "multi"] = "agent",
     model_name: str | None = None,
     n_easy: int | None = None,
     n_medium: int | None = None,
@@ -33,7 +33,7 @@ def main(
     mode
         "api" or "clone" – selects repository access strategy.
     eval_method
-        "agent" or "base" – selects merge-resolution strategy.
+        One of: "base_a", "base_b", "agent", "multi" – selects merge-resolution strategy.
     """
     asyncio.run(
         _run(

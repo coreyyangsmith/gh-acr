@@ -18,10 +18,29 @@ Takes in data/git_good_bench.csv and outputs `git_good_bench_merge_commits.csv`
 
 
 # Inference
+
+## Single scenario
+- Parameters
+  - `scenario_id` (positional): dataset index (e.g., `1505`) or slug from CSV `id`.
+  - `--mode` (`api`|`clone`): how to read repo data. Default: `api`.
+  - `--eval-method` (`base_a`|`base_b`|`agent`|`multi`): resolver. Default: `agent`.
+  - `--model-name` (optional): LLM backend name (e.g., `openai/gpt-4o-mini`).
+
+Examples
 ```bash
-python -m src.cli.run_single 1505 --mode clone --eval-method base
+python -m src.cli.run_single 1505 --mode clone --eval-method base_a
+python -m src.cli.run_single some_repo__some_pr --mode api --eval-method agent --model-name openai/gpt-4o-mini
 ```
 
+## Batch (multiple scenarios)
+- Parameters
+  - `--max-scenarios N`: process first N scenarios (mutually exclusive with difficulty sampling).
+  - `--n-easy N --n-medium M --n-hard K`: sample per difficulty buckets.
+  - `--mode` (`api`|`clone`): default `api`.
+  - `--eval-method` (`base_a`|`base_b`|`agent`|`multi`).
+  - `--model-name` (optional): LLM backend.
+
+Examples
 ```bash
 python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method base_a
 python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method base_b
@@ -29,4 +48,20 @@ python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method agent
 python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method multi
 
 python -m src.cli.run_batch --n-easy 10 --n-medium 10 --n-hard 10 --mode clone --eval-method agent
+```
+
+## Run all methods over the dataset
+- Command runs each of: `base_a`, `base_b`, `agent`, `multi` for the same subset.
+- Parameters
+  - `--mode` (`api`|`clone`): default `clone`.
+  - `--methods ...`: optional subset list of methods to run (space-separated).
+  - `--max-scenarios N`: optional cap on total scenarios.
+  - `--n-easy N --n-medium M --n-hard K`: instead of `max-scenarios`, sample by difficulty.
+  - `--model-name`: optional LLM backend override.
+
+Examples
+```bash
+python -m src.cli.run_all --mode clone
+python -m src.cli.run_all --methods base_a base_b agent --max-scenarios 50 --mode api
+python -m src.cli.run_all --n-easy 20 --n-medium 20 --n-hard 10 --mode clone --model-name openai/gpt-4o-mini
 ```
