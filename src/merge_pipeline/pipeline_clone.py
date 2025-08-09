@@ -14,6 +14,7 @@ import difflib
 import logging
 from typing import Any, Dict, List
 import os
+import time
 
 from git import Repo, GitCommandError
 from langgraph.graph import END, StateGraph
@@ -53,21 +54,79 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
     checkout_dir.mkdir(exist_ok=True)
     repo_url = f"https://github.com/{sample['name']}.git"
     dest = checkout_dir / sample["name"].replace("/", "___")
-    if dest.exists():
-        return Repo(dest)
 
-    logger.info("Cloning %s → %s", repo_url, dest)
+    # Per-repo lock to avoid concurrent clones into the same destination
+    locks_dir = checkout_dir / "_locks"
+    locks_dir.mkdir(exist_ok=True)
+    lock_path = locks_dir / (dest.name + ".lock")
+
+    acquired = False
+    for _ in range(240):  # ~60s timeout (240 * 0.25s)
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            os.close(fd)
+            acquired = True
+            break
+        except FileExistsError:
+            time.sleep(0.25)
+    if not acquired:
+        logger.warning("Timeout acquiring lock for %s; proceeding without lock", dest)
 
     try:
-        return Repo.clone_from(repo_url, dest)
-    except GitCommandError as exc:
-        # Windows path length issues – retry with longpaths enabled
-        if "Filename too long" in str(exc):
-            logger.warning("Encountered 'Filename too long'. Retrying with core.longpaths=true …")
-            env = os.environ.copy()
-            env["GIT_CONFIG_PARAMETERS"] = "core.longpaths=true"
-            return Repo.clone_from(repo_url, dest, env=env)
-        raise
+        if dest.exists():
+            try:
+                repo = Repo(dest)
+                # Ensure origin URL matches expected; if not, reclone
+                try:
+                    origin_url = next(repo.remote("origin").urls)
+                except Exception:
+                    origin_url = ""
+                if origin_url and origin_url.endswith(f"{sample['name']}.git"):
+                    logger.info("Reusing existing clone at %s", dest)
+                    return repo
+                logger.warning("Existing directory at %s has unexpected origin; deleting and recloning", dest)
+            except Exception:
+                logger.warning("Existing directory at %s is not a valid git repo; deleting and recloning", dest)
+            try:
+                import shutil
+                shutil.rmtree(dest, ignore_errors=True)
+            except Exception:
+                logger.exception("Failed to remove invalid repo directory: %s", dest)
+
+        logger.info("Cloning %s → %s", repo_url, dest)
+
+        try:
+            return Repo.clone_from(repo_url, dest)
+        except GitCommandError as exc:
+            msg = str(exc)
+            # Windows path length issues – retry with longpaths enabled
+            if "Filename too long" in msg:
+                logger.warning("Encountered 'Filename too long'. Retrying with core.longpaths=true …")
+                env = os.environ.copy()
+                env["GIT_CONFIG_PARAMETERS"] = "core.longpaths=true"
+                return Repo.clone_from(repo_url, dest, env=env)
+            # Handle race: destination appeared during clone
+            if "already exists and is not an empty directory" in msg:
+                try:
+                    repo = Repo(dest)
+                    logger.info("Detected concurrent clone completion; reusing %s", dest)
+                    return repo
+                except Exception:
+                    logger.warning("Destination exists but not a valid repo; removing and retrying: %s", dest)
+                    try:
+                        import shutil
+                        shutil.rmtree(dest, ignore_errors=True)
+                    except Exception:
+                        logger.exception("Failed to remove directory before retry: %s", dest)
+                    return Repo.clone_from(repo_url, dest)
+            raise
+    finally:
+        # Release lock
+        try:
+            if lock_path.exists():
+                lock_path.unlink()
+        except Exception:
+            logger.warning("Failed to remove repo lock file: %s", lock_path)
 
 
 def _read_files_at_commit(repo: Repo, commit_sha: str, paths: List[str]) -> FileContents:
@@ -155,11 +214,15 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     for sha in [scenario["merge_commit_hash"], *parents]:
         try:
             repo.git.fetch("origin", sha)
-        except GitCommandError:
-            pass  # Already present
+        except GitCommandError as exc:
+            logger.warning("Fetch failed for %s: %s (continuing)", sha, exc)
 
     # Find merge base and read file contents
-    merge_base_commit = repo.merge_base(parents[0], parents[1])[0]
+    try:
+        merge_base_commit = repo.merge_base(parents[0], parents[1])[0]
+    except Exception as exc:
+        logger.exception("Failed to compute merge-base for %s vs %s", parents[0], parents[1])
+        raise
     ancestor_contents = _read_files_at_commit(repo, merge_base_commit.hexsha, files)
     parent_a_contents = _read_files_at_commit(repo, parents[0], files)
     parent_b_contents = _read_files_at_commit(repo, parents[1], files)

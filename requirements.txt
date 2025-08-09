@@ -79,6 +79,7 @@ requests==2.32.4
 requests-toolbelt==1.0.0
 rich==14.1.0
 seaborn==0.13.2
+scipy==1.14.1
 setuptools==78.1.1
 shtab==1.7.2
 six==1.17.0

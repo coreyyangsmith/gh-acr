@@ -1,0 +1,4 @@
+method,n,exact_match_rate,em_ci_low,em_ci_high,similarity_mean,similarity_median,bleu3_mean,rouge_l_mean,avg_total_cost,avg_processing_time_s,cost_per_success,time_per_success_s,quality_per_dollar
+base_a,4,0.25,0.0,0.75,0.8892,0.9916,0.867,0.8918,0.0,104.319,0.0,417.275,
+base_b,5,0.0,0.0,0.0,0.9795,0.9931,0.9615,0.9802,0.0,9.079,,,
+agent,5,0.0,0.0,0.0,0.9273,0.9457,0.9007,0.9439,0.002244,35.338,,,413.181113

@@ -14,6 +14,8 @@ from tqdm.asyncio import tqdm
 from src.cli.runner import run_and_save_report
 from src.dataset.loader import load_benchmark
 from src.agents.graph_router import build_graph
+from src.config.settings import BATCH_SIZE
+from src.utils.logger import setup_logger
 
 
 def main(
@@ -52,6 +54,7 @@ def main(
 async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_name: str | None, n_easy: int | None, n_medium: int | None, n_hard: int | None):
     """Internal async runner."""
 
+    logger = setup_logger()
     app = build_graph(process_mode=mode, eval_method=eval_method)
     output_root = Path.cwd() / "data" / "output"
 
@@ -62,6 +65,7 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_
 
     # Clear previous results if the file exists
     if results_path.exists():
+        logger.info("Removing existing results file: %s", results_path)
         results_path.unlink()
 
     benchmark_df = load_benchmark()
@@ -91,7 +95,7 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_
         try:
             results = await run_and_save_report(app, row["id"], output_root, eval_method=eval_method, model_name=model_name)
         except Exception as exc:
-            print(f"[run_batch] Error processing scenario {row['id']}: {exc}")
+            logger.exception("[run_batch] Error processing scenario %s", row.get("id"))
             return []
 
         # Persist each file-level record to the shared CSV.
@@ -103,7 +107,6 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_
     # -------------------------------------------------------------------
     # Process in batches of 10 scenarios to control repo clone footprint
     # -------------------------------------------------------------------
-    BATCH_SIZE = 10
     total = len(benchmark_df)
     processed = 0
 
@@ -126,12 +129,13 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_
                 if repo_dir.exists():
                     try:
                         shutil.rmtree(repo_dir, ignore_errors=True)
+                        logger.info("Cleaned cloned repo: %s", repo_dir)
                     except Exception:
-                        pass
+                        logger.exception("Failed to remove repo directory: %s", repo_dir)
 
-        print(f"Processed {processed}/{total} scenarios; results appended to {results_path}")
+        logger.info("Processed %s/%s scenarios; results appended to %s", processed, total, results_path)
 
-    print(f"\nBatch evaluation complete. Metrics for {total} scenarios appended to {results_path}")
+    logger.info("Batch evaluation complete. Metrics for %s scenarios appended to %s", total, results_path)
 
 
 if __name__ == "__main__":

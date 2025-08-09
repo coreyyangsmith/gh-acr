@@ -11,6 +11,7 @@ import os
 import time
 from src.config.model_costs import MODEL_COSTS
 from src.utils.rate_limiter import LimiterRegistry
+from src.utils.logger import setup_logger
 
 async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str, model_name: str | None = None):
     """Run the pipeline for one scenario and save its report to disk.
@@ -18,6 +19,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     The console output will be the final evaluation summary, plus a confirmation
     of where the full report was saved.
     """
+
+    logger = setup_logger(__name__)
 
     init_state = {
         "scenario_id": scenario_id,
@@ -28,6 +31,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     start_ts = time.perf_counter()
 
+    logger.info("Starting scenario %s with method=%s", scenario_id, eval_method)
     result = await app.ainvoke(
         init_state,
         config={"configurable": {"thread_id": f"scn-{scenario_id}"}},
@@ -108,11 +112,11 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     eval_ = result.get("evaluation", {})
 
-    print(f"\n\n--- Report for {scenario_id} ({df_index}) ---")
-    print(f"    - Full report saved to: {scenario_dir}")
-    print(f"    - Overall exact match: {eval_['overall_exact_match']}")
-    print(f"    - Overall BLEU-3: {eval_.get('overall_bleu3', 'N/A')}")
-    print(f"    - Overall ROUGE-L: {eval_.get('overall_rouge_l', 'N/A')}")
+    logger.info("Report for %s (%s)", scenario_id, df_index)
+    logger.info("    - Full report saved to: %s", scenario_dir)
+    logger.info("    - Overall exact match: %s", eval_["overall_exact_match"])
+    logger.info("    - Overall BLEU-3: %s", eval_.get("overall_bleu3", "N/A"))
+    logger.info("    - Overall ROUGE-L: %s", eval_.get("overall_rouge_l", "N/A"))
 
     # -------------------------------------------------------------------
     # Token usage / cost estimation (if available)
@@ -142,21 +146,26 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     cost_out = (total_out_tokens / 1000) * output_cost_rate
     total_cost = cost_in + cost_out
 
-    print(f"    - Tokens in: {total_in_tokens}  | cost: ${cost_in:.4f}")
-    print(f"    - Tokens out: {total_out_tokens} | cost: ${cost_out:.4f}")
-    print(f"    - Estimated total LLM cost: ${total_cost:.4f} (model: {model_name})")
+    logger.info("    - Tokens in: %s  | cost: $%.4f", total_in_tokens, cost_in)
+    logger.info("    - Tokens out: %s | cost: $%.4f", total_out_tokens, cost_out)
+    logger.info("    - Estimated total LLM cost: $%.4f (model: %s)", total_cost, model_name)
 
-    print(f"    - Processing time: {elapsed_sec:.2f} s")
+    logger.info("    - Processing time: %.2f s", elapsed_sec)
 
     # -------------------------------------------------------------------
     # Rate limiter metrics (if any LLM calls were made)
     # -------------------------------------------------------------------
     rl_metrics = LimiterRegistry.metrics()
     if rl_metrics:
-        print("    - Rate limit activity:")
+        logger.info("    - Rate limit activity:")
         for key, m in rl_metrics.items():
-            print(
-                f"        · {key}: waits={m['wait_events']} total_wait={m['total_wait_time_s']:.2f}s retries={m['total_retries']} last_delay={m['last_retry_delay_s']:.2f}s"
+            logger.info(
+                "        · %s: waits=%s total_wait=%.2fs retries=%s last_delay=%.2fs",
+                key,
+                m['wait_events'],
+                m['total_wait_time_s'],
+                m['total_retries'],
+                m['last_retry_delay_s'],
             )
 
     # -------------------------------------------------------------------

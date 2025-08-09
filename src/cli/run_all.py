@@ -11,6 +11,8 @@ import tyro
 from tqdm.asyncio import tqdm
 
 from src.dataset.loader import load_benchmark
+from src.config.settings import BATCH_SIZE
+from src.utils.logger import setup_logger
 from src.agents.graph_router import build_graph
 from src.cli.runner import run_and_save_report
 
@@ -67,9 +69,12 @@ async def _run_all(
     n_medium: int | None,
     n_hard: int | None,
 ):
+    # Configure root logger so all modules propagate here
+    logger = setup_logger()
     methods_to_run: list[EvalMethod] = methods or ["base_a", "base_b", "agent", "multi"]
 
     # Load and optionally sample benchmark scenarios
+    logger.info("Loading benchmark dataset…")
     benchmark_df = load_benchmark()
     if any(v is not None for v in (n_easy, n_medium, n_hard)):
         subsets = []
@@ -96,23 +101,23 @@ async def _run_all(
     date_str = datetime.date.today().strftime("%Y_%m_%d")
     results_path = Path.cwd() / "data" / f"{date_str}_results_all.csv"
     if results_path.exists():
+        logger.info("Removing existing results file: %s", results_path)
         results_path.unlink()
 
     # Process in batches of 10 scenarios
-    BATCH_SIZE = 10
     total = len(benchmark_df)
     for start in range(0, total, BATCH_SIZE):
         batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
 
         for method in methods_to_run:
-            print(f"\n=== Running method: {method} (mode={mode}) batch {start+1}-{min(start+BATCH_SIZE, total)} ===")
+            logger.info("=== Running method: %s (mode=%s) batch %s-%s ===", method, mode, start + 1, min(start + BATCH_SIZE, total))
             app = build_graph(process_mode=mode, eval_method=method)
 
             async def process_row(row):
                 try:
                     return await run_and_save_report(app, row["id"], output_root, eval_method=method, model_name=model_name)
                 except Exception as exc:  # pragma: no cover – runtime resilience
-                    print(f"[run_all] Error processing scenario {row['id']} ({method}): {exc}")
+                    logger.exception("[run_all] Error processing scenario %s (%s)", row.get("id"), method)
                     return []
 
             tasks = [process_row(row) for _, row in batch_df.iterrows()]
@@ -124,9 +129,9 @@ async def _run_all(
                 df = pd.DataFrame(flat_records)
                 header = not results_path.exists() or results_path.stat().st_size == 0
                 df.to_csv(results_path, mode="a", header=header, index=False)
-                print(f"Method {method}: appended {len(flat_records)} file-level rows to {results_path}")
+                logger.info("Method %s: appended %s file-level rows to %s", method, len(flat_records), results_path)
             else:
-                print(f"Method {method}: no results to append.")
+                logger.warning("Method %s: no results to append.", method)
 
         # Cleanup batch repos (clone mode only)
         if mode == "clone":
@@ -139,10 +144,11 @@ async def _run_all(
                 if repo_dir.exists():
                     try:
                         shutil.rmtree(repo_dir, ignore_errors=True)
+                        logger.info("Cleaned cloned repo: %s", repo_dir)
                     except Exception:
-                        pass
+                        logger.exception("Failed to remove repo directory: %s", repo_dir)
 
-    print(f"\nAll evaluations complete. Consolidated results saved to {results_path}")
+    logger.info("All evaluations complete. Consolidated results saved to %s", results_path)
 
 
 if __name__ == "__main__":
