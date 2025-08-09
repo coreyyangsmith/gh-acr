@@ -10,6 +10,7 @@ from typing import Dict, Any
 import os
 import time
 from src.config.model_costs import MODEL_COSTS
+from src.utils.rate_limiter import LimiterRegistry
 
 async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str, model_name: str | None = None):
     """Run the pipeline for one scenario and save its report to disk.
@@ -120,6 +121,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     token_map: Dict[str, Dict[str, int]] = result.get("token_counts", {})  # per-file token stats
     model_name = model_name or os.getenv("OPENAI_MODEL", "gpt-4.1-nano-2025-04-14")
     model_cfg = MODEL_COSTS.get(model_name, {})
+    if not model_cfg and not model_name.startswith("openai/"):
+        model_cfg = MODEL_COSTS.get(f"openai/{model_name}", {})
     input_cost_rate = float(model_cfg.get("input_cost_per_1k", 0.0))
     output_cost_rate = float(model_cfg.get("output_cost_per_1k", 0.0))
 
@@ -144,6 +147,17 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     print(f"    - Estimated total LLM cost: ${total_cost:.4f} (model: {model_name})")
 
     print(f"    - Processing time: {elapsed_sec:.2f} s")
+
+    # -------------------------------------------------------------------
+    # Rate limiter metrics (if any LLM calls were made)
+    # -------------------------------------------------------------------
+    rl_metrics = LimiterRegistry.metrics()
+    if rl_metrics:
+        print("    - Rate limit activity:")
+        for key, m in rl_metrics.items():
+            print(
+                f"        · {key}: waits={m['wait_events']} total_wait={m['total_wait_time_s']:.2f}s retries={m['total_retries']} last_delay={m['last_retry_delay_s']:.2f}s"
+            )
 
     # -------------------------------------------------------------------
     # Transform evaluation into **per-file** records so that downstream

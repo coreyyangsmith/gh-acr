@@ -54,7 +54,7 @@ if not _PROMPT_PATH.exists():
 else:
     _PROMPT_STR = _PROMPT_PATH.read_text(encoding="utf-8")
 
-_DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-nano-2025-04-14")
+_DEFAULT_MODEL = os.getenv("OPENAI_MODEL", "openai/gpt-4.1-nano-2025-04-14")
 
 # Cache for model→(encoder, runnable)
 _RUNNABLE_CACHE: dict[str, tuple[tiktoken.Encoding, Any]] = {}
