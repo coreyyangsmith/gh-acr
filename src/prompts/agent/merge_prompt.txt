@@ -23,4 +23,4 @@ File path: {file_path}
 {diff_b}
 --- End Diff B ---
 
-[Your answer below – merged file content starts on the next line] 
+[Your answer below – merged file content starts on the next line]

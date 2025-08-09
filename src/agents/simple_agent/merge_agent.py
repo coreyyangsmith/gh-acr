@@ -33,8 +33,8 @@ logger = logging.getLogger(__name__)
 # Prompt & LLM setup
 # ---------------------------------------------------------------------------
 
-# NOTE: file lives one directory deeper, hence *parents[2]* instead of [1].
-_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "merge_prompt.txt"
+# Load prompt from prompts/agent/
+_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "agent" / "merge_prompt.txt"
 if not _PROMPT_PATH.exists():
     logger.warning("Prompt template missing at %s – falling back to default prompt string.", _PROMPT_PATH)
     _DEFAULT_PROMPT_STR = (

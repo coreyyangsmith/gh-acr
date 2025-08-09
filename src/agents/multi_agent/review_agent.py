@@ -4,19 +4,15 @@ from __future__ import annotations
 from typing import Any, Dict
 import os
 from langchain_core.prompts import PromptTemplate
+from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
 
 __all__ = ["review_agent_node"]
 
-_REVIEW_PROMPT_STR = (
-    "You are a senior code reviewer.  Review the merged file below for correctness "
-    "and style.  Provide a short verdict (ACCEPT / REJECT) followed by one bullet-point "
-    "summary.\n\n"\
-    "File path: {file_path}\n\n"\
-    "--- MERGED CONTENT ---\n{merged}\n--- END ---\n\nReview:"\
-)
+_REVIEW_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "review_prompt.txt"
+_REVIEW_PROMPT_STR = _REVIEW_PROMPT_PATH.read_text(encoding="utf-8")
 
 _prompt = PromptTemplate.from_template(_REVIEW_PROMPT_STR)
 
@@ -35,7 +31,7 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             reviews[path] = "ACCEPT – heuristic stub (no LLM)."
             logger.warning(f"No LLM backend available, using heuristic for {path}.")
             continue
-        res = (_prompt | llm).invoke({"file_path": path, "merged": content})
+        res = (_prompt | llm).invoke({"generated_code": content})
         text = res.content if hasattr(res, "content") else str(res)
         reviews[path] = text
         # Token accounting: accumulate review prompt and output tokens

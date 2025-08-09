@@ -8,21 +8,15 @@ from __future__ import annotations
 from typing import Any, Dict
 import os
 from langchain_core.prompts import PromptTemplate
+from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
 
 __all__ = ["resolution_agent_node"]
 
-_MERGE_PROMPT_STR = (
-    "You are a merge-conflict resolver.  The file below has conflicting versions "
-    "from two parents.  Produce the merged file that incorporates both sets of "
-    "changes correctly.  Do NOT include any explanations—only the merged file.\n\n"\
-    "File path: {file_path}\n\n"\
-    "--- Parent A version ---\n{version_a}\n--- End A ---\n\n"\
-    "--- Parent B version ---\n{version_b}\n--- End B ---\n\n"\
-    "[Merged file below]"\
-)
+_MERGE_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "resolver_prompt.txt"
+_MERGE_PROMPT_STR = _MERGE_PROMPT_PATH.read_text(encoding="utf-8")
 
 _prompt = PromptTemplate.from_template(_MERGE_PROMPT_STR)
 
@@ -64,11 +58,15 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
         
         logger.info(f"Resolving conflict for {path} using LLM.")
         runnable = _prompt | llm  # type: ignore[operator]
+        # New resolver prompt expects a JSON plan and original_code/patches.
+        # For now, pass the single-file slice of the plan plus parents as patches.
+        single_plan = {path: plan.get(path, "merge")}
         result = runnable.invoke(
             {
-                "file_path": path,
-                "version_a": parent_a.get(path, ""),
-                "version_b": parent_b.get(path, ""),
+                "plan": single_plan,
+                "original_code": ancestor_contents.get(path, ""),
+                "patch_a": diffs_a.get(path, ""),
+                "patch_b": diffs_b.get(path, ""),
             }
         )
         content = result.content if hasattr(result, "content") else str(result)

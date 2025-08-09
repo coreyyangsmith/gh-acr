@@ -9,6 +9,7 @@ from typing import Any, Dict
 import os
 
 from langchain_core.prompts import PromptTemplate
+from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
@@ -19,15 +20,8 @@ __all__ = ["summarizer_agent_node"]
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-_SUMMARY_PROMPT_STR = (
-    "You are a senior software engineer. Analyse the diff below relative to the "
-    "original file and provide a concise English summary of what the changes do.\n"\
-    "\n"\
-    "File path: {file_path}\n"\
-    "--- ORIGINAL ---\n{original}\n--- END ORIGINAL ---\n\n"\
-    "--- DIFF ---\n{diff}\n--- END DIFF ---\n\n"\
-    "Summary:"\
-)
+_SUMMARY_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "summarizer_prompt.txt"
+_SUMMARY_PROMPT_STR = _SUMMARY_PROMPT_PATH.read_text(encoding="utf-8")
 
 _prompt = PromptTemplate.from_template(_SUMMARY_PROMPT_STR)
 
@@ -68,9 +62,8 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 summary_pair[f"summary_{parent_label.lower()}"] = _fallback_summary(diff_text)
             else:
                 prompt_vars = {
-                    "file_path": path,
-                    "original": original_text,
-                    "diff": diff_text,
+                    "original_code": original_text,
+                    "patch": diff_text,
                 }
                 result = (_prompt | llm).invoke(prompt_vars)
                 content = result.content if hasattr(result, "content") else str(result)
