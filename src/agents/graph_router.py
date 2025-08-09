@@ -11,7 +11,7 @@ Usage
 from typing import Literal
 
 ProcessMode = Literal["api", "clone"]
-EvalMethod = Literal["agent", "base", "multi"]
+EvalMethod = Literal["base_a", "base_b", "agent", "multi"]
 
 
 def build_graph(*, process_mode: ProcessMode = "api", eval_method: EvalMethod = "agent"):
@@ -23,8 +23,9 @@ def build_graph(*, process_mode: ProcessMode = "api", eval_method: EvalMethod = 
         "api"   – use GitHub API for fetching file contents (lightweight).
         "clone" – clone the full repository locally.
     eval_method
-        "agent" – use the LLM-based merge resolver (default).
-        "base"  – use the parent-A stub resolver.
+        "agent"  – LLM-based resolver (default)
+        "base_a" – baseline Parent-A resolver (alias: "base")
+        "base_b" – baseline Parent-B resolver
     """
 
     if process_mode == "api":

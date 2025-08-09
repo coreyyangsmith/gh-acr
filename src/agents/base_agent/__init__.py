@@ -1,19 +1,16 @@
-"""Baseline (Parent-A) merge-conflict resolver.
+"""Baseline merge resolvers.
 
-This agent does **no intelligent merging** – it simply takes the file version
-from *Parent A* and returns it as the "resolved" content.  It acts as a lower
-bound for evaluation and incurs zero external cost.
+Exports two simple nodes:
+ - resolve_conflict_base_a_node: picks Parent A for all files
+ - resolve_conflict_base_b_node: picks Parent B for all files
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from .base_a import resolve_conflict_base_a_node
+from .base_b import resolve_conflict_base_b_node
 
-__all__ = ["resolve_conflict_base_node"]
+__all__ = [
+    "resolve_conflict_base_a_node",
+    "resolve_conflict_base_b_node",
+]
 
-FileContents = Dict[str, str]
-
-def resolve_conflict_base_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
-    """LangGraph node that picks Parent-A's content for every conflicted file."""
-    state["resolved_contents"] = state["parent_a_contents"]  # type: ignore[index]
-    state["status"] = "resolved_base"
-    return state

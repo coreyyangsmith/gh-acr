@@ -21,7 +21,10 @@ from langgraph.pregel import Pregel
 
 # Agent resolver node
 from ..agents.simple_agent import resolve_conflict_agent_node
-from ..agents.base_agent import resolve_conflict_base_node
+from ..agents.base_agent import (
+    resolve_conflict_base_a_node,
+    resolve_conflict_base_b_node,
+)
 from ..agents.multi_agent import resolve_conflict_multi_agent_node
 from ..dataset.loader import DATA_PATH, load_benchmark
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
@@ -269,14 +272,17 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     if eval_method == "agent":
         resolver_node_name = "resolve_agent"
         sg.add_node(resolver_node_name, resolve_conflict_agent_node)
-    elif eval_method == "base":
-        resolver_node_name = "resolve_base"
-        sg.add_node(resolver_node_name, resolve_conflict_base_node)
+    elif eval_method == "base_a":
+        resolver_node_name = "resolve_base_a"
+        sg.add_node(resolver_node_name, resolve_conflict_base_a_node)
+    elif eval_method == "base_b":
+        resolver_node_name = "resolve_base_b"
+        sg.add_node(resolver_node_name, resolve_conflict_base_b_node)
     elif eval_method == "multi":
         resolver_node_name = "resolve_multi"
         sg.add_node(resolver_node_name, resolve_conflict_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base', or 'multi'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', or 'multi'.")
 
     sg.add_node("evaluate", evaluate_node)
 

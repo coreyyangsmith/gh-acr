@@ -23,8 +23,10 @@ python -m src.cli.run_single 1505 --mode clone --eval-method base
 ```
 
 ```bash
+python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method base_a
+python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method base_b
 python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method agent
-python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method base
+python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method multi
 
 python -m src.cli.run_batch --n-easy 10 --n-medium 10 --n-hard 10 --mode clone --eval-method agent
 ```

@@ -20,7 +20,7 @@ def main(
         "Identifier matching the **id** column (integer) *or* the scenario's slug.",
     ],
     mode: Literal["api", "clone"] = "api",
-    eval_method: Literal["agent", "base", "multi"] = "agent",
+    eval_method: Literal["base_a", "base_b", "agent", "multi"] = "agent",
     model_name: str | None = None,
 ):
     """Run the merge-resolution pipeline for a single *scenario_id*.
@@ -33,8 +33,9 @@ def main(
         "api"  – use the lightweight GitHub API pipeline (default).
         "clone" – clone the full repository locally before processing.
     eval_method
-        "agent" (default) – use the simple LLM merge agent.
-        "base"  – use the baseline parent-A resolver.
+        "agent"  (default) – use the LLM merge agent.
+        "base_a" (alias: "base") – baseline parent-A resolver.
+        "base_b" – baseline parent-B resolver.
     """
     asyncio.run(
         _run(scenario_id=scenario_id, mode=mode, eval_method=eval_method, model_name=model_name),
