@@ -101,3 +101,6 @@ xxhash==3.5.0
 yarl==1.20.1
 zipp==3.23.0
 zstandard==0.23.0
+rouge-score==0.1.2
+sacrebleu==2.4.3
+rapidfuzz==3.10.1

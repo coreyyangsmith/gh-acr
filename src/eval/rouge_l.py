@@ -2,19 +2,18 @@ from __future__ import annotations
 
 """ROUGE-L metric utilities.
 
-ROUGE-L measures the **Longest Common Subsequence (LCS)** between the predicted
-text and the reference text.  The implementation below follows the original
-Lin (2004) definition and computes the F\_1 variant with \(\beta = 1\):
-
-    R\_L = (1 + \beta^2) * P * R / (R + \beta^2 * P)
-
-where *P* is the precision (LCS / |pred|) and *R* is the recall (LCS / |truth|).
-
-The implementation purposefully avoids external dependencies such as
-*rouge-score* to keep the project lightweight.
+Prefers `rouge-score` library if available; falls back to a simple LCS-based
+ROUGE-L implementation otherwise.
 """
 
 from typing import Dict, List
+
+# Optional dependency: rouge-score
+try:  # pragma: no cover - optional dependency
+    from rouge_score import rouge_scorer as _rouge_scorer  # type: ignore
+    _SCORER = _rouge_scorer.RougeScorer(["rougeL"], use_stemmer=True)
+except Exception:  # pragma: no cover
+    _SCORER = None
 
 __all__ = ["rouge_l_score", "per_file", "overall"]
 
@@ -54,6 +53,14 @@ def _lcs_len(a: List[str], b: List[str]) -> int:  # noqa: D401
 
 def rouge_l_score(pred: str, truth: str) -> float:  # noqa: D401
     """Return the ROUGE-L (F1) score between *pred* and *truth* \[0, 1\]."""
+
+    if _SCORER is not None:
+        try:
+            scores = _SCORER.score(truth, pred)
+            fmeasure = scores["rougeL"].fmeasure
+            return float(fmeasure)
+        except Exception:  # pragma: no cover
+            pass
 
     pred_toks = _tokenise(pred)
     truth_toks = _tokenise(truth)

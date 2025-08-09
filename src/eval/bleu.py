@@ -2,21 +2,20 @@ from __future__ import annotations
 
 """BLEU-3 metric utilities.
 
-The implementation here is a *minimal* re-implementation of the BLEU score that
-supports up to tri-gram precision (hence BLEU-3). It deliberately avoids heavy
-external dependencies (e.g. *nltk*) so that it can run in lightweight
-environments that only have the packages listed in *requirements.txt*.
-
-The formulation follows Papineni *et al.* (2002):
-    BLEU = BP * exp( \sum_n w_n * log p_n )
-where *p_n* is the modified n-gram precision for n in \[1, 3\] and the *brevity
-penalty* (BP) is `exp(1 - len_ref/len_pred)` when `len_pred < len_ref` and 1
-otherwise.  Uniform weights \(w_n = 1/3\) are used for BLEU-3.
+Prefers the `sacrebleu` library if available; falls back to a lightweight
+manual BLEU-3 implementation otherwise.
 """
 
 from collections import Counter
 from math import exp, log
 from typing import Dict, List, Tuple
+
+# Optional dependency: sacrebleu
+try:  # pragma: no cover - optional performance/quality enhancement
+    from sacrebleu.metrics import BLEU as _SacreBLEU  # type: ignore
+    _BLEU3 = _SacreBLEU(effective_order=True, max_ngram_order=3)  # type: ignore[call-arg]
+except Exception:  # pragma: no cover
+    _BLEU3 = None  # type: ignore
 
 __all__ = ["bleu3_score", "per_file", "overall"]
 
@@ -43,6 +42,20 @@ def _ngrams(tokens: List[str], n: int) -> List[Tuple[str, ...]]:  # noqa: D401
 def bleu3_score(pred: str, truth: str) -> float:  # noqa: D401
     """Return the BLEU-3 score between *pred* and *truth* \[0, 1\]."""
 
+    # Prefer sacrebleu if available
+    if _BLEU3 is not None:
+        try:
+            score = _BLEU3.sentence_score(pred, [truth]).score  # type: ignore[attr-defined]
+        except Exception:  # pragma: no cover
+            # Fallback to corpus scoring for a single pair
+            try:
+                score = _BLEU3.corpus_score([pred], [[truth]]).score  # type: ignore[attr-defined]
+            except Exception:
+                score = None  # type: ignore[assignment]
+        if score is not None:  # type: ignore[truthy-bool]
+            return max(0.0, min(1.0, float(score) / 100.0))
+
+    # Manual BLEU-3 fallback
     pred_toks = _tokenise(pred)
     truth_toks = _tokenise(truth)
 
@@ -61,21 +74,16 @@ def bleu3_score(pred: str, truth: str) -> float:  # noqa: D401
         overlap = sum((pred_ngrams & truth_ngrams).values())
         precisions.append(overlap / sum(pred_ngrams.values()))
 
-    # Geometric mean of precisions (log-domain to avoid underflow)
     if min(precisions) == 0.0:
         geo_mean = 0.0
     else:
         geo_mean = exp(sum(log(p) for p in precisions) / 3)
 
-    # Brevity penalty (BP)
     len_pred = len(pred_toks)
     len_truth = len(truth_toks)
-
     if len_pred == 0:
         return 0.0
-
     bp = 1.0 if len_pred > len_truth else exp(1 - (len_truth / len_pred))
-
     return bp * geo_mean
 
 
