@@ -8,7 +8,6 @@ from __future__ import annotations
 from typing import Any, Dict
 import os
 
-from langchain_core.prompts import PromptTemplate
 from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
@@ -23,7 +22,16 @@ __all__ = ["summarizer_agent_node"]
 _SUMMARY_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "summarizer_prompt.txt"
 _SUMMARY_PROMPT_STR = _SUMMARY_PROMPT_PATH.read_text(encoding="utf-8")
 
-_prompt = PromptTemplate.from_template(_SUMMARY_PROMPT_STR)
+def _render_template(template: str, variables: Dict[str, str]) -> str:
+    """Render a very small subset of the template by replacing {{ var }} tokens.
+
+    We intentionally avoid external templating engines; only direct replacements
+    of the exact pattern with single spaces are supported.
+    """
+    rendered = template
+    for key, value in variables.items():
+        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
+    return rendered
 
 # ---------------------------------------------------------------------------
 # Public node
@@ -61,11 +69,14 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 logger.warning(f"No LLM backend available, using heuristic for {path}.")
                 summary_pair[f"summary_{parent_label.lower()}"] = _fallback_summary(diff_text)
             else:
-                prompt_vars = {
-                    "original_code": original_text,
-                    "patch": diff_text,
-                }
-                result = (_prompt | llm).invoke(prompt_vars)
+                prompt_text = _render_template(
+                    _SUMMARY_PROMPT_STR,
+                    {
+                        "original_code": original_text,
+                        "patch": diff_text,
+                    },
+                )
+                result = llm.invoke(prompt_text)
                 content = result.content if hasattr(result, "content") else str(result)
                 summary_pair[f"summary_{parent_label.lower()}"] = content.strip()
                 # Track token usage per file/parent label for overall accounting (accumulate)

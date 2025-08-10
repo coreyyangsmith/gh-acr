@@ -7,7 +7,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 import os
-from langchain_core.prompts import PromptTemplate
 from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
@@ -18,7 +17,11 @@ __all__ = ["resolution_agent_node"]
 _MERGE_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "resolver_prompt.txt"
 _MERGE_PROMPT_STR = _MERGE_PROMPT_PATH.read_text(encoding="utf-8")
 
-_prompt = PromptTemplate.from_template(_MERGE_PROMPT_STR)
+def _render_template(template: str, variables: Dict[str, str]) -> str:
+    rendered = template
+    for key, value in variables.items():
+        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
+    return rendered
 
 
 def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
@@ -31,6 +34,7 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
     encoder, llm = get_backend(model_name)
 
     resolved: Dict[str, str] = {}
+    final_diffs: Dict[str, str] = {}
 
     ancestor_contents = state.get("ancestor_contents", {})
     diffs_a = state.get("diffs_a", {})
@@ -57,24 +61,39 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
             continue
         
         logger.info(f"Resolving conflict for {path} using LLM.")
-        runnable = _prompt | llm  # type: ignore[operator]
-        # New resolver prompt expects a JSON plan and original_code/patches.
-        # For now, pass the single-file slice of the plan plus parents as patches.
+        # Build prompt with optional review feedback
+        import json
         single_plan = {path: plan.get(path, "merge")}
-        result = runnable.invoke(
+        feedback_map = state.get("review_feedback", {}) or {}
+        feedback_text = str(feedback_map.get(path, "")).strip()
+        prompt_text = _render_template(
+            _MERGE_PROMPT_STR,
             {
-                "plan": single_plan,
+                "plan": json.dumps(single_plan, ensure_ascii=False),
                 "original_code": ancestor_contents.get(path, ""),
                 "patch_a": diffs_a.get(path, ""),
                 "patch_b": diffs_b.get(path, ""),
-            }
+                "review_feedback": feedback_text,
+            },
         )
+        result = llm.invoke(prompt_text)
         content = result.content if hasattr(result, "content") else str(result)
         merged_text = content.strip("\n")
         resolved[path] = merged_text
         counts["output"] += count_tokens(encoder, merged_text)
+        # Compute a unified diff vs original for downstream consumers if needed
+        try:
+            import difflib
+            a_lines = ancestor_contents.get(path, "").splitlines(keepends=True)
+            m_lines = merged_text.splitlines(keepends=True)
+            final_diffs[path] = "".join(
+                difflib.unified_diff(a_lines, m_lines, fromfile=f"a/{path}", tofile=f"b/{path}")
+            )
+        except Exception:
+            final_diffs[path] = ""
 
     state["resolved_contents"] = resolved
+    state["final_diffs"] = final_diffs
     state["status"] = "resolved_multi"
     logger.info("Resolution agent finished.")
     return state

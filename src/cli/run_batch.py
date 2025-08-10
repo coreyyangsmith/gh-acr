@@ -6,6 +6,9 @@ import shutil
 import datetime
 from typing import Literal
 
+# Ensure one-time global startup (env, logging, tracing) before anything else
+import src.startup  # noqa: F401
+
 import pandas as pd
 import tyro
 from tqdm.asyncio import tqdm

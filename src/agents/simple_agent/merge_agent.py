@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 import tiktoken  # type: ignore
 
 # Updated import location per latest LangChain split
-from langchain_core.prompts import PromptTemplate
 from ..llm_base import get_backend, count_tokens
 
 load_dotenv()
@@ -79,8 +78,7 @@ def _get_runnable(model_name: str):  # noqa: D401
         return _RUNNABLE_CACHE[model_name]
 
     llm = ChatOpenAI(api_key=_OPENAI_API_KEY, model=model_name, temperature=0)  # type: ignore[call-arg]
-    prompt = PromptTemplate.from_template(_PROMPT_STR)
-    runnable = prompt | llm
+    runnable = llm
     encoder = _get_encoder(model_name)
     _RUNNABLE_CACHE[model_name] = (encoder, runnable)
     return _RUNNABLE_CACHE[model_name]
@@ -110,8 +108,7 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
     encoder, llm_backend = get_backend(model_name)
 
     if llm_backend is not None:
-        from langchain_core.prompts import PromptTemplate as _PT
-        runnable = _PT.from_template(_PROMPT_STR) | llm_backend
+        runnable = llm_backend
     else:
         runnable = None
 
@@ -136,14 +133,15 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
             "diff_b": count_tokens(encoder, diff_b_text),
         }
 
-        result = runnable.invoke(  # type: ignore[attr-defined]
-            {
-                "file_path": path,
-                "original": original_text,
-                "diff_a": diff_a_text,
-                "diff_b": diff_b_text,
-            }
+        # Build prompt via simple string formatting to avoid templating engines
+        prompt_text = (
+            _PROMPT_STR
+            .replace("{file_path}", path)
+            .replace("{original}", original_text)
+            .replace("{diff_a}", diff_a_text)
+            .replace("{diff_b}", diff_b_text)
         )
+        result = runnable.invoke(prompt_text)  # type: ignore[attr-defined]
 
         merged_content = result.content if hasattr(result, "content") else str(result)
         merged_clean = merged_content.strip("\n")

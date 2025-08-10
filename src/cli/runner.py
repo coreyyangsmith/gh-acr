@@ -6,6 +6,7 @@ This module is the single source of truth for processing a scenario and
 writing its output files. It is imported by both `run_single` and `run_batch`.
 """
 from pathlib import Path
+import src.startup  # noqa: F401  # Ensure startup side-effects apply when runner is imported
 from typing import Dict, Any
 import os
 import time
@@ -94,6 +95,12 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             (llm_out_dir / f"{file_slug}.txt").write_text(
                 result["resolved_contents"].get(file_path, ""), encoding="utf-8"
             )
+            # Also persist final diff if available from multi-agent resolver
+            final_diff_map = result.get("final_diffs", {})
+            if final_diff_map:
+                (llm_out_dir / f"{file_slug}.diff").write_text(
+                    final_diff_map.get(file_path, ""), encoding="utf-8"
+                )
 
             # ---------------- multi-agent extra outputs -------------------
             if eval_method == "multi":

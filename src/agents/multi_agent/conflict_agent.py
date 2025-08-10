@@ -6,7 +6,6 @@ from __future__ import annotations
 
 from typing import Any, Dict
 import os
-from langchain_core.prompts import PromptTemplate
 from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
@@ -17,7 +16,11 @@ __all__ = ["conflict_agent_node"]
 _PLAN_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "plan_prompt.txt"
 _PLAN_PROMPT_STR = _PLAN_PROMPT_PATH.read_text(encoding="utf-8")
 
-_prompt = PromptTemplate.from_template(_PLAN_PROMPT_STR)
+def _render_template(template: str, variables: Dict[str, str]) -> str:
+    rendered = template
+    for key, value in variables.items():
+        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
+    return rendered
 
 
 def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
@@ -43,12 +46,16 @@ def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
         b_sum = "\n\n".join(f"{p}: {s.get('summary_b','')}" for p, s in summaries.items())
         a_diff = "\n\n".join(f"{p}: {state.get('diffs_a', {}).get(p, '')}" for p in summaries.keys())
         b_diff = "\n\n".join(f"{p}: {state.get('diffs_b', {}).get(p, '')}" for p in summaries.keys())
-        result = (_prompt | llm).invoke({
-            "a_diff": a_diff,
-            "a_summary": a_sum,
-            "b_diff": b_diff,
-            "b_summary": b_sum,
-        })
+        prompt_text = _render_template(
+            _PLAN_PROMPT_STR,
+            {
+                "a_diff": a_diff,
+                "a_summary": a_sum,
+                "b_diff": b_diff,
+                "b_summary": b_sum,
+            },
+        )
+        result = llm.invoke(prompt_text)
         content = result.content if hasattr(result, "content") else str(result)
         try:
             plan = json.loads(content)

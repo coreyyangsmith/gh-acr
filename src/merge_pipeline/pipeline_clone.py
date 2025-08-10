@@ -13,6 +13,7 @@ from pathlib import Path
 import difflib
 import logging
 from typing import Any, Dict, List
+from langchain_core.runnables import RunnableConfig
 import os
 import time
 import shutil
@@ -392,3 +393,14 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     sg.add_edge("evaluate", END)
 
     return sg.compile() 
+
+
+def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
+    """LangGraph entrypoint: build a compiled app from ``config``.
+
+    Recognised configurable keys:
+    - eval_method: "agent" | "base_a" | "base_b" | "multi" (default: "agent")
+    """
+    cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
+    eval_method = cfg.get("eval_method", "agent")
+    return build_graph(eval_method=eval_method)

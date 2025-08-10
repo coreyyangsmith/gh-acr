@@ -3,6 +3,9 @@ from __future__ import annotations
 import asyncio
 from typing import Annotated, Literal
 
+# Ensure one-time global startup (env, logging, tracing) before anything else
+import src.startup  # noqa: F401
+
 import tyro
 import pandas as pd
 from pathlib import Path
