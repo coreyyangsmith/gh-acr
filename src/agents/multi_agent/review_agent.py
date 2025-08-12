@@ -22,7 +22,7 @@ def _render_template(template: str, variables: Dict[str, str]) -> str:
 
 def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     logger.info("Review agent started.")
-    resolved: Dict[str, str] = state["resolved_contents"]
+    resolved: Dict[str, str] = state.get("resolved_contents", {}) or {}
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
     encoder, llm = get_backend(model_name)
 
@@ -30,7 +30,11 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     reviews: Dict[str, str] = {}
     review_results: Dict[str, Dict[str, str]] = {}
 
-    for path, content in resolved.items():
+    # Ensure we iterate all scenario files even if resolved map is sparse
+    files = state.get("sample_row", {}).get("scenario_json", {}).get("files_in_merge_conflict", [])
+    file_iter = files or list(resolved.keys())
+    for path in file_iter:
+        content = resolved.get(path, "")
         logger.info(f"Reviewing {path}.")
         if llm is None:
             reviews[path] = "ACCEPT – heuristic stub (no LLM)."

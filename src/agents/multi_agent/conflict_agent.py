@@ -25,7 +25,7 @@ def _render_template(template: str, variables: Dict[str, str]) -> str:
 
 def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     logger.info("Conflict agent started.")
-    summaries: Dict[str, Dict[str, str]] = state["summaries"]
+    summaries: Dict[str, Dict[str, str]] = state.get("summaries", {}) or {}
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
     encoder, llm = get_backend(model_name)
 
@@ -72,6 +72,10 @@ def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             counts["output"] += count_tokens(encoder, content)
 
     logger.info(f"Generated merge plan: {plan}")
+    # Ensure plan contains all files even if summaries were empty
+    if not plan:
+        files = state.get("sample_row", {}).get("scenario_json", {}).get("files_in_merge_conflict", [])
+        plan = {p: "merge" for p in files}
     state["conflict_plan"] = plan
     state["status"] = "planned"
     logger.info("Conflict agent finished.")

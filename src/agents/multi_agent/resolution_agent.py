@@ -26,9 +26,9 @@ def _render_template(template: str, variables: Dict[str, str]) -> str:
 
 def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     logger.info("Resolution agent started.")
-    plan: Dict[str, str] = state["conflict_plan"]
-    parent_a = state["parent_a_contents"]
-    parent_b = state["parent_b_contents"]
+    plan: Dict[str, str] = state.get("conflict_plan", {}) or {}
+    parent_a = state.get("parent_a_contents", {}) or {}
+    parent_b = state.get("parent_b_contents", {}) or {}
 
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
     encoder, llm = get_backend(model_name)
@@ -40,7 +40,16 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
     diffs_a = state.get("diffs_a", {})
     diffs_b = state.get("diffs_b", {})
 
-    for path, choice in plan.items():
+    # Determine all files we must produce outputs for
+    scenario_files = (
+        (state.get("sample_row", {}) or {}).get("scenario_json", {}) or {}
+    ).get("files_in_merge_conflict", [])
+    if not scenario_files:
+        # Fallback to union of known keys
+        scenario_files = sorted(set(parent_a.keys()) | set(parent_b.keys()) | set(diffs_a.keys()) | set(diffs_b.keys()))
+
+    for path in scenario_files:
+        choice = plan.get(path, "merge")
         # Precompute token usage comparable to simple agent for cost accounting (accumulate)
         counts = state.setdefault("token_counts", {}).setdefault(
             path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}

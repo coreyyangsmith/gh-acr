@@ -46,16 +46,18 @@ def _fallback_summary(diff_text: str) -> str:  # noqa: D401
 
 def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     logger.info("Summarizer agent started.")
-    diffs_a: Dict[str, str] = state["diffs_a"]
-    diffs_b: Dict[str, str] = state["diffs_b"]
-    ancestor_contents: Dict[str, str] = state["ancestor_contents"]
+    diffs_a: Dict[str, str] = state.get("diffs_a", {}) or {}
+    diffs_b: Dict[str, str] = state.get("diffs_b", {}) or {}
+    ancestor_contents: Dict[str, str] = state.get("ancestor_contents", {}) or {}
 
     model_name = state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
     encoder, llm = get_backend(model_name)
 
     summaries: Dict[str, Dict[str, str]] = {}
 
-    for path in set(diffs_a) | set(diffs_b):
+    files = state.get("sample_row", {}).get("scenario_json", {}).get("files_in_merge_conflict", [])
+    file_iter = files or (set(diffs_a) | set(diffs_b))
+    for path in file_iter:
         original_text = ancestor_contents.get(path, "")
         summary_pair: Dict[str, str] = {}
         logger.info(f"Summarizing changes for {path}.")
