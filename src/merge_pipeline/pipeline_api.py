@@ -70,17 +70,21 @@ def _diff_ratio(a: str, b: str) -> float:
 def load_sample_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Load the CSV row given a *scenario_id* in *state*."""
     df = load_benchmark()
-    raw_id = state["scenario_id"]
+    raw_id = str(state["scenario_id"])  # ensure string for comparison
     row_series = None
 
+    # Try index match first (handles numeric random indices in CSV)
     try:
-        numeric_id = int(raw_id)
-        row_series = df.loc[numeric_id]
-    except (ValueError, TypeError, KeyError):
-        pass
+        row_series = df.loc[int(raw_id)]
+    except Exception:
+        try:
+            row_series = df.loc[raw_id]
+        except Exception:
+            row_series = None
 
-    if row_series is None:
-        match = df.loc[df["id"] == raw_id]
+    # Fallback: match against slug id column
+    if row_series is None and "id" in df.columns:
+        match = df.loc[df["id"].astype(str) == raw_id]
         if not match.empty:
             row_series = match.iloc[0]
 

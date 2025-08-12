@@ -60,6 +60,15 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         if eval_method == "multi":
             (llm_out_dir / "summaries").mkdir(exist_ok=True)
             (llm_out_dir / "reviews").mkdir(exist_ok=True)
+            # Persist the merge plan as text
+            try:
+                import json
+                plan_obj = result.get("conflict_plan", {})
+                (llm_out_dir / "plan.txt").write_text(
+                    json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
+                )
+            except Exception:
+                pass
 
     for file_path in files:
         file_slug = file_path.replace("/", "_").replace("\\", "_")
@@ -98,9 +107,10 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             # Also persist final diff if available from multi-agent resolver
             final_diff_map = result.get("final_diffs", {})
             if final_diff_map:
-                (llm_out_dir / f"{file_slug}.diff").write_text(
-                    final_diff_map.get(file_path, ""), encoding="utf-8"
-                )
+                diff_text = final_diff_map.get(file_path, "")
+                (llm_out_dir / f"{file_slug}.diff").write_text(diff_text, encoding="utf-8")
+                # Also provide a .txt variant to ensure all agent outputs are available as text files
+                (llm_out_dir / f"{file_slug}_final_diff.txt").write_text(diff_text, encoding="utf-8")
 
             # ---------------- multi-agent extra outputs -------------------
             if eval_method == "multi":
@@ -115,6 +125,27 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 if reviews:
                     (llm_out_dir / "reviews" / f"{file_slug}.txt").write_text(
                         reviews.get(file_path, ""), encoding="utf-8"
+                    )
+                # Persist structured review results and accumulated feedback history as txt
+                rr = result.get("review_results", {}) or {}
+                rr_item = rr.get(file_path)
+                if isinstance(rr_item, dict):
+                    outcome = str(rr_item.get("outcome", "")).strip()
+                    rationale = str(rr_item.get("rationale", "")).strip()
+                    (llm_out_dir / "reviews" / f"{file_slug}_results.txt").write_text(
+                        f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
+                    )
+                feedback_map = result.get("review_feedback", {}) or {}
+                fb_text = str(feedback_map.get(file_path, "")).strip()
+                if fb_text:
+                    (llm_out_dir / "reviews" / f"{file_slug}_feedback.txt").write_text(
+                        fb_text, encoding="utf-8"
+                    )
+                fb_hist = result.get("review_feedback_history", {}) or {}
+                hist_entries = fb_hist.get(file_path, [])
+                if hist_entries:
+                    (llm_out_dir / "reviews" / f"{file_slug}_feedback_history.txt").write_text(
+                        "\n\n".join(hist_entries), encoding="utf-8"
                     )
 
     eval_ = result.get("evaluation", {})

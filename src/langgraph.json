@@ -1,8 +1,9 @@
 {
-  "dependencies": ".",
+  "dependencies": ["."],
   "graphs": {
     "default": "./agents/graph.py:make_graph",
     "api": "./merge_pipeline/pipeline_api.py:build_graph",
     "clone": "./merge_pipeline/pipeline_clone.py:build_graph"
-  }
+  },
+  "env": ".env"
 }

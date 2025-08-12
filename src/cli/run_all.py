@@ -118,9 +118,13 @@ async def _run_all(
 
                 async def process_row(row):
                     try:
-                        return await run_and_save_report(app, row["id"], output_root, eval_method=method, model_name=model_name)
+                        scenario_key = row.get("id")
+                        if scenario_key is None:
+                            # Be robust to unnamed first column exported as index
+                            scenario_key = str(row.name)
+                        return await run_and_save_report(app, scenario_key, output_root, eval_method=method, model_name=model_name)
                     except Exception as exc:  # pragma: no cover – runtime resilience
-                        logger.exception("[run_all] Error processing scenario %s (%s)", row.get("id"), method)
+                        logger.exception("[run_all] Error processing scenario %s (%s)", row.get("id", row.name), method)
                         return []
 
                 tasks = [process_row(row) for _, row in batch_df.iterrows()]

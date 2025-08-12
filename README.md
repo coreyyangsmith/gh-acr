@@ -11,14 +11,29 @@ agent | base
 # Data Preprocessing
 After running the GitGoodBench data preprocessing, we must do additional filtering for our purposes.
 ```
-python -m src.dataset.process_ggb
+python -m src.dataset.process_ggb --input-csv 2025-08-11-ggb --output-csv git_good_bench_merge_commits
 ```
 
 Takes in data/git_good_bench.csv and outputs `git_good_bench_merge_commits.csv`
 
 
-# Inference
 
+# Subset
+If you're processing a subset of the entire dataset, we can split by difficulty or a random seed % of the overall dataset:
+
+Split to Easy, Medium, Hard
+```
+python -m src.dataset.split_utils data/git_good_bench_merge_commits.csv
+```
+
+```
+python -m src.dataset.get_subset data/git_good_bench_merge_commits_easy.csv --percent 10 --seed 42
+
+python -m src.dataset.get_subset data/git_good_bench_merge_commits.csv --percent 5 --seed 42
+```
+
+# Inference
+Go to `src/dataset/loader.py` and set the appropriate file path
 ## Single scenario
 - Parameters
   - `scenario_id` (positional): dataset index (e.g., `1505`) or slug from CSV `id`.
@@ -64,7 +79,7 @@ Examples
 python -m src.cli.run_all --mode clone
 python -m src.cli.run_all --methods base_a base_b agent --max-scenarios 50 --mode clone
 python -m src.cli.run_all --methods base_a base_b agent multi --max-scenarios 50 --mode clone
-python -m src.cli.run_all --methods multi --max-scenarios 50 --mode clone
+python -m src.cli.run_all --methods agent --max-scenarios 50 --mode clone
 python -m src.cli.run_all --n-easy 20 --n-medium 20 --n-hard 10 --mode clone --model-name openai/gpt-4o-mini
 ```
 

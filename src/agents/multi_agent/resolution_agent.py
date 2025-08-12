@@ -66,6 +66,8 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
         single_plan = {path: plan.get(path, "merge")}
         feedback_map = state.get("review_feedback", {}) or {}
         feedback_text = str(feedback_map.get(path, "")).strip()
+        if feedback_text:
+            logger.info(f"Applying review feedback for {path} (length={len(feedback_text)} chars)")
         prompt_text = _render_template(
             _MERGE_PROMPT_STR,
             {

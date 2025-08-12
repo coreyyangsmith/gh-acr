@@ -22,7 +22,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 DATA_PATH: Path = (
-    Path(__file__).resolve().parents[2] / "data" / "git_good_bench_small_test.csv"
+    Path(__file__).resolve().parents[2] / "data" / "small_test.csv"
 )
 """Default location of the GitGoodBench CSV relative to the project root."""
 
@@ -67,6 +67,15 @@ def load_benchmark(csv_path: str | Path | None = None, /) -> DataFrame:  # noqa:
         except (ValueError, SyntaxError) as exc:  # pragma: no cover – helpful error
             raise ValueError(f"Unable to parse 'scenario' JSON for row: {raw}") from exc
 
-    df["scenario_json"] = df["scenario"].map(_parse_scenario)
+    # Parse scenario column if present
+    if "scenario" in df.columns:
+        df["scenario_json"] = df["scenario"].map(_parse_scenario)
+    
+    # Ensure an 'id' column exists. If absent, use the CSV index as id.
+    # Always cast to string for robustness across numeric/string ids.
+    if "id" not in df.columns:
+        df["id"] = df.index.astype(str)
+    else:
+        df["id"] = df["id"].astype(str)
 
     return df
