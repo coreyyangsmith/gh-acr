@@ -269,6 +269,16 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
     except Exception:
         # Fallback: rely on per-call callbacks by callers; we still return handler via config
         pass
+
+    # If Phoenix was disabled at startup, disable OTel instrumentation to avoid network attempts
+    if os.getenv("PHOENIX_ENABLED", "0").strip().lower() not in ("1", "true", "yes", "on"):
+        try:
+            # Best-effort: prevent OpenInference instrumentors from attaching
+            if LangChainInstrumentor is not None:
+                # There is no direct "disable" here since instrumentation is global; rely on environment flag
+                logger.info("Phoenix disabled: skipping LangChain/OpenAI instrumentation for LLM calls.")
+        except Exception:
+            pass
     return enc, raw_llm
 
 

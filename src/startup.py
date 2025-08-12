@@ -15,7 +15,14 @@ from __future__ import annotations
 
 import os
 from typing import Optional
-from phoenix.otel import register
+import socket
+from urllib.parse import urlparse
+
+# Phoenix (Arize) is optional; guard imports
+try:  # pragma: no cover
+    from phoenix.otel import register as phoenix_register  # type: ignore
+except Exception:  # pragma: no cover
+    phoenix_register = None  # type: ignore
 
 try:  # optional dependency
     from dotenv import load_dotenv, find_dotenv  # type: ignore
@@ -50,34 +57,64 @@ def _run_startup_once() -> None:
     # Configure root logger early so subsequent imports can use it
     logger = setup_logger()
 
-    # Provide a permissive default for Phoenix tracing unless explicitly disabled
-    if os.getenv("PHOENIX_ENABLED") is None:
-        os.environ["PHOENIX_ENABLED"] = "1"
+    def _is_truthy(val: Optional[str]) -> bool:
+        if val is None:
+            return False
+        return val.strip().lower() in {"1", "true", "yes", "on"}
 
-    # configure the Phoenix tracer
-    # Respect PHOENIX_COLLECTOR_ENDPOINT if set; otherwise, let register pick defaults
-    endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT")
-    if endpoint:
-        tracer_provider = register(endpoint=endpoint, auto_instrument=True)
+    def _collector_reachable(url: str) -> bool:
+        try:
+            parsed = urlparse(url)
+            host = parsed.hostname or "localhost"
+            port = parsed.port
+            if port is None:
+                port = 443 if parsed.scheme == "https" else 80
+            with socket.create_connection((host, port), timeout=1.0):
+                return True
+        except Exception:
+            return False
+
+    # Respect explicit disable
+    phoenix_enabled_env = os.getenv("PHOENIX_ENABLED")
+    phoenix_enabled = _is_truthy(phoenix_enabled_env) if phoenix_enabled_env is not None else True
+
+    tracer_provider = None
+    if phoenix_enabled and phoenix_register is not None:
+        # Determine endpoint and verify reachability before registering
+        endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006/v1/traces")
+        if _collector_reachable(endpoint):
+            try:
+                tracer_provider = phoenix_register(endpoint=endpoint, auto_instrument=True)
+                logger.info("Phoenix tracer provider initialised")
+                # Optional quick span to warm up
+                try:
+                    from opentelemetry import trace as trace_api  # type: ignore
+                    tracer = trace_api.get_tracer(__name__)
+                    with tracer.start_as_current_span("phoenix_connection_test") as span:
+                        span.set_attribute("test", "phoenix_startup")
+                        span.add_event("Phoenix connection test successful")
+                    logger.info("Phoenix connection test successful")
+                except Exception:
+                    pass
+            except Exception as e:
+                logger.warning(f"Phoenix register failed, disabling tracing: {e}")
+                os.environ["PHOENIX_ENABLED"] = "0"
+        else:
+            logger.info("Phoenix collector not reachable; disabling tracing for this run.")
+            os.environ["PHOENIX_ENABLED"] = "0"
     else:
-        tracer_provider = register(auto_instrument=True)
-    logger.info("Phoenix tracer provider initialised")
-
-    # Test Phoenix connection
-    try:
-        from opentelemetry import trace as trace_api  # type: ignore
-        tracer = trace_api.get_tracer(__name__)
-        with tracer.start_as_current_span("phoenix_connection_test") as span:
-            span.set_attribute("test", "phoenix_startup")
-            span.add_event("Phoenix connection test successful")
-        logger.info("Phoenix connection test successful")
-    except Exception as e:
-        logger.warning(f"Phoenix connection test failed: {e}")
+        if phoenix_register is None:
+            logger.info("Phoenix not installed; tracing disabled.")
+        else:
+            logger.info("Phoenix explicitly disabled via PHOENIX_ENABLED.")
 
     # Optionally trigger early tracer initialization so first LLM call is traced
     try:
         from .agents import llm_base  # noqa: F401  (import-time side effect: tracer init)
-        logger.info("Startup complete: environment loaded, logging configured, tracing ready.")
+        if os.getenv("PHOENIX_ENABLED", "0").strip() in ("1", "true", "TRUE"):
+            logger.info("Startup complete: environment loaded, logging configured, tracing ready.")
+        else:
+            logger.info("Startup complete: environment loaded, logging configured (tracing disabled).")
     except Exception:
         logger.info("Startup complete: environment loaded, logging configured.")
 
