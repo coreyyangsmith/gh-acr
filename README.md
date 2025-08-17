@@ -1,12 +1,19 @@
 # Observability
-We use open-source Arize Phoenix for LLM observability and debugging.
+We use open-source LangFuse for LLM observability and debugging. Navigate to the [LangFuse GitHub](https://github.com/langfuse/langfuse) for detailed installation instructions.
+
+After cloning the repository, navigate to the installed folder and run:
 
 ```bash
-docker run -p 6006:6006 -p 4317:4317 -i -t arizephoenix/phoenix:latest
+docker compose up
 ```
 
-clone | api
-agent | base
+After setting up your project, populate the following environment variables:
+```bash
+LANGFUSE_ENABLED=1
+LANGFUSE_HOST="http://localhost:3000"
+LANGFUSE_PUBLIC_KEY=
+LANGFUSE_SECRET_KEY=
+```
 
 # Data Preprocessing
 After running the GitGoodBench data preprocessing, we must do additional filtering for our purposes.
