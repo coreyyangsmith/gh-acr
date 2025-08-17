@@ -20,7 +20,7 @@ from src.agents.graph_router import build_graph
 from src.cli.runner import run_and_save_report
 
 
-EvalMethod = Literal["base_a", "base_b", "agent", "multi"]
+EvalMethod = Literal["base_a", "base_b", "agent", "multi", "bypass_multi"]
 ProcessMode = Literal["api", "clone"]
 
 
@@ -74,7 +74,7 @@ async def _run_all(
 ):
     # Configure root logger so all modules propagate here
     logger = setup_logger()
-    methods_to_run: list[EvalMethod] = methods or ["base_a", "base_b", "agent", "multi"]
+    methods_to_run: list[EvalMethod] = methods or ["base_a", "base_b", "agent", "multi", "bypass_multi"]
 
     # Load and optionally sample benchmark scenarios
     logger.info("Loading benchmark dataset…")

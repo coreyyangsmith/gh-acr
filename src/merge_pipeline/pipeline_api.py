@@ -31,6 +31,7 @@ from ..agents.base_agent import (
     resolve_conflict_base_b_node,
 )
 from ..agents.multi_agent import resolve_conflict_multi_agent_node
+from ..agents.bypass_multi_agent import resolve_conflict_bypass_multi_agent_node
 
 # Local logger for this module
 logger = logging.getLogger(__name__)
@@ -188,6 +189,7 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     eval_method
         "agent" (default) – use the `resolve_conflict_agent_node` (LLM-based).
         "base"  – use the simple parent-A stub.
+        "bypass_multi" – multi-agent with early global analyzer.
     """
     sg = StateGraph(dict)
 
@@ -206,8 +208,11 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     elif eval_method == "multi":
         resolver_node_name = "resolve_multi"
         sg.add_node(resolver_node_name, resolve_conflict_multi_agent_node)
+    elif eval_method == "bypass_multi":
+        resolver_node_name = "resolve_bypass_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', or 'multi'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', or 'bypass_multi'.")
 
     sg.add_node("evaluate", evaluate_node)
 

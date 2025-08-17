@@ -11,7 +11,7 @@ Usage
 from typing import Literal
 
 ProcessMode = Literal["api", "clone"]
-EvalMethod = Literal["base_a", "base_b", "agent", "multi"]
+EvalMethod = Literal["base_a", "base_b", "agent", "multi", "bypass_multi"]
 
 
 def build_graph(*, process_mode: ProcessMode = "api", eval_method: EvalMethod = "agent"):

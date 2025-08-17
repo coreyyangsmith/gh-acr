@@ -15,7 +15,7 @@ def make_graph(config: RunnableConfig | None = None) -> Any:  # noqa: D401
 
     Expected configurable keys (with defaults):
     - process_mode: "api" | "clone" (default: "api")
-    - eval_method:  "agent" | "base_a" | "base_b" | "multi" (default: "agent")
+    - eval_method:  "agent" | "base_a" | "base_b" | "multi" | "bypass_multi" (default: "agent")
     """
 
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}

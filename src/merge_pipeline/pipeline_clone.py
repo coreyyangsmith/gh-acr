@@ -30,6 +30,7 @@ from ..agents.base_agent import (
     resolve_conflict_base_b_node,
 )
 from ..agents.multi_agent import resolve_conflict_multi_agent_node
+from ..agents.bypass_multi_agent import resolve_conflict_bypass_multi_agent_node
 from ..dataset.loader import DATA_PATH, load_benchmark
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
 from ..eval.bleu import per_file as bleu_per_file, overall as bleu_overall
@@ -379,8 +380,11 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "multi":
         resolver_node_name = "resolve_multi"
         sg.add_node(resolver_node_name, resolve_conflict_multi_agent_node)
+    elif eval_method == "bypass_multi":
+        resolver_node_name = "resolve_bypass_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', or 'multi'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', or 'bypass_multi'.")
 
     sg.add_node("evaluate", evaluate_node)
 
@@ -398,7 +402,7 @@ def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "multi" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass_multi" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

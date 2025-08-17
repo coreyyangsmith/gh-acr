@@ -56,8 +56,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         llm_out_dir = scenario_dir / eval_method
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
-        # For multi-agent we will create sub-folders for each stage
-        if eval_method == "multi":
+        # For multi-agent style methods we will create sub-folders for each stage
+        if eval_method in ("multi", "bypass_multi"):
             (llm_out_dir / "summaries").mkdir(exist_ok=True)
             (llm_out_dir / "reviews").mkdir(exist_ok=True)
             # Persist the merge plan as text
@@ -69,6 +69,16 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 )
             except Exception:
                 pass
+            # Persist bypass analyzer output if present (only for bypass_multi)
+            if eval_method == "bypass_multi":
+                decision = str(result.get("bypass_decision", "")).strip()
+                analyzer_raw = str(result.get("bypass_analyzer_output", "")).strip()
+                try:
+                    (llm_out_dir / "analyzer.txt").write_text(
+                        f"decision: {decision}\n\nraw:\n{analyzer_raw}\n", encoding="utf-8"
+                    )
+                except Exception:
+                    pass
 
     for file_path in files:
         file_slug = file_path.replace("/", "_").replace("\\", "_")
@@ -113,7 +123,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 (llm_out_dir / f"{file_slug}_final_diff.txt").write_text(diff_text, encoding="utf-8")
 
             # ---------------- multi-agent extra outputs -------------------
-            if eval_method == "multi":
+            if eval_method in ("multi", "bypass_multi"):
                 summaries = result.get("summaries", {}).get(file_path, {})
                 (llm_out_dir / "summaries" / f"{file_slug}_A.txt").write_text(
                     summaries.get("summary_a", ""), encoding="utf-8"

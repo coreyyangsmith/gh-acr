@@ -24,7 +24,7 @@ from src.utils.logger import setup_logger
 def main(
     max_scenarios: int | None = None,
     mode: Literal["api", "clone"] = "api",
-    eval_method: Literal["base_a", "base_b", "agent", "multi"] = "agent",
+    eval_method: Literal["base_a", "base_b", "agent", "multi", "bypass_multi"] = "agent",
     model_name: str | None = None,
     n_easy: int | None = None,
     n_medium: int | None = None,

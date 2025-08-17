@@ -22,7 +22,7 @@ __all__ = [
 # ---------------------------------------------------------------------------
 
 DATA_PATH: Path = (
-    Path(__file__).resolve().parents[2] / "data" / "small_test.csv"
+    Path(__file__).resolve().parents[2] / "data" / "git_good_bench_merge_commits_easy_subset_10_seed42.csv"
 )
 """Default location of the GitGoodBench CSV relative to the project root."""
 
