@@ -8,6 +8,7 @@ multiple places.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 # Minimum number of seconds to wait **between** outbound GitHub API requests.
 # This can be overridden at runtime by defining the *GITHUB_REQUEST_INTERVAL*
@@ -25,3 +26,10 @@ except ValueError:
 if _batch_size_val < 1:
     _batch_size_val = 1
 BATCH_SIZE: int = _batch_size_val
+
+# Default dataset CSV to use for evaluation runs. Can be overridden via
+# environment variable DATASET_CSV. This centralizes selection of the input
+# benchmark file used across the application.
+_default_dataset_csv = Path(__file__).resolve().parents[2] / "data" / "git_good_bench_small_test.csv"
+_dataset_csv_env = os.getenv("DATASET_CSV")
+DATA_PATH: Path = Path(_dataset_csv_env).expanduser() if _dataset_csv_env else _default_dataset_csv

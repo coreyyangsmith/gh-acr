@@ -12,10 +12,10 @@ import tyro
 
 from .data_loader import load_results
 from .tables import method_summary
+from src.config.eval_methods import DEFAULT_METHOD_ORDER
 
 
 # Fixed method order and consistent coloring across all charts
-DEFAULT_METHOD_ORDER: list[str] = ["base_a", "base_b", "agent", "multi", "bypass_multi"]
 
 
 def _build_palette_map(method_order: list[str] = DEFAULT_METHOD_ORDER) -> dict[str, tuple[float, float, float]]:

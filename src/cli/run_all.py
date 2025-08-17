@@ -15,12 +15,12 @@ from tqdm.asyncio import tqdm
 
 from src.dataset.loader import load_benchmark
 from src.config.settings import BATCH_SIZE
+from src.config.eval_methods import EvalMethod, ALL_EVAL_METHODS
 from src.utils.logger import setup_logger
 from src.agents.graph_router import build_graph
 from src.cli.runner import run_and_save_report
 
 
-EvalMethod = Literal["base_a", "base_b", "agent", "multi", "bypass_multi"]
 ProcessMode = Literal["api", "clone"]
 
 
@@ -42,7 +42,7 @@ def main(
     mode
         Processing mode: "api" or "clone" (defaults to "clone").
     methods
-        Subset of evaluation methods to run. Defaults to all: ["base_a", "base_b", "agent", "multi"].
+        Subset of evaluation methods to run. Defaults to all: ["base_a", "base_b", "agent", "multi", "bypass_multi"].
     model_name
         Optional model override for LLM-based methods.
     n_easy / n_medium / n_hard
@@ -74,7 +74,7 @@ async def _run_all(
 ):
     # Configure root logger so all modules propagate here
     logger = setup_logger()
-    methods_to_run: list[EvalMethod] = methods or ["base_a", "base_b", "agent", "multi", "bypass_multi"]
+    methods_to_run: list[EvalMethod] = methods or ALL_EVAL_METHODS
 
     # Load and optionally sample benchmark scenarios
     logger.info("Loading benchmark dataset…")

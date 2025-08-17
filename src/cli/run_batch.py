@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import datetime
 from typing import Literal
+from src.config.eval_methods import EvalMethod
 
 # Ensure one-time global startup (env, logging, tracing) before anything else
 import src.startup  # noqa: F401
@@ -24,7 +25,7 @@ from src.utils.logger import setup_logger
 def main(
     max_scenarios: int | None = None,
     mode: Literal["api", "clone"] = "api",
-    eval_method: Literal["base_a", "base_b", "agent", "multi", "bypass_multi"] = "agent",
+    eval_method: EvalMethod = "agent",
     model_name: str | None = None,
     n_easy: int | None = None,
     n_medium: int | None = None,

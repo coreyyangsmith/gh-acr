@@ -29,19 +29,19 @@ _PROMPT = (
     "- All B   → choose Parent B for all files\n"
     "- Mix A/B → use a mix and perform per-file merging later\n\n"
     "Provide your judgement STRICTLY as one of these exact strings: \n"
-    "All A, All B, Mix A/B.\n\n"
+    "A, B, Mix\n\n"
     "Consider overall risk, coherence, and whether one side clearly dominates across files.\n\n"
     "Summaries Parent A:\n{a_summary}\n\nSummaries Parent B:\n{b_summary}\n\n"
-    "(Optional context) Diffs A:\n{a_diff}\n\nDiffs B:\n{b_diff}\n\n"
+    "Diffs A:\n{a_diff}\n\nDiffs B:\n{b_diff}\n\n"
     "Answer:"
 )
 
 
 def _normalize_decision(text: str) -> str:
     t = (text or "").strip().lower()
-    if "all a" in t:
+    if "A" in t:
         return "ALL_A"
-    if "all b" in t:
+    if "B" in t:
         return "ALL_B"
     return "MIX"
 

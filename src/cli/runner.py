@@ -270,10 +270,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             "tokens_original": tok_stats.get("original", 0),
             "tokens_diff_a": tok_stats.get("diff_a", 0),
             "tokens_diff_b": tok_stats.get("diff_b", 0),
-            "tokens_output": tok_stats.get("output", 0),
 
             # Aggregated counts
-            "tokens_total_input": in_tok_file,
             "tokens_total": in_tok_file + out_tok_file,
 
             # Back-compat combined fields

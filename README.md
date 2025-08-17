@@ -80,6 +80,10 @@ python -m src.cli.run_all --mode clone
 python -m src.cli.run_all --methods base_a base_b agent --max-scenarios 50 --mode clone
 python -m src.cli.run_all --methods base_a base_b agent multi --max-scenarios 50 --mode clone
 python -m src.cli.run_all --methods agent --max-scenarios 50 --mode clone
+
+python -m src.cli.run_all --methods multi --max-scenarios 50 --mode clone
+
+
 python -m src.cli.run_all --n-easy 20 --n-medium 20 --n-hard 10 --mode clone --model-name openai/gpt-4o-mini
 ```
 

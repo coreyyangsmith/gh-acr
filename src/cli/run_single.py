@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from typing import Annotated, Literal
+from src.config.eval_methods import EvalMethod
 
 # Ensure one-time global startup (env, logging, tracing) before anything else
 import src.startup  # noqa: F401
@@ -23,7 +24,7 @@ def main(
         "Identifier matching the **id** column (integer) *or* the scenario's slug.",
     ],
     mode: Literal["api", "clone"] = "api",
-    eval_method: Literal["base_a", "base_b", "agent", "multi", "bypass_multi"] = "agent",
+    eval_method: EvalMethod = "agent",
     model_name: str | None = None,
 ):
     """Run the merge-resolution pipeline for a single *scenario_id*.

@@ -24,13 +24,13 @@ from langgraph.graph import END, StateGraph
 from langgraph.pregel import Pregel
 
 # Agent resolver node
-from ..agents.simple_agent import resolve_conflict_agent_node
+from ..agents.agent import resolve_conflict_agent_node
 from ..agents.base_agent import (
     resolve_conflict_base_a_node,
     resolve_conflict_base_b_node,
 )
-from ..agents.multi_agent import resolve_conflict_multi_agent_node
-from ..agents.bypass_multi_agent import resolve_conflict_bypass_multi_agent_node
+from ..agents.multi import resolve_conflict_multi_agent_node
+from ..agents.bypass import resolve_conflict_bypass_multi_agent_node
 from ..dataset.loader import DATA_PATH, load_benchmark
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
 from ..eval.bleu import per_file as bleu_per_file, overall as bleu_overall

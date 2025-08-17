@@ -17,14 +17,7 @@ __all__ = [
     "load_benchmark",
 ]
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-DATA_PATH: Path = (
-    Path(__file__).resolve().parents[2] / "data" / "git_good_bench_merge_commits_easy_subset_10_seed42.csv"
-)
-"""Default location of the GitGoodBench CSV relative to the project root."""
+from src.config.settings import DATA_PATH
 
 # ---------------------------------------------------------------------------
 # Public helpers
@@ -37,7 +30,8 @@ def load_benchmark(csv_path: str | Path | None = None, /) -> DataFrame:  # noqa:
     ----------
     csv_path
         Optional explicit path to the CSV.  If *None* (default) the function
-        falls back to :data:`DATA_PATH`.
+        falls back to :data:`DATA_PATH` defined in `src.config.settings` (can be
+        overridden with the DATASET_CSV environment variable).
 
     Notes
     -----
