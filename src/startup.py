@@ -18,12 +18,6 @@ from typing import Optional
 import socket
 from urllib.parse import urlparse
 
-# Phoenix (Arize) is optional; guard imports
-try:  # pragma: no cover
-    from phoenix.otel import register as phoenix_register  # type: ignore
-except Exception:  # pragma: no cover
-    phoenix_register = None  # type: ignore
-
 try:  # optional dependency
     from dotenv import load_dotenv, find_dotenv  # type: ignore
 except Exception:  # pragma: no cover
@@ -31,6 +25,12 @@ except Exception:  # pragma: no cover
         return False
     def find_dotenv(*args, **kwargs):  # type: ignore
         return ""
+
+# Langfuse is optional; initialize if configured
+try:  # pragma: no cover
+    from langfuse import Langfuse  # type: ignore
+except Exception:  # pragma: no cover
+    Langfuse = None  # type: ignore
 
 from .utils.logger import setup_logger
 
@@ -74,47 +74,43 @@ def _run_startup_once() -> None:
         except Exception:
             return False
 
-    # Respect explicit disable
-    phoenix_enabled_env = os.getenv("PHOENIX_ENABLED")
-    phoenix_enabled = _is_truthy(phoenix_enabled_env) if phoenix_enabled_env is not None else True
+    # Respect explicit disable (Langfuse)
+    lf_enabled_env = os.getenv("LANGFUSE_ENABLED")
+    lf_enabled = _is_truthy(lf_enabled_env) if lf_enabled_env is not None else True
 
-    tracer_provider = None
-    if phoenix_enabled and phoenix_register is not None:
-        # Determine endpoint and verify reachability before registering
-        endpoint = os.getenv("PHOENIX_COLLECTOR_ENDPOINT", "http://localhost:6006/v1/traces")
-        if _collector_reachable(endpoint):
-            try:
-                tracer_provider = phoenix_register(endpoint=endpoint, auto_instrument=True)
-                logger.info("Phoenix tracer provider initialised")
-                # Optional quick span to warm up
+    if lf_enabled and Langfuse is not None:
+        # Determine endpoint and verify basic reachability
+        host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
+        # If host is reachable and keys are present, initialize Langfuse
+        public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
+        secret_key = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
+        if public_key and secret_key:
+            if _collector_reachable(host):
                 try:
-                    from opentelemetry import trace as trace_api  # type: ignore
-                    tracer = trace_api.get_tracer(__name__)
-                    with tracer.start_as_current_span("phoenix_connection_test") as span:
-                        span.set_attribute("test", "phoenix_startup")
-                        span.add_event("Phoenix connection test successful")
-                    logger.info("Phoenix connection test successful")
-                except Exception:
-                    pass
-            except Exception as e:
-                logger.warning(f"Phoenix register failed, disabling tracing: {e}")
-                os.environ["PHOENIX_ENABLED"] = "0"
+                    Langfuse(public_key=public_key, secret_key=secret_key, host=host)  # noqa: F841
+                    logger.info("Langfuse initialized (host=%s)", host)
+                except Exception as e:
+                    logger.warning("Langfuse init failed, disabling tracing: %s", e)
+                    os.environ["LANGFUSE_ENABLED"] = "0"
+            else:
+                logger.info("Langfuse host not reachable; disabling tracing for this run.")
+                os.environ["LANGFUSE_ENABLED"] = "0"
         else:
-            logger.info("Phoenix collector not reachable; disabling tracing for this run.")
-            os.environ["PHOENIX_ENABLED"] = "0"
+            logger.info("Langfuse keys not set; tracing disabled.")
+            os.environ["LANGFUSE_ENABLED"] = "0"
     else:
-        if phoenix_register is None:
-            logger.info("Phoenix not installed; tracing disabled.")
+        if Langfuse is None:
+            logger.info("Langfuse not installed; tracing disabled.")
         else:
-            logger.info("Phoenix explicitly disabled via PHOENIX_ENABLED.")
+            logger.info("Langfuse explicitly disabled via LANGFUSE_ENABLED.")
 
     # Optionally trigger early tracer initialization so first LLM call is traced
     try:
-        from .agents import llm_base  # noqa: F401  (import-time side effect: tracer init)
-        if os.getenv("PHOENIX_ENABLED", "0").strip() in ("1", "true", "TRUE"):
-            logger.info("Startup complete: environment loaded, logging configured, tracing ready.")
+        from .agents import llm_base  # noqa: F401  (import-time side effect for LLM callbacks)
+        if os.getenv("LANGFUSE_ENABLED", "0").strip() in ("1", "true", "TRUE"):
+            logger.info("Startup complete: environment loaded, logging configured, Langfuse ready.")
         else:
-            logger.info("Startup complete: environment loaded, logging configured (tracing disabled).")
+            logger.info("Startup complete: environment loaded, logging configured (Langfuse disabled).")
     except Exception:
         logger.info("Startup complete: environment loaded, logging configured.")
 

@@ -22,31 +22,11 @@ import os
 import logging
 from contextlib import nullcontext
 
-# Optional Phoenix / OpenTelemetry imports (best-effort)
+# Optional Langfuse callback integration (best-effort)
 try:  # pragma: no cover
-    from phoenix.otel import register as phoenix_register  # type: ignore
-    from openinference.instrumentation.openai import OpenAIInstrumentor  # type: ignore
-    from openinference.instrumentation.langchain import LangChainInstrumentor  # type: ignore
-    from opentelemetry import trace as trace_api  # type: ignore
-    from opentelemetry.trace import Status, StatusCode  # type: ignore
-    try:
-        from openinference.semconv.trace import SpanAttributes as OIAttrs  # type: ignore
-    except Exception:  # pragma: no cover
-        class OIAttrs:  # type: ignore
-            INPUT_VALUE = "input.value"
-            OUTPUT_VALUE = "output.value"
-            LLM_MODEL_NAME = "llm.model_name"
+    from langfuse.langchain import CallbackHandler as LangfuseCallback  # type: ignore
 except Exception:  # pragma: no cover
-    phoenix_register = None  # type: ignore
-    OpenAIInstrumentor = None  # type: ignore
-    LangChainInstrumentor = None  # type: ignore
-    trace_api = None  # type: ignore
-    Status = None  # type: ignore
-    StatusCode = None  # type: ignore
-    class OIAttrs:  # type: ignore
-        INPUT_VALUE = "input.value"
-        OUTPUT_VALUE = "output.value"
-        LLM_MODEL_NAME = "llm.model_name"
+    LangfuseCallback = None  # type: ignore
 
 from ..config.model_costs import MODEL_COSTS
 from ..config.rate_limits import get_limits_for_model, BACKOFF_SETTINGS
@@ -270,13 +250,13 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         # Fallback: rely on per-call callbacks by callers; we still return handler via config
         pass
 
-    # If Phoenix was disabled at startup, disable OTel instrumentation to avoid network attempts
-    if os.getenv("PHOENIX_ENABLED", "0").strip().lower() not in ("1", "true", "yes", "on"):
+    # Attach Langfuse callback handler if enabled and available
+    if os.getenv("LANGFUSE_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on"):
         try:
-            # Best-effort: prevent OpenInference instrumentors from attaching
-            if LangChainInstrumentor is not None:
-                # There is no direct "disable" here since instrumentation is global; rely on environment flag
-                logger.info("Phoenix disabled: skipping LangChain/OpenAI instrumentation for LLM calls.")
+            if LangfuseCallback is not None:
+                # The actual session id will be attached at call time via config.metadata
+                handler = LangfuseCallback()
+                raw_llm = raw_llm.with_config({"callbacks": [handler]})  # type: ignore[attr-defined]
         except Exception:
             pass
     return enc, raw_llm

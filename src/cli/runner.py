@@ -23,6 +23,18 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     logger = setup_logger(__name__)
 
+    # Attach Langfuse callback to the LangGraph app so graph nodes are traced
+    langfuse_handler = None
+    try:
+        from langfuse.langchain import CallbackHandler as LangfuseCallback  # type: ignore
+        langfuse_handler = LangfuseCallback()
+        try:
+            app = app.with_config({"callbacks": [langfuse_handler]})
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     init_state = {
         "scenario_id": scenario_id,
         "status": "start",
@@ -30,13 +42,31 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         "model_name": model_name,
     }
 
+    # Derive a session id for tracing (per conversation/scenario)
+    session_id = f"{scenario_id}:{eval_method}"
+    try:
+        from langfuse.decorators import langfuse_context  # type: ignore
+        try:
+            langfuse_context.update_current_trace(session_id=session_id)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+    except Exception:
+        pass
+
     start_ts = time.perf_counter()
 
     logger.info("Starting scenario %s with method=%s", scenario_id, eval_method)
-    result = await app.ainvoke(
-        init_state,
-        config={"configurable": {"thread_id": f"scn-{scenario_id}"}},
-    )
+    invoke_cfg: Dict[str, Any] = {
+        "configurable": {"thread_id": f"scn-{scenario_id}"},
+        "metadata": {
+            "langfuse_session_id": session_id,
+        },
+        "run_name": f"{eval_method}-scenario-{scenario_id}",
+    }
+    if langfuse_handler is not None:
+        invoke_cfg["callbacks"] = [langfuse_handler]
+
+    result = await app.ainvoke(init_state, config=invoke_cfg)
 
     elapsed_sec = time.perf_counter() - start_ts
 
