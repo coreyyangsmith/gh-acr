@@ -15,33 +15,21 @@ It stores a normalized decision in ``state["bypass_decision"]`` with values
 
 from typing import Any, Dict
 import os
+from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
 
 __all__ = ["conflict_analyzer_node"]
 
-
-_PROMPT = (
-    "You are a senior merge reviewer. Based on the following file-by-file summaries "
-    "of changes for Parent A and Parent B, decide if we should: \n\n"
-    "- All A   → choose Parent A for all files\n"
-    "- All B   → choose Parent B for all files\n"
-    "- Mix A/B → use a mix and perform per-file merging later\n\n"
-    "Provide your judgement STRICTLY as one of these exact strings: \n"
-    "A, B, Mix\n\n"
-    "Consider overall risk, coherence, and whether one side clearly dominates across files.\n\n"
-    "Summaries Parent A:\n{a_summary}\n\nSummaries Parent B:\n{b_summary}\n\n"
-    "Diffs A:\n{a_diff}\n\nDiffs B:\n{b_diff}\n\n"
-    "Answer:"
-)
-
+_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "dynamic" / "conflict_judge_prompt.txt"
+_PROMPT_STR = _PROMPT_PATH.read_text(encoding="utf-8")
 
 def _normalize_decision(text: str) -> str:
     t = (text or "").strip().lower()
-    if "A" in t:
+    if "a" in t:
         return "ALL_A"
-    if "B" in t:
+    if "b" in t:
         return "ALL_B"
     return "MIX"
 
@@ -72,7 +60,7 @@ def conflict_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D4
             decision = "ALL_A" if len_a <= len_b else "ALL_B"
         raw_output = f"Heuristic decision based on summary lengths (A={len_a}, B={len_b}): {decision}"
     else:
-        prompt_text = _PROMPT.format(a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff)
+        prompt_text = _PROMPT_STR.format(a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff)
         result = llm.invoke(prompt_text)
         content = result.content if hasattr(result, "content") else str(result)
         raw_output = content.strip()
@@ -82,10 +70,12 @@ def conflict_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D4
             counts = state.setdefault("token_counts", {}).setdefault(
                 path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}
             )
-            counts["system_prompt"] += count_tokens(encoder, _PROMPT)
+            counts["system_prompt"] += count_tokens(encoder, prompt_text)
             counts["output"] += count_tokens(encoder, raw_output)
 
     state["bypass_decision"] = decision
+    # Short-form for downstream reporting: "A" | "B" | "MIX"
+    state["bypass_method"] = "A" if decision == "ALL_A" else ("B" if decision == "ALL_B" else "MIX")
     state["bypass_analyzer_output"] = raw_output
     state["status"] = "analyzed"
     logger.info(f"Conflict analyzer decision: {decision}")

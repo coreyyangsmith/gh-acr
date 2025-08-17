@@ -380,11 +380,11 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "multi":
         resolver_node_name = "resolve_multi"
         sg.add_node(resolver_node_name, resolve_conflict_multi_agent_node)
-    elif eval_method == "bypass_multi":
+    elif eval_method == "bypass":
         resolver_node_name = "resolve_bypass_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', or 'bypass_multi'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', or 'bypass'.")
 
     sg.add_node("evaluate", evaluate_node)
 
@@ -402,7 +402,7 @@ def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass_multi" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

@@ -50,14 +50,15 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     files = sample_row["scenario_json"]["files_in_merge_conflict"]
 
     # -------------------------------------------------------------------
-    # Prepare per-eval-method LLM output directory (simple/, multi/, …)
+    # Prepare per-eval-method LLM output directory (simple/, multi/, bypass/ …)
     # -------------------------------------------------------------------
     if eval_method != "base":
         llm_out_dir = scenario_dir / eval_method
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
-        # For multi-agent style methods we will create sub-folders for each stage
-        if eval_method in ("multi", "bypass_multi"):
+        # Multi-style outputs: include bypass to mirror multi folder structure
+        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi")
+        if is_multi_like:
             (llm_out_dir / "summaries").mkdir(exist_ok=True)
             (llm_out_dir / "reviews").mkdir(exist_ok=True)
             # Persist the merge plan as text
@@ -69,12 +70,12 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 )
             except Exception:
                 pass
-            # Persist bypass analyzer output if present (only for bypass_multi)
-            if eval_method == "bypass_multi":
+            # Persist bypass analyzer output if present
+            if eval_method in ("bypass", "bypass_multi"):
                 decision = str(result.get("bypass_decision", "")).strip()
                 analyzer_raw = str(result.get("bypass_analyzer_output", "")).strip()
                 try:
-                    (llm_out_dir / "analyzer.txt").write_text(
+                    (llm_out_dir / "bypass_analyzer.txt").write_text(
                         f"decision: {decision}\n\nraw:\n{analyzer_raw}\n", encoding="utf-8"
                     )
                 except Exception:
@@ -109,31 +110,36 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             result.get("diffs_truth", {}).get(file_path, ""), encoding="utf-8"
         )
 
-        # Duplicate LLM output into central per-method directory (simple/, multi/)
+        # Duplicate LLM output into central per-method directory (simple/, multi/, bypass/)
         if eval_method != "base":
-            (llm_out_dir / f"{file_slug}.txt").write_text(
+            # Agent-specific file base within its directory
+            is_bypass_like = eval_method in ("bypass", "bypass_multi")
+            base_name = f"bypass_{file_slug}" if is_bypass_like else file_slug
+
+            (llm_out_dir / f"{base_name}.txt").write_text(
                 result["resolved_contents"].get(file_path, ""), encoding="utf-8"
             )
-            # Also persist final diff if available from multi-agent resolver
+            # Also persist final diff if available from multi/bypass resolver
             final_diff_map = result.get("final_diffs", {})
             if final_diff_map:
                 diff_text = final_diff_map.get(file_path, "")
-                (llm_out_dir / f"{file_slug}.diff").write_text(diff_text, encoding="utf-8")
+                (llm_out_dir / f"{base_name}.diff").write_text(diff_text, encoding="utf-8")
                 # Also provide a .txt variant to ensure all agent outputs are available as text files
-                (llm_out_dir / f"{file_slug}_final_diff.txt").write_text(diff_text, encoding="utf-8")
+                (llm_out_dir / f"{base_name}_final_diff.txt").write_text(diff_text, encoding="utf-8")
 
-            # ---------------- multi-agent extra outputs -------------------
-            if eval_method in ("multi", "bypass_multi"):
+            # ---------------- multi/bypass extra outputs -------------------
+            if eval_method in ("multi", "bypass", "bypass_multi"):
                 summaries = result.get("summaries", {}).get(file_path, {})
-                (llm_out_dir / "summaries" / f"{file_slug}_A.txt").write_text(
+                prefix = "bypass_" if is_bypass_like else ""
+                (llm_out_dir / "summaries" / f"{prefix}{file_slug}_A.txt").write_text(
                     summaries.get("summary_a", ""), encoding="utf-8"
                 )
-                (llm_out_dir / "summaries" / f"{file_slug}_B.txt").write_text(
+                (llm_out_dir / "summaries" / f"{prefix}{file_slug}_B.txt").write_text(
                     summaries.get("summary_b", ""), encoding="utf-8"
                 )
                 reviews = result.get("reviews", {})
                 if reviews:
-                    (llm_out_dir / "reviews" / f"{file_slug}.txt").write_text(
+                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}.txt").write_text(
                         reviews.get(file_path, ""), encoding="utf-8"
                     )
                 # Persist structured review results and accumulated feedback history as txt
@@ -142,19 +148,19 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 if isinstance(rr_item, dict):
                     outcome = str(rr_item.get("outcome", "")).strip()
                     rationale = str(rr_item.get("rationale", "")).strip()
-                    (llm_out_dir / "reviews" / f"{file_slug}_results.txt").write_text(
+                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}_results.txt").write_text(
                         f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
                     )
                 feedback_map = result.get("review_feedback", {}) or {}
                 fb_text = str(feedback_map.get(file_path, "")).strip()
                 if fb_text:
-                    (llm_out_dir / "reviews" / f"{file_slug}_feedback.txt").write_text(
+                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback.txt").write_text(
                         fb_text, encoding="utf-8"
                     )
                 fb_hist = result.get("review_feedback_history", {}) or {}
                 hist_entries = fb_hist.get(file_path, [])
                 if hist_entries:
-                    (llm_out_dir / "reviews" / f"{file_slug}_feedback_history.txt").write_text(
+                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback_history.txt").write_text(
                         "\n\n".join(hist_entries), encoding="utf-8"
                     )
 
@@ -241,6 +247,18 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     # aggregation is simpler and CSVs remain in a tidy, row-oriented form.
     # -------------------------------------------------------------------
     per_file_rows = []
+    # Determine bypass method label for this scenario (A/B/MIX) or NA for others
+    if eval_method in ("bypass", "bypass_multi"):
+        bypass_label = str(result.get("bypass_method") or result.get("bypass_decision", "MIX")).upper()
+        # Normalize to short form if full form present
+        if bypass_label in ("ALL_A", "A"):
+            bypass_label = "A"
+        elif bypass_label in ("ALL_B", "B"):
+            bypass_label = "B"
+        else:
+            bypass_label = "MIX"
+    else:
+        bypass_label = "NA"
     repo_slug: str = sample_row["name"]  # e.g. "owner/repo"
     for file_path in sample_row["scenario_json"]["files_in_merge_conflict"]:
         exact_match_bool = bool(eval_["exact_match"].get(file_path, False))
@@ -265,6 +283,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             "bleu3": bleu3_score,
             "rouge_l": rouge_l_score,
             "eval_method": eval_method,
+            "bypass_method": bypass_label,
             # Individual token categories
             "tokens_system_prompt": tok_stats.get("system_prompt", 0),
             "tokens_original": tok_stats.get("original", 0),
