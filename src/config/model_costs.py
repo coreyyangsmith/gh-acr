@@ -35,5 +35,14 @@ MODEL_COSTS = {
         "input_cost_per_1k": 0,
         "output_cost_per_1k": 0,
         "tokenizer": "llama"
+    },
+    "local:meta-llama/Llama-3.1-8B": {
+    "input_limit": 8192,
+    "output_limit": 8192,
+    "sliding_window": False,
+    "total_limit": 8192,
+    "input_cost_per_1k": 0,
+    "output_cost_per_1k": 0,
+    "tokenizer": "llama"
     }
 }

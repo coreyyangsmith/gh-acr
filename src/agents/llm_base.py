@@ -129,6 +129,39 @@ def _get_device_map_from_env() -> Any:  # type: ignore[override]
     return "auto"
 
 
+def _collect_model_devices(model: Any) -> list[str]:  # type: ignore[override]
+    """Best-effort summary of device placements for the given model."""
+    devices: set[str] = set()
+    # From Accelerate/hf_device_map
+    try:
+        dm = getattr(model, "hf_device_map", None)
+        if isinstance(dm, dict):
+            for v in dm.values():
+                if isinstance(v, int):
+                    devices.add(f"cuda:{v}")
+                else:
+                    devices.add(str(v))
+    except Exception:
+        pass
+    # Fallback: single .device attribute
+    try:
+        dev = getattr(model, "device", None)
+        if dev is not None:
+            devices.add(str(dev))
+    except Exception:
+        pass
+    # If still unknown, infer from CUDA availability
+    if not devices:
+        try:
+            if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
+                devices.add("cuda:0")
+            else:
+                devices.add("cpu")
+        except Exception:
+            devices.add("cpu")
+    return sorted(devices)
+
+
 def _hf_device_index() -> int:
     try:
         if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
@@ -181,6 +214,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
             torch_dtype=dtype,
             low_cpu_mem_usage=True,
         )
+        logger.info("[local] Model devices: %s", ", ".join(_collect_model_devices(model)))
         logger.info("[local] Loaded model+tokenizer from cache (local_files_only=True): %s", model_id)
     except Exception:
         if bool(local_only):
@@ -208,6 +242,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
             torch_dtype=dtype,
             low_cpu_mem_usage=True,
         )
+        logger.info("[local] Model devices (download): %s", ", ".join(_collect_model_devices(model)))
         logger.info("[local] Downloaded model+tokenizer and cached: %s", model_id)
     # --- Safety against position-id overflow ---
     npos = int(getattr(model.config, "n_positions", getattr(model.config, "max_position_embeddings", 1024)))
@@ -512,6 +547,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 torch_dtype=dtype,
                 low_cpu_mem_usage=True,
             )
+            logger.info("[local] Model devices (cached): %s", ", ".join(_collect_model_devices(model)))
             logger.info("[local] Loaded model from cache for %s (device_map=auto)", requested)
         except Exception:
             if HF_LOCAL_ONLY:
@@ -559,6 +595,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 torch_dtype=dtype,
                 low_cpu_mem_usage=True,
             )
+            logger.info("[local] Model devices (downloaded): %s", ", ".join(_collect_model_devices(model)))
             logger.info("[local] Downloaded model %s to %s (device_map=auto)", requested, DEFAULT_HF_CACHE_DIR)
         # --- Safety against position-id overflow (same as tiny helper) ---
         npos = int(getattr(model.config, "n_positions", getattr(model.config, "max_position_embeddings", 1024)))
