@@ -48,6 +48,13 @@ def _plot_metric_bars(
     work_cols = ["method", value_col]
     if ci_low_col and ci_high_col:
         work_cols += [ci_low_col, ci_high_col]
+    # Include percentile/median columns if present to enable candlestick overlay
+    p25_col = value_col.replace("mean", "p25") if value_col.endswith("_mean") else None
+    p75_col = value_col.replace("mean", "p75") if value_col.endswith("_mean") else None
+    median_col = value_col.replace("mean", "median") if value_col.endswith("_mean") else None
+    for c in [p25_col, p75_col, median_col]:
+        if c and c in table.columns:
+            work_cols.append(c)
     work = table[work_cols].copy()
     work = work.replace([np.inf, -np.inf], np.nan).dropna(subset=[value_col])
     if work.empty:
@@ -86,9 +93,6 @@ def _plot_metric_bars(
     plt.title(title)
 
     # Draw median line and interquartile candle (p25-p75) if present
-    p25_col = value_col.replace("mean", "p25") if value_col.endswith("_mean") else None
-    p75_col = value_col.replace("mean", "p75") if value_col.endswith("_mean") else None
-    median_col = value_col.replace("mean", "median") if value_col.endswith("_mean") else None
     if p25_col and p75_col and median_col and all(c in work.columns for c in [p25_col, p75_col, median_col]):
         p25_by_method = dict(zip(work["method"].astype(str), work[p25_col].astype(float)))
         p75_by_method = dict(zip(work["method"].astype(str), work[p75_col].astype(float)))
@@ -211,6 +215,168 @@ def _plot_grouped_bars_two_series(
     plt.close()
 
 
+def _boxplot_metric(
+    df: pd.DataFrame,
+    *,
+    column: str,
+    ylabel: str,
+    title: str,
+    save_path: Path,
+    show: bool,
+    method_order: Optional[list[str]] = None,
+    palette_map: Optional[dict[str, tuple[float, float, float]]] = None,
+    ylim: Optional[tuple[float, float]] = None,
+    label_fmt: Optional[Callable[[float], str]] = None,
+    show_mean_marker: bool = True,
+) -> None:
+    # Expect df columns: eval_method, column
+    if "eval_method" not in df.columns or column not in df.columns:
+        return
+    work = df[["eval_method", column]].copy().replace([np.inf, -np.inf], np.nan)
+    # Ensure numeric for robust plotting (e.g., exact_match booleans)
+    work[column] = pd.to_numeric(work[column], errors="coerce")
+    work = work.dropna(subset=[column])
+    if work.empty:
+        return
+    desired_order = method_order or DEFAULT_METHOD_ORDER
+    present = work["eval_method"].astype(str).unique().tolist()
+    order = [m for m in desired_order if m in present] + [m for m in present if m not in desired_order]
+    work["eval_method"] = pd.Categorical(work["eval_method"].astype(str), categories=order, ordered=True)
+
+    plt.figure(figsize=(max(10, len(order) * 1.2), 6))
+    if palette_map is None:
+        palette_map = _build_palette_map(order)
+    ax = plt.gca()
+    sns.boxplot(
+        data=work,
+        x="eval_method",
+        y=column,
+        order=order,
+        palette=palette_map,
+        showfliers=False,
+        width=0.6,
+    )
+    plt.xticks(rotation=20)
+    plt.ylabel(ylabel)
+    plt.xlabel("method")
+    if ylim is not None:
+        plt.ylim(*ylim)
+    plt.title(title)
+    _annotate_boxplot_values(ax, work, order, column, label_fmt=label_fmt, show_mean=show_mean_marker)
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=150)
+    if show:
+        plt.show()
+    plt.close()
+
+
+def _annotate_boxplot_values(
+    ax: plt.Axes,
+    work: pd.DataFrame,
+    order: list[str],
+    column: str,
+    *,
+    label_fmt: Optional[Callable[[float], str]] = None,
+    show_mean: bool = True,
+) -> None:
+    """Annotate whiskers (lo/hi), quartiles (Q1/Q3), median, and optionally mean for each box."""
+    fmt = (lambda v: f"{v:.3f}") if label_fmt is None else label_fmt
+    x_dx = 0.32
+    text_kw = dict(
+        ha="left", va="center", fontsize=8, clip_on=False,
+        bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.7),
+    )
+
+    try:
+        for i, method in enumerate(order):
+            series = (
+                work.loc[work["eval_method"].astype(str) == method, column]
+                .astype(float)
+                .dropna()
+                .to_numpy()
+            )
+            if series.size == 0:
+                continue
+
+            q1, med, q3 = np.percentile(series, [25, 50, 75])
+            iqr = q3 - q1
+            low_bound = q1 - 1.5 * iqr
+            high_bound = q3 + 1.5 * iqr
+            lo_candidates = series[series >= low_bound]
+            hi_candidates = series[series <= high_bound]
+            wlo = float(np.min(lo_candidates)) if lo_candidates.size else np.nan
+            whi = float(np.max(hi_candidates)) if hi_candidates.size else np.nan
+
+            x_right = i + x_dx
+
+            if np.isfinite(wlo):
+                ax.annotate(f"lo {fmt(wlo)}", (x_right, wlo), textcoords="offset points", xytext=(2, 0), **text_kw)
+            ax.annotate(f"Q1 {fmt(q1)}", (x_right, q1), textcoords="offset points", xytext=(2, 0), **text_kw)
+            ax.annotate(f"med {fmt(med)}", (x_right, med), textcoords="offset points", xytext=(2, 0), fontweight="bold", **text_kw)
+            ax.annotate(f"Q3 {fmt(q3)}", (x_right, q3), textcoords="offset points", xytext=(2, 0), **text_kw)
+            if np.isfinite(whi):
+                ax.annotate(f"hi {fmt(whi)}", (x_right, whi), textcoords="offset points", xytext=(2, 0), **text_kw)
+
+            if show_mean:
+                mu = float(np.mean(series))
+                ax.scatter(i, mu, marker="D", s=30, zorder=3, edgecolor="black", facecolor="white")
+                ax.annotate(
+                    f"μ {fmt(mu)}",
+                    (i, mu),
+                    textcoords="offset points",
+                    xytext=(6, 0),
+                    ha="left",
+                    va="center",
+                    fontsize=8,
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="none", alpha=0.7),
+                )
+    except Exception:
+        pass
+
+
+def _save_box_summary_table(
+    df: pd.DataFrame,
+    *,
+    column: str,
+    save_csv_path: Path,
+    method_order: Optional[list[str]] = None,
+) -> None:
+    """Write per-method box summary (min, Q1, median, Q3, max, mean, count) to CSV."""
+    if "eval_method" not in df.columns or column not in df.columns:
+        return
+    work = df[["eval_method", column]].copy().replace([np.inf, -np.inf], np.nan)
+    work[column] = pd.to_numeric(work[column], errors="coerce")
+    work = work.dropna(subset=[column])
+    if work.empty:
+        return
+    desired_order = method_order or DEFAULT_METHOD_ORDER
+    present = work["eval_method"].astype(str).unique().tolist()
+    order = [m for m in desired_order if m in present] + [m for m in present if m not in desired_order]
+
+    rows: list[dict[str, object]] = []
+    for method in order:
+        series = work.loc[work["eval_method"].astype(str) == method, column].astype(float).dropna().to_numpy()
+        if series.size == 0:
+            continue
+        q1, med, q3 = np.percentile(series, [25, 50, 75])
+        rows.append(
+            {
+                "method": method,
+                "count": int(series.size),
+                "min": float(np.min(series)),
+                "q1": float(q1),
+                "median": float(med),
+                "q3": float(q3),
+                "max": float(np.max(series)),
+                "mean": float(np.mean(series)),
+            }
+        )
+    if not rows:
+        return
+    out_df = pd.DataFrame(rows)
+    out_df.to_csv(save_csv_path, index=False)
+
+
 def main(flags: Flags) -> None:
     flags.output_dir.mkdir(parents=True, exist_ok=True)
     data = load_results(flags.results_csv)
@@ -221,7 +387,7 @@ def main(flags: Flags) -> None:
     summary = method_summary(df)
     palette_map = _build_palette_map(DEFAULT_METHOD_ORDER)
 
-    # 1) Exact Match Rate (with 95% CI)
+    # 1) Exact Match Rate (bar, not boxplot)
     if "exact_match_rate" in summary.columns:
         _plot_metric_bars(
             summary,
@@ -235,12 +401,12 @@ def main(flags: Flags) -> None:
             palette_map=palette_map,
         )
 
-    # 2) Similarity (mean)
-    if "similarity_mean" in summary.columns and summary["similarity_mean"].notna().any():
-        _plot_metric_bars(
-            summary,
-            value_col="similarity_mean",
-            ylabel="mean similarity",
+    # 2) Similarity (boxplot)
+    if "similarity" in df.columns and df["similarity"].notna().any():
+        _boxplot_metric(
+            df,
+            column="similarity",
+            ylabel="similarity",
             title="Similarity by Method",
             save_path=flags.output_dir / "compare_similarity_bars.png",
             show=flags.show,
@@ -248,13 +414,19 @@ def main(flags: Flags) -> None:
             method_order=DEFAULT_METHOD_ORDER,
             palette_map=palette_map,
         )
+        _save_box_summary_table(
+            df,
+            column="similarity",
+            save_csv_path=flags.output_dir / "table_similarity.csv",
+            method_order=DEFAULT_METHOD_ORDER,
+        )
 
-    # 3) BLEU-3 (mean)
-    if "bleu3_mean" in summary.columns and summary["bleu3_mean"].notna().any():
-        _plot_metric_bars(
-            summary,
-            value_col="bleu3_mean",
-            ylabel="mean BLEU-3",
+    # 3) BLEU-3 (boxplot)
+    if "bleu3" in df.columns and df["bleu3"].notna().any():
+        _boxplot_metric(
+            df,
+            column="bleu3",
+            ylabel="BLEU-3",
             title="BLEU-3 by Method",
             save_path=flags.output_dir / "compare_bleu3_bars.png",
             show=flags.show,
@@ -262,13 +434,19 @@ def main(flags: Flags) -> None:
             method_order=DEFAULT_METHOD_ORDER,
             palette_map=palette_map,
         )
+        _save_box_summary_table(
+            df,
+            column="bleu3",
+            save_csv_path=flags.output_dir / "table_bleu3.csv",
+            method_order=DEFAULT_METHOD_ORDER,
+        )
 
-    # 4) ROUGE-L (mean)
-    if "rouge_l_mean" in summary.columns and summary["rouge_l_mean"].notna().any():
-        _plot_metric_bars(
-            summary,
-            value_col="rouge_l_mean",
-            ylabel="mean ROUGE-L",
+    # 4) ROUGE-L (boxplot)
+    if "rouge_l" in df.columns and df["rouge_l"].notna().any():
+        _boxplot_metric(
+            df,
+            column="rouge_l",
+            ylabel="ROUGE-L",
             title="ROUGE-L by Method",
             save_path=flags.output_dir / "compare_rouge_l_bars.png",
             show=flags.show,
@@ -276,32 +454,42 @@ def main(flags: Flags) -> None:
             method_order=DEFAULT_METHOD_ORDER,
             palette_map=palette_map,
         )
+        _save_box_summary_table(
+            df,
+            column="rouge_l",
+            save_csv_path=flags.output_dir / "table_rouge_l.csv",
+            method_order=DEFAULT_METHOD_ORDER,
+        )
 
     # Additional aggregated plots
-    # Processing time (sum and mean)
-    if "processing_time_s" in df.columns:
-        agg_time = df.groupby("eval_method")["processing_time_s"].agg(total="sum", avg="mean").reset_index().rename(columns={"eval_method": "method"})
-        # Total processing time
-        _plot_metric_bars(
-            agg_time.rename(columns={"total": "processing_time_total_s"}),
-            value_col="processing_time_total_s",
+    # Processing time (boxplot)
+    if "processing_time_s" in df.columns and df["processing_time_s"].notna().any():
+        _boxplot_metric(
+            df,
+            column="processing_time_s",
             ylabel="seconds",
-            title="Total Processing Time by Method",
+            title="Processing Time by Method",
             save_path=flags.output_dir / "compare_processing_time_total_bars.png",
             show=flags.show,
             method_order=DEFAULT_METHOD_ORDER,
             palette_map=palette_map,
         )
-        # Average per item
-        _plot_metric_bars(
-            agg_time.rename(columns={"avg": "processing_time_avg_s"}),
-            value_col="processing_time_avg_s",
-            ylabel="seconds per item",
-            title="Average Processing Time per Item by Method",
+        # Duplicate to keep expected file present
+        _boxplot_metric(
+            df,
+            column="processing_time_s",
+            ylabel="seconds",
+            title="Processing Time by Method",
             save_path=flags.output_dir / "compare_processing_time_avg_bars.png",
             show=flags.show,
             method_order=DEFAULT_METHOD_ORDER,
             palette_map=palette_map,
+        )
+        _save_box_summary_table(
+            df,
+            column="processing_time_s",
+            save_csv_path=flags.output_dir / "table_processing_time_s.csv",
+            method_order=DEFAULT_METHOD_ORDER,
         )
 
     # Tokens (input, output, total) — totals and averages
@@ -316,64 +504,66 @@ def main(flags: Flags) -> None:
         elif have_tokens_out:
             tokens_df["tokens_total"] = tokens_df["tokens_out"].astype(float)
 
-        # Grouped plots: input vs output on same chart (totals and averages)
-        if have_tokens_in and have_tokens_out:
-            agg_tok_total = tokens_df.groupby("eval_method")[
-                ["tokens_in", "tokens_out"]
-            ].sum(min_count=1).reset_index().rename(columns={"eval_method": "method"})
-            _plot_grouped_bars_two_series(
-                agg_tok_total,
-                col_in="tokens_in",
-                col_out="tokens_out",
-                label_in="Input Tokens",
-                label_out="Output Tokens",
+        if have_tokens_in:
+            _boxplot_metric(
+                tokens_df,
+                column="tokens_in",
                 ylabel="tokens",
-                title="Tokens (Total) by Method",
+                title="Input Tokens by Method",
                 save_path=flags.output_dir / "compare_tokens_total_grouped_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
+                palette_map=palette_map,
             )
-
-            agg_tok_avg = tokens_df.groupby("eval_method")[
-                ["tokens_in", "tokens_out"]
-            ].mean().reset_index().rename(columns={"eval_method": "method"})
-            _plot_grouped_bars_two_series(
-                agg_tok_avg,
-                col_in="tokens_in",
-                col_out="tokens_out",
-                label_in="Input Tokens (avg)",
-                label_out="Output Tokens (avg)",
-                ylabel="tokens per item",
-                title="Tokens (Average per Item) by Method",
+            _save_box_summary_table(
+                tokens_df,
+                column="tokens_in",
+                save_csv_path=flags.output_dir / "table_tokens_in.csv",
+                method_order=DEFAULT_METHOD_ORDER,
+            )
+        if have_tokens_out:
+            _boxplot_metric(
+                tokens_df,
+                column="tokens_out",
+                ylabel="tokens",
+                title="Output Tokens by Method",
                 save_path=flags.output_dir / "compare_tokens_avg_grouped_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
+                palette_map=palette_map,
             )
-
-        # Total tokens single series plots remain
+            _save_box_summary_table(
+                tokens_df,
+                column="tokens_out",
+                save_csv_path=flags.output_dir / "table_tokens_out.csv",
+                method_order=DEFAULT_METHOD_ORDER,
+            )
         if "tokens_total" in tokens_df.columns:
-            agg_tok_total_single = tokens_df.groupby("eval_method")["tokens_total"].agg(total="sum", avg="mean").reset_index().rename(columns={"eval_method": "method"})
-            _plot_metric_bars(
-                agg_tok_total_single.rename(columns={"total": "tokens_total_total"}),
-                value_col="tokens_total_total",
+            _boxplot_metric(
+                tokens_df,
+                column="tokens_total",
                 ylabel="tokens",
-                title="Total Tokens (Total) by Method",
+                title="Total Tokens by Method",
                 save_path=flags.output_dir / "compare_tokens_total_total_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
                 palette_map=palette_map,
-                label_fmt=lambda v: f"{int(round(v)):,}",
             )
-            _plot_metric_bars(
-                agg_tok_total_single.rename(columns={"avg": "tokens_total_avg"}),
-                value_col="tokens_total_avg",
-                ylabel="tokens per item",
-                title="Total Tokens (Average per Item) by Method",
+            _boxplot_metric(
+                tokens_df,
+                column="tokens_total",
+                ylabel="tokens",
+                title="Total Tokens by Method",
                 save_path=flags.output_dir / "compare_tokens_total_avg_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
                 palette_map=palette_map,
-                label_fmt=lambda v: f"{int(round(v)):,}",
+            )
+            _save_box_summary_table(
+                tokens_df,
+                column="tokens_total",
+                save_csv_path=flags.output_dir / "table_tokens_total.csv",
+                method_order=DEFAULT_METHOD_ORDER,
             )
 
     # Cost (input, output, total) — totals and averages
@@ -382,7 +572,6 @@ def main(flags: Flags) -> None:
     have_total_cost = "total_cost" in df.columns
     if have_cost_in or have_cost_out or have_total_cost:
         cost_df = df.copy()
-        # Ensure a total cost column
         if not have_total_cost:
             if have_cost_in and have_cost_out:
                 cost_df["total_cost"] = cost_df["cost_in"].astype(float) + cost_df["cost_out"].astype(float)
@@ -391,66 +580,66 @@ def main(flags: Flags) -> None:
             elif have_cost_out:
                 cost_df["total_cost"] = cost_df["cost_out"].astype(float)
 
-        # Grouped cost plots: input vs output
-        if have_cost_in and have_cost_out:
-            agg_cost_total = cost_df.groupby("eval_method")[
-                ["cost_in", "cost_out"]
-            ].sum(min_count=1).reset_index().rename(columns={"eval_method": "method"})
-            _plot_grouped_bars_two_series(
-                agg_cost_total,
-                col_in="cost_in",
-                col_out="cost_out",
-                label_in="Input Cost",
-                label_out="Output Cost",
+        if have_cost_in:
+            _boxplot_metric(
+                cost_df,
+                column="cost_in",
                 ylabel="$",
-                title="Cost (Total) by Method",
+                title="Input Cost by Method",
                 save_path=flags.output_dir / "compare_cost_total_grouped_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
-                label_fmt=lambda v: f"${v:,.4f}",
+                palette_map=palette_map,
             )
-
-            agg_cost_avg = cost_df.groupby("eval_method")[
-                ["cost_in", "cost_out"]
-            ].mean().reset_index().rename(columns={"eval_method": "method"})
-            _plot_grouped_bars_two_series(
-                agg_cost_avg,
-                col_in="cost_in",
-                col_out="cost_out",
-                label_in="Input Cost (avg)",
-                label_out="Output Cost (avg)",
-                ylabel="$ per item",
-                title="Cost (Average per Item) by Method",
+            _save_box_summary_table(
+                cost_df,
+                column="cost_in",
+                save_csv_path=flags.output_dir / "table_cost_in.csv",
+                method_order=DEFAULT_METHOD_ORDER,
+            )
+        if have_cost_out:
+            _boxplot_metric(
+                cost_df,
+                column="cost_out",
+                ylabel="$",
+                title="Output Cost by Method",
                 save_path=flags.output_dir / "compare_cost_avg_grouped_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
-                label_fmt=lambda v: f"${v:,.4f}",
+                palette_map=palette_map,
             )
-
-        # Total cost single series plots remain
+            _save_box_summary_table(
+                cost_df,
+                column="cost_out",
+                save_csv_path=flags.output_dir / "table_cost_out.csv",
+                method_order=DEFAULT_METHOD_ORDER,
+            )
         if "total_cost" in cost_df.columns:
-            agg_cost_single = cost_df.groupby("eval_method")["total_cost"].agg(total="sum", avg="mean").reset_index().rename(columns={"eval_method": "method"})
-            _plot_metric_bars(
-                agg_cost_single.rename(columns={"total": "total_cost_total"}),
-                value_col="total_cost_total",
+            _boxplot_metric(
+                cost_df,
+                column="total_cost",
                 ylabel="$",
-                title="Total Cost (Total) by Method",
+                title="Total Cost by Method",
                 save_path=flags.output_dir / "compare_total_cost_total_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
                 palette_map=palette_map,
-                label_fmt=lambda v: f"${v:,.4f}",
             )
-            _plot_metric_bars(
-                agg_cost_single.rename(columns={"avg": "total_cost_avg"}),
-                value_col="total_cost_avg",
-                ylabel="$ per item",
-                title="Total Cost (Average per Item) by Method",
+            _boxplot_metric(
+                cost_df,
+                column="total_cost",
+                ylabel="$",
+                title="Total Cost by Method",
                 save_path=flags.output_dir / "compare_total_cost_avg_bars.png",
                 show=flags.show,
                 method_order=DEFAULT_METHOD_ORDER,
                 palette_map=palette_map,
-                label_fmt=lambda v: f"${v:,.4f}",
+            )
+            _save_box_summary_table(
+                cost_df,
+                column="total_cost",
+                save_csv_path=flags.output_dir / "table_total_cost.csv",
+                method_order=DEFAULT_METHOD_ORDER,
             )
 
 
