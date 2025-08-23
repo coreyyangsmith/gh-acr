@@ -13,7 +13,7 @@ from pathlib import Path
 
 
 # Graph builder will be selected at runtime based on --mode flag
-from src.cli.runner import run_and_save_report
+from src.cli.runner import run_and_save_report, RESULTS_SCHEMA_COLUMNS
 from src.agents.graph_router import build_graph
 
 
@@ -52,11 +52,13 @@ async def _run(scenario_id: str, mode: str, eval_method: str, model_name: str | 
     app = build_graph(process_mode=mode, eval_method=eval_method)
     output_root = Path.cwd() / "data" / "output"
     
-    per_file_results = await run_and_save_report(app, scenario_id, output_root, eval_method=eval_method, model_name=model_name)
+    per_file_results = await run_and_save_report(app, scenario_id, output_root, eval_method=eval_method, model_name=model_name, process_mode=mode, write_prep=True)
 
     # Append the evaluation to a CSV (one row per file)
     results_path = Path.cwd() / "data" / "results.csv"
     df = pd.DataFrame(per_file_results)
+    # Enforce unified column order/schema
+    df = df.reindex(columns=RESULTS_SCHEMA_COLUMNS)
 
     header = not results_path.exists() or results_path.stat().st_size == 0
     df.to_csv(results_path, mode="a", header=header, index=False)

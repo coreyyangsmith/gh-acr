@@ -39,6 +39,228 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Defaults and helpers for local Transformers backends (tiny test model)
+# ---------------------------------------------------------------------------
+try:  # pragma: no cover
+    import torch  # type: ignore
+except Exception:  # pragma: no cover
+    torch = None  # type: ignore
+
+DEFAULT_LOCAL_MODEL_ID = (
+    os.getenv("HF_MODEL_ID") or os.getenv("MODEL_ID") or "gpt2"
+)
+HF_LOCAL_ONLY = os.getenv("HF_LOCAL_ONLY", "0").strip().lower() in ("1", "true", "yes", "on")
+LOCAL_SEED = int(os.getenv("SEED", "42"))
+REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+DEFAULT_HF_CACHE_DIR = os.getenv("HF_CACHE_DIR") or os.path.join(REPO_ROOT, "data", "models")
+HF_TRUST_REMOTE_CODE = os.getenv("HF_TRUST_REMOTE_CODE", "0").strip().lower() in ("1", "true", "yes", "on")
+HF_REVISION = os.getenv("HF_REVISION", "").strip() or None
+
+
+def _get_hf_token() -> Optional[str]:
+    for var in ("HUGGINGFACE_HUB_TOKEN", "HF_TOKEN", "HF_API_TOKEN", "HUGGINGFACE_TOKEN"):
+        tok = os.getenv(var)
+        if tok and tok.strip():
+            return tok.strip()
+    return None
+
+
+def _parse_torch_dtype_env() -> Optional[Any]:  # type: ignore[override]
+    """Return torch dtype from HF_TORCH_DTYPE env or 'auto' string, else None.
+
+    HF_TORCH_DTYPE can be one of: auto, float16, bfloat16, float32
+    """
+    val = os.getenv("HF_TORCH_DTYPE", "").strip().lower()
+    if not val:
+        return None
+    if val == "auto":
+        return "auto"
+    try:
+        if torch is not None:
+            if val in ("fp16", "float16", "half"):
+                return torch.float16
+            if val in ("bf16", "bfloat16"):
+                return torch.bfloat16
+            if val in ("fp32", "float32"):
+                return torch.float32
+    except Exception:
+        pass
+    return None
+
+
+def _get_device_map_from_env() -> Any:  # type: ignore[override]
+    """Derive device_map from HF_DEVICE_MAP env.
+
+    Examples:
+    - not set → "auto"
+    - "auto" → "auto"
+    - "cpu" → {"": "cpu"}
+    - "0" or "cuda:0" → {"": 0}
+    - any other → "auto"
+    """
+    v = os.getenv("HF_DEVICE_MAP", "").strip().lower()
+    if not v:
+        try:
+            if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
+                return {"": 0}
+        except Exception:
+            pass
+        return "auto"
+    if v == "auto":
+        try:
+            if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
+                return {"": 0}
+        except Exception:
+            pass
+        return "auto"
+    if v == "cpu":
+        return {"": "cpu"}
+    if v.isdigit():
+        try:
+            return {"": int(v)}
+        except Exception:
+            return "auto"
+    if v.startswith("cuda"):
+        try:
+            idx = int(v.split(":", 1)[1]) if ":" in v else 0
+            return {"": idx}
+        except Exception:
+            return "auto"
+    return "auto"
+
+
+def _hf_device_index() -> int:
+    try:
+        if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
+            return 0
+    except Exception:  # pragma: no cover
+        pass
+    return -1
+
+
+def build_local_text_generator(model_id: str | None = None, *, local_only: bool | None = None):
+    """Return (hf_pipeline, tokenizer) for a small local model suitable for tests."""
+    if model_id is None:
+        model_id = DEFAULT_LOCAL_MODEL_ID
+    if local_only is None:
+        local_only = HF_LOCAL_ONLY
+    # Lazy import to avoid hard dependency when not needed
+    from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, set_seed  # type: ignore
+
+    set_seed(LOCAL_SEED)
+    # Ensure cache dir exists and try offline-first load from cache, then fallback to download
+    os.makedirs(DEFAULT_HF_CACHE_DIR, exist_ok=True)
+    logger.info(
+        "[local] Initializing HF generator: model_id=%s, local_only=%s, cache_dir=%s",
+        model_id,
+        bool(local_only),
+        DEFAULT_HF_CACHE_DIR,
+    )
+    hf_token = _get_hf_token()
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_id,
+            local_files_only=True,
+            use_fast=True,
+            cache_dir=DEFAULT_HF_CACHE_DIR,
+            token=hf_token,  # new arg
+            revision=HF_REVISION,
+            trust_remote_code=HF_TRUST_REMOTE_CODE,
+        )
+        device_map = _get_device_map_from_env()
+        dtype = _parse_torch_dtype_env()
+        logger.info("[local] Loading model with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            local_files_only=True,
+            cache_dir=DEFAULT_HF_CACHE_DIR,
+            token=hf_token,
+            revision=HF_REVISION,
+            trust_remote_code=HF_TRUST_REMOTE_CODE,
+            device_map=device_map,
+            torch_dtype=dtype,
+            low_cpu_mem_usage=True,
+        )
+        logger.info("[local] Loaded model+tokenizer from cache (local_files_only=True): %s", model_id)
+    except Exception:
+        if bool(local_only):
+            logger.error("[local] Cache-only load failed and HF_LOCAL_ONLY is set; re-raising for %s", model_id)
+            raise
+        logger.info("[local] Cache miss; downloading model to cache: %s -> %s", model_id, DEFAULT_HF_CACHE_DIR)
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_id,
+            use_fast=True,
+            cache_dir=DEFAULT_HF_CACHE_DIR,
+            token=hf_token,
+            revision=HF_REVISION,
+            trust_remote_code=HF_TRUST_REMOTE_CODE,
+        )
+        device_map = _get_device_map_from_env()
+        dtype = _parse_torch_dtype_env()
+        logger.info("[local] Loading model (download) with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            cache_dir=DEFAULT_HF_CACHE_DIR,
+            token=hf_token,
+            revision=HF_REVISION,
+            trust_remote_code=HF_TRUST_REMOTE_CODE,
+            device_map=device_map,
+            torch_dtype=dtype,
+            low_cpu_mem_usage=True,
+        )
+        logger.info("[local] Downloaded model+tokenizer and cached: %s", model_id)
+    # --- Safety against position-id overflow ---
+    npos = int(getattr(model.config, "n_positions", getattr(model.config, "max_position_embeddings", 1024)))
+    reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "256"))
+    reserve_new = max(1, min(reserve_new, npos - 32))
+
+    if tokenizer.pad_token_id is None:
+        tokenizer.pad_token_id = tokenizer.eos_token_id
+    model.config.pad_token_id = tokenizer.pad_token_id
+
+    tokenizer.truncation_side = os.getenv("LOCAL_TRUNCATION_SIDE", "left")
+    tokenizer.model_max_length = npos - reserve_new
+
+    generator = pipeline(
+        task="text-generation",
+        model=model,
+        tokenizer=tokenizer,
+        truncation=True,
+        max_new_tokens=reserve_new,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
+    )
+    logger.info(
+        "[local] Created text-generation pipeline for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, truncation=%s)",
+        model_id,
+        npos,
+        tokenizer.model_max_length,
+        reserve_new,
+        True,
+    )
+    return generator, tokenizer
+
+
+def generate_local_text(prompt: str, *, max_new_tokens: int = 64, model_id: str | None = None) -> str:
+    """Quick local generation helper using the tiny test model by default."""
+    generator, tokenizer = build_local_text_generator(model_id)
+    pad_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.pad_token_id
+    outputs = generator(
+        prompt,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
+        max_new_tokens=max_new_tokens,
+        eos_token_id=tokenizer.eos_token_id,
+        pad_token_id=pad_id,
+        num_return_sequences=1,
+    )
+    generated = outputs[0]["generated_text"]
+    return generated[len(prompt):].lstrip() if generated.startswith(prompt) else generated
+
+
+# ---------------------------------------------------------------------------
 # Lazy imports (so that users without transformers / openai can still run base)
 # ---------------------------------------------------------------------------
 
@@ -95,21 +317,42 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
         prompt_tokens = count_tokens(self.encoder, prompt_text)
         model_cfg = MODEL_COSTS.get(self.model_name, {}) or MODEL_COSTS.get(f"openai/{self._backend_name()}", {})
 
-        # Cap prompt tokens against configured input_limit if known, by truncation
         input_limit = int(model_cfg.get("input_limit", 0))
-        if input_limit and prompt_tokens > input_limit:
-            if hasattr(self.encoder, "encode") and hasattr(self.encoder, "decode"):
-                encoded = self.encoder.encode(prompt_text)
-                prompt_text = self.encoder.decode(encoded[: max(0, input_limit - 1)])
-                prompt_tokens = count_tokens(self.encoder, prompt_text)
-            else:
-                words = prompt_text.split()
-                prompt_text = " ".join(words[: max(1, input_limit - 1)])
-                prompt_tokens = len(prompt_text.split())
-
         output_limit = int(model_cfg.get("output_limit", 0))
+        sliding_window = bool(model_cfg.get("sliding_window", False))
+        total_limit = int(model_cfg.get("total_limit", 0))
+
+        # Base expected output size
         expected_output_tokens = int(self.expected_output_ratio * output_limit) if output_limit else int(0.25 * prompt_tokens)
-        expected_total_tokens = prompt_tokens + expected_output_tokens
+        if output_limit:
+            expected_output_tokens = min(expected_output_tokens, output_limit)
+
+        if sliding_window and total_limit:
+            # Enforce prompt + expected_output <= total_limit
+            allowed_prompt = max(1, total_limit - expected_output_tokens)
+            if prompt_tokens > allowed_prompt:
+                if hasattr(self.encoder, "encode") and hasattr(self.encoder, "decode"):
+                    encoded = self.encoder.encode(prompt_text)
+                    prompt_text = self.encoder.decode(encoded[: allowed_prompt])
+                    prompt_tokens = count_tokens(self.encoder, prompt_text)
+                else:
+                    words = prompt_text.split()
+                    prompt_text = " ".join(words[: allowed_prompt])
+                    prompt_tokens = len(prompt_text.split())
+            expected_total_tokens = min(total_limit, prompt_tokens + expected_output_tokens)
+        else:
+            # Separate caps: bound prompt by input_limit if provided
+            if input_limit and prompt_tokens > input_limit:
+                if hasattr(self.encoder, "encode") and hasattr(self.encoder, "decode"):
+                    encoded = self.encoder.encode(prompt_text)
+                    prompt_text = self.encoder.decode(encoded[: max(0, input_limit - 1)])
+                    prompt_tokens = count_tokens(self.encoder, prompt_text)
+                else:
+                    words = prompt_text.split()
+                    prompt_text = " ".join(words[: max(1, input_limit - 1)])
+                    prompt_tokens = len(prompt_text.split())
+            expected_total_tokens = prompt_tokens + expected_output_tokens
+
         self._limiter.acquire(expected_tokens=int(expected_total_tokens))
         self._reservations[run_id] = {
             "prompt_tokens": int(prompt_tokens),
@@ -198,38 +441,155 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         else:
             raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
         enc = _tiktoken_encoder(backend_name)
-
-    # HuggingFace Hosted model ----------------------------------------------
-    elif model_name.startswith("hf_hub:"):
-        repo_id = model_name.split(":", 1)[1]
-        try:
-            from langchain_community.chat_models import HuggingFaceHub  # type: ignore
-        except ImportError as exc:  # pragma: no cover
-            logger.warning("HuggingFaceHub import failed: %s", exc)
-            return None, None
-        hf_token = os.getenv("HF_API_TOKEN")
-        # Try to bound output length if possible
-        model_cfg = MODEL_COSTS.get(model_name, {})
-        max_out = int(model_cfg.get("output_limit", 0)) or 1024
-        raw_llm = HuggingFaceHub(
-            repo_id=repo_id,
-            huggingfacehub_api_token=hf_token,
-            model_kwargs={"temperature": 0, "max_new_tokens": max_out},
-        )  # type: ignore[call-arg]
-        enc = None  # transformers tokeniser not used for counting here
-
     # Local transformers model ----------------------------------------------
     elif model_name.startswith("local:"):
         model_path = model_name.split(":", 1)[1]
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
-            from langchain_community.chat_models import HuggingFacePipeline  # type: ignore
+            from langchain_community.llms import HuggingFacePipeline  # type: ignore
         except ImportError as exc:  # pragma: no cover
             logger.warning("Transformers pipeline unavailable: %s", exc)
             return None, None
-        tok = AutoTokenizer.from_pretrained(model_path)
-        model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto")
-        hf_pipe = pipeline("text-generation", model=model, tokenizer=tok, max_new_tokens=1024)
+        requested = (model_path or "").strip()
+        if not requested:
+            logger.warning("local: backend requires a model id or path, e.g. local:gpt2")
+            return None, None
+        # Load user-specified local path or HF repo id (offline-first)
+        os.makedirs(DEFAULT_HF_CACHE_DIR, exist_ok=True)
+        logger.info(
+            "[local] Preparing local backend: model=%s, cache_dir=%s, HF_LOCAL_ONLY=%s",
+            requested,
+            DEFAULT_HF_CACHE_DIR,
+            HF_LOCAL_ONLY,
+        )
+        hf_token = _get_hf_token()
+        try:
+            # Prefer explicit GPT-2 tokenizer for distilgpt2
+            if "distilgpt2" in requested:
+                try:
+                    from transformers import GPT2Tokenizer  # type: ignore
+                    tok = GPT2Tokenizer.from_pretrained(
+                        requested,
+                        local_files_only=True,
+                        cache_dir=DEFAULT_HF_CACHE_DIR,
+                        token=hf_token,
+                        revision=HF_REVISION,
+                        trust_remote_code=HF_TRUST_REMOTE_CODE,
+                    )
+                    logger.info("[local] Using GPT2Tokenizer for %s (cache-only)", requested)
+                except Exception:
+                    # Fallback to AutoTokenizer if GPT2Tokenizer is unavailable
+                    tok = AutoTokenizer.from_pretrained(
+                        requested,
+                        local_files_only=True,
+                        cache_dir=DEFAULT_HF_CACHE_DIR,
+                        token=hf_token,
+                        revision=HF_REVISION,
+                        trust_remote_code=HF_TRUST_REMOTE_CODE,
+                    )
+                    logger.info("[local] GPT2Tokenizer unavailable; fell back to AutoTokenizer for %s (cache-only)", requested)
+            else:
+                tok = AutoTokenizer.from_pretrained(
+                    requested,
+                    local_files_only=True,
+                    cache_dir=DEFAULT_HF_CACHE_DIR,
+                    token=hf_token,
+                    revision=HF_REVISION,
+                    trust_remote_code=HF_TRUST_REMOTE_CODE,
+                )
+                logger.info("[local] Loaded tokenizer from cache for %s via AutoTokenizer", requested)
+            device_map = _get_device_map_from_env()
+            dtype = _parse_torch_dtype_env()
+            logger.info("[local] Loading cached model with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
+            model = AutoModelForCausalLM.from_pretrained(
+                requested,
+                device_map=device_map,
+                local_files_only=True,
+                cache_dir=DEFAULT_HF_CACHE_DIR,
+                token=hf_token,
+                revision=HF_REVISION,
+                trust_remote_code=HF_TRUST_REMOTE_CODE,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+            )
+            logger.info("[local] Loaded model from cache for %s (device_map=auto)", requested)
+        except Exception:
+            if HF_LOCAL_ONLY:
+                logger.error("[local] Cache-only load failed for %s and HF_LOCAL_ONLY=1; re-raising", requested)
+                raise
+            if "distilgpt2" in requested:
+                try:
+                    from transformers import GPT2Tokenizer  # type: ignore
+                    tok = GPT2Tokenizer.from_pretrained(
+                        requested,
+                        cache_dir=DEFAULT_HF_CACHE_DIR,
+                        token=hf_token,
+                        revision=HF_REVISION,
+                        trust_remote_code=HF_TRUST_REMOTE_CODE,
+                    )
+                    logger.info("[local] Downloaded GPT2Tokenizer for %s to %s", requested, DEFAULT_HF_CACHE_DIR)
+                except Exception:
+                    tok = AutoTokenizer.from_pretrained(
+                        requested,
+                        cache_dir=DEFAULT_HF_CACHE_DIR,
+                        token=hf_token,
+                        revision=HF_REVISION,
+                        trust_remote_code=HF_TRUST_REMOTE_CODE,
+                    )
+                    logger.info("[local] Downloaded AutoTokenizer for %s to %s", requested, DEFAULT_HF_CACHE_DIR)
+            else:
+                tok = AutoTokenizer.from_pretrained(
+                    requested,
+                    cache_dir=DEFAULT_HF_CACHE_DIR,
+                    token=hf_token,
+                    revision=HF_REVISION,
+                    trust_remote_code=HF_TRUST_REMOTE_CODE,
+                )
+                logger.info("[local] Downloaded AutoTokenizer for %s to %s", requested, DEFAULT_HF_CACHE_DIR)
+            device_map = _get_device_map_from_env()
+            dtype = _parse_torch_dtype_env()
+            logger.info("[local] Loading downloaded model with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
+            model = AutoModelForCausalLM.from_pretrained(
+                requested,
+                device_map=device_map,
+                cache_dir=DEFAULT_HF_CACHE_DIR,
+                token=hf_token,
+                revision=HF_REVISION,
+                trust_remote_code=HF_TRUST_REMOTE_CODE,
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+            )
+            logger.info("[local] Downloaded model %s to %s (device_map=auto)", requested, DEFAULT_HF_CACHE_DIR)
+        # --- Safety against position-id overflow (same as tiny helper) ---
+        npos = int(getattr(model.config, "n_positions", getattr(model.config, "max_position_embeddings", 1024)))
+        reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "256"))
+        reserve_new = max(1, min(reserve_new, npos - 32))
+
+        if tok.pad_token_id is None:
+            tok.pad_token_id = tok.eos_token_id
+        model.config.pad_token_id = tok.pad_token_id
+
+        tok.truncation_side = os.getenv("LOCAL_TRUNCATION_SIDE", "left")
+        tok.model_max_length = npos - reserve_new
+
+        hf_pipe = pipeline(
+            "text-generation",
+            model=model,
+            tokenizer=tok,
+            truncation=True,
+            max_new_tokens=reserve_new,
+            do_sample=True,
+            temperature=0.7,
+            top_p=0.9,
+        )
+        logger.info(
+            "[local] Initialized HuggingFacePipeline for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, truncation=%s)",
+            requested,
+            npos,
+            tok.model_max_length,
+            reserve_new,
+            True,
+        )
         raw_llm = HuggingFacePipeline(pipeline=hf_pipe)  # type: ignore[call-arg]
         enc = tok
     

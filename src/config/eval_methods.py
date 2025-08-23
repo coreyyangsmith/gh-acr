@@ -10,7 +10,7 @@ from typing import Final, Literal
 
 
 # Public type alias describing the allowed evaluation method strings
-EvalMethod = Literal["base_a", "base_b", "agent", "multi", "bypass"]
+EvalMethod = Literal["base_a", "base_b", "agent", "multi", "bypass", "dynamic"]
 
 
 # Canonical list of all supported evaluation methods
@@ -20,6 +20,7 @@ ALL_EVAL_METHODS: Final[list[EvalMethod]] = [
     "agent",
     "multi",
     "bypass",
+    "dynamic",
 ]
 
 
@@ -30,6 +31,7 @@ DEFAULT_METHOD_ORDER: Final[list[EvalMethod]] = [
     "agent",
     "multi",
     "bypass",
+    "dynamic",
 ]
 
 

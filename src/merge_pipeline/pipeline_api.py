@@ -25,13 +25,15 @@ from ..eval.bleu import per_file as bleu_per_file, overall as bleu_overall
 from ..eval.rouge_l import per_file as rouge_per_file, overall as rouge_overall
 
 # Import the dedicated merge agent node
-from ..agents.simple_agent import resolve_conflict_agent_node
+from ..agents.agent import resolve_conflict_agent_node
 from ..agents.base_agent import (
     resolve_conflict_base_a_node,
     resolve_conflict_base_b_node,
 )
-from ..agents.multi_agent import resolve_conflict_multi_agent_node
-from ..agents.bypass_multi_agent import resolve_conflict_bypass_multi_agent_node
+from ..agents.multi import resolve_conflict_multi_agent_node
+from ..agents.bypass import resolve_conflict_bypass_multi_agent_node
+from ..agents.dynamic import resolve_conflict_dynamic_agent_node
+from rapidfuzz.distance import Levenshtein as RFLevenshtein  # type: ignore
 
 # Local logger for this module
 logger = logging.getLogger(__name__)
@@ -60,8 +62,13 @@ def _read_files_via_api(client: GithubClient, owner: str, repo: str, commit_sha:
 
 
 def _diff_ratio(a: str, b: str) -> float:
-    """Return a similarity ratio between *a* and *b* using difflib."""
-    return difflib.SequenceMatcher(None, a, b).ratio()
+    """Return normalized Levenshtein similarity in [0,1] between *a* and *b*."""
+    try:
+        return float(RFLevenshtein.normalized_similarity(a, b))
+    except Exception:
+        if not a and not b:
+            return 1.0
+        return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -208,11 +215,14 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     elif eval_method == "multi":
         resolver_node_name = "resolve_multi"
         sg.add_node(resolver_node_name, resolve_conflict_multi_agent_node)
-    elif eval_method == "bypass_multi":
+    elif eval_method in ("bypass", "bypass_multi"):
         resolver_node_name = "resolve_bypass_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass_multi_agent_node)
+    elif eval_method == "dynamic":
+        resolver_node_name = "resolve_dynamic"
+        sg.add_node(resolver_node_name, resolve_conflict_dynamic_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', or 'bypass_multi'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', or 'dynamic'.")
 
     sg.add_node("evaluate", evaluate_node)
 
@@ -230,7 +240,7 @@ def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "multi" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "dynamic" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

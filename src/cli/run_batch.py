@@ -15,7 +15,7 @@ import tyro
 from tqdm.asyncio import tqdm
 
 # Graph builder chosen at runtime
-from src.cli.runner import run_and_save_report
+from src.cli.runner import run_and_save_report, RESULTS_SCHEMA_COLUMNS
 from src.dataset.loader import load_benchmark
 from src.agents.graph_router import build_graph
 from src.config.settings import BATCH_SIZE
@@ -97,13 +97,17 @@ async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_
     async def process_and_append(row):
         # `run_and_save_report` now returns a **list** of per-file dictionaries.
         try:
-            results = await run_and_save_report(app, row["id"], output_root, eval_method=eval_method, model_name=model_name)
+            # Only write prep once per scenario in batch mode
+            write_prep = True
+            results = await run_and_save_report(app, row["id"], output_root, eval_method=eval_method, model_name=model_name, process_mode=mode, write_prep=write_prep)
         except Exception as exc:
             logger.exception("[run_batch] Error processing scenario %s", row.get("id"))
             return []
 
         # Persist each file-level record to the shared CSV.
         df = pd.DataFrame(results)
+        # Enforce unified column order/schema
+        df = df.reindex(columns=RESULTS_SCHEMA_COLUMNS)
         header = not results_path.exists() or results_path.stat().st_size == 0
         df.to_csv(results_path, mode="a", header=header, index=False)
         return results

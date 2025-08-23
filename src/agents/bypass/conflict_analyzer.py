@@ -22,7 +22,7 @@ from ...utils.logger import logger
 
 __all__ = ["conflict_analyzer_node"]
 
-_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "dynamic" / "conflict_judge_prompt.txt"
+_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "bypass" / "conflict_judge_prompt.txt"
 _PROMPT_STR = _PROMPT_PATH.read_text(encoding="utf-8")
 
 def _normalize_decision(text: str) -> str:

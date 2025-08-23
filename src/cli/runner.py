@@ -14,7 +14,34 @@ from src.config.model_costs import MODEL_COSTS
 from src.utils.rate_limiter import LimiterRegistry
 from src.utils.logger import setup_logger
 
-async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str, model_name: str | None = None):
+# Unified results schema (column order) for all methods
+RESULTS_SCHEMA_COLUMNS = [
+    "id",
+    "repo",
+    "file_name",
+    "exact_match",
+    "similarity",
+    "bleu3",
+    "rouge_l",
+    "eval_method",
+    "bypass_method",
+    "model_name",
+    "tokens_system_prompt",
+    "tokens_original",
+    "tokens_diff_a",
+    "tokens_diff_b",
+    "tokens_output",
+    "tokens_total",
+    "tokens_in",
+    "tokens_out",
+    "cost_in",
+    "cost_out",
+    "total_cost",
+    "processing_time_s",
+    "difficulty",
+]
+
+async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str, model_name: str | None = None, process_mode: str | None = None, write_prep: bool = True):
     """Run the pipeline for one scenario and save its report to disk.
 
     The console output will be the final evaluation summary, plus a confirmation
@@ -53,6 +80,71 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     except Exception:
         pass
 
+    # ---------------------------------------------------------------------------
+    # Optional pre-run preparation: clone repository (clone mode only)
+    # This time is recorded separately as a 'prep' line item and excluded from
+    # the main processing time measurement.
+    # ---------------------------------------------------------------------------
+    prep_row: Dict[str, Any] | None = None
+    if write_prep and (process_mode or "").strip().lower() == "clone":
+        try:
+            from src.dataset.loader import load_benchmark  # local import to avoid cyclic deps
+            from src.merge_pipeline.pipeline_clone import _clone_repo  # type: ignore
+
+            # Locate scenario row similar to pipeline's load_sample_node
+            df = load_benchmark()
+            raw_id = str(scenario_id)
+            row_series = None
+            try:
+                row_series = df.loc[int(raw_id)]
+            except Exception:
+                try:
+                    row_series = df.loc[raw_id]
+                except Exception:
+                    row_series = None
+            if row_series is None and "id" in df.columns:
+                match = df.loc[df["id"].astype(str) == raw_id]
+                if not match.empty:
+                    row_series = match.iloc[0]
+            if row_series is not None:
+                sample = row_series.to_dict()
+                prep_start = time.perf_counter()
+                _clone_repo(sample, checkout_dir=Path.cwd() / "repos")
+                prep_elapsed = time.perf_counter() - prep_start
+                df_index = row_series.name
+                repo_slug = str(sample.get("name", ""))
+                difficulty = sample.get("difficulty", "unknown")
+                # Create a separate line item recording clone time only
+                prep_row = {
+                    "id": df_index,
+                    "repo": repo_slug,
+                    "file_name": "",
+                    "exact_match": "",
+                    "similarity": "",
+                    "bleu3": "",
+                    "rouge_l": "",
+                    "eval_method": "prep",
+                    "bypass_method": "NA",
+                    "model_name": "NA",
+                    # Tokens/costs zeroed for prep
+                    "tokens_system_prompt": 0,
+                    "tokens_original": 0,
+                    "tokens_diff_a": 0,
+                    "tokens_diff_b": 0,
+                    "tokens_output": 0,
+                    "tokens_total": 0,
+                    "tokens_in": 0,
+                    "tokens_out": 0,
+                    "cost_in": 0.0,
+                    "cost_out": 0.0,
+                    "total_cost": 0.0,
+                    "processing_time_s": round(prep_elapsed, 3),
+                    "difficulty": difficulty,
+                }
+        except Exception:
+            # Best-effort: prep failures shouldn't block main processing
+            prep_row = None
+
     start_ts = time.perf_counter()
 
     logger.info("Starting scenario %s with method=%s", scenario_id, eval_method)
@@ -87,10 +179,12 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
         # Multi-style outputs: include bypass to mirror multi folder structure
-        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi")
+        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "dynamic")
         if is_multi_like:
             (llm_out_dir / "summaries").mkdir(exist_ok=True)
             (llm_out_dir / "reviews").mkdir(exist_ok=True)
+            if eval_method == "dynamic":
+                (llm_out_dir / "prompts").mkdir(exist_ok=True)
             # Persist the merge plan as text
             try:
                 import json
@@ -98,6 +192,11 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 (llm_out_dir / "plan.txt").write_text(
                     json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
                 )
+                if eval_method == "dynamic":
+                    dyn_prompts = result.get("dynamic_prompts", {}) or {}
+                    (llm_out_dir / "prompts.json").write_text(
+                        json.dumps(dyn_prompts, indent=2, ensure_ascii=False), encoding="utf-8"
+                    )
             except Exception:
                 pass
             # Persist bypass analyzer output if present
@@ -158,7 +257,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 (llm_out_dir / f"{base_name}_final_diff.txt").write_text(diff_text, encoding="utf-8")
 
             # ---------------- multi/bypass extra outputs -------------------
-            if eval_method in ("multi", "bypass", "bypass_multi"):
+            if eval_method in ("multi", "bypass", "bypass_multi", "dynamic"):
                 summaries = result.get("summaries", {}).get(file_path, {})
                 prefix = "bypass_" if is_bypass_like else ""
                 (llm_out_dir / "summaries" / f"{prefix}{file_slug}_A.txt").write_text(
@@ -167,6 +266,13 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 (llm_out_dir / "summaries" / f"{prefix}{file_slug}_B.txt").write_text(
                     summaries.get("summary_b", ""), encoding="utf-8"
                 )
+                if eval_method == "dynamic":
+                    dyn_prompts = result.get("dynamic_prompts", {}) or {}
+                    dyn_text = str(dyn_prompts.get(file_path, "")).strip()
+                    try:
+                        (llm_out_dir / "prompts" / f"{file_slug}.txt").write_text(dyn_text, encoding="utf-8")
+                    except Exception:
+                        pass
                 reviews = result.get("reviews", {})
                 if reviews:
                     (llm_out_dir / "reviews" / f"{prefix}{file_slug}.txt").write_text(
@@ -290,6 +396,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     else:
         bypass_label = "NA"
     repo_slug: str = sample_row["name"]  # e.g. "owner/repo"
+    model_for_row = model_name if eval_method not in ("base_a", "base_b") else "NA"
     for file_path in sample_row["scenario_json"]["files_in_merge_conflict"]:
         exact_match_bool = bool(eval_["exact_match"].get(file_path, False))
         similarity_score = float(eval_["similarity"].get(file_path, 0.0))
@@ -314,11 +421,13 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             "rouge_l": rouge_l_score,
             "eval_method": eval_method,
             "bypass_method": bypass_label,
+            "model_name": model_for_row,
             # Individual token categories
             "tokens_system_prompt": tok_stats.get("system_prompt", 0),
             "tokens_original": tok_stats.get("original", 0),
             "tokens_diff_a": tok_stats.get("diff_a", 0),
             "tokens_diff_b": tok_stats.get("diff_b", 0),
+            "tokens_output": tok_stats.get("output", 0),
 
             # Aggregated counts
             "tokens_total": in_tok_file + out_tok_file,
@@ -333,4 +442,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             "difficulty": difficulty,
         })
 
+    # If we recorded a prep item, prepend it so it's written before file rows
+    if write_prep and prep_row is not None:
+        return [prep_row] + per_file_rows
     return per_file_rows 

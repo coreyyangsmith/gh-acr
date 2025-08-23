@@ -1,0 +1,30 @@
+{
+  "tokenizer": "cl100k_base",
+  "by_folder": {
+    "agent": {
+      "merge_prompt.txt": 179
+    },
+    "bypass": {
+      "conflict_judge_prompt.txt": 190,
+      "plan_prompt.txt": 708,
+      "resolver_prompt.txt": 172,
+      "review_prompt.txt": 385,
+      "summarizer_prompt.txt": 618
+    },
+    "dynamic": {
+      "conflict_judge_prompt.txt": 190,
+      "plan_prompt.txt": 708,
+      "resolver_prompt.txt": 172,
+      "review_prompt.txt": 385,
+      "summarizer_prompt.txt": 618
+    },
+    "multi": {
+      "plan_prompt.txt": 708,
+      "resolver_prompt.txt": 172,
+      "review_prompt.txt": 385,
+      "summarizer_prompt.txt": 618
+    }
+  },
+  "total_tokens": 6208,
+  "total_files": 15
+}

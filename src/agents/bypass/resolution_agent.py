@@ -10,18 +10,16 @@ import os
 from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
+from ..utils import render_template, extract_text_content, scenario_file_list
 from ...utils.logger import logger
 
 __all__ = ["resolution_agent_node"]
 
-_MERGE_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "resolver_prompt.txt"
+_MERGE_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "bypass" / "resolver_prompt.txt"
 _MERGE_PROMPT_STR = _MERGE_PROMPT_PATH.read_text(encoding="utf-8")
 
 def _render_template(template: str, variables: Dict[str, str]) -> str:
-    rendered = template
-    for key, value in variables.items():
-        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
-    return rendered
+    return render_template(template, variables)
 
 
 def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
@@ -41,12 +39,7 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
     diffs_b = state.get("diffs_b", {})
 
     # Determine all files we must produce outputs for
-    scenario_files = (
-        (state.get("sample_row", {}) or {}).get("scenario_json", {}) or {}
-    ).get("files_in_merge_conflict", [])
-    if not scenario_files:
-        # Fallback to union of known keys
-        scenario_files = sorted(set(parent_a.keys()) | set(parent_b.keys()) | set(diffs_a.keys()) | set(diffs_b.keys()))
+    scenario_files = scenario_file_list(state, fallback_paths=list(parent_a.keys()) + list(parent_b.keys()) + list(diffs_a.keys()) + list(diffs_b.keys()))
 
     for path in scenario_files:
         choice = plan.get(path, "merge")
@@ -88,7 +81,7 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
             },
         )
         result = llm.invoke(prompt_text)
-        content = result.content if hasattr(result, "content") else str(result)
+        content = extract_text_content(result)
         merged_text = content.strip("\n")
         resolved[path] = merged_text
         counts["output"] += count_tokens(encoder, merged_text)

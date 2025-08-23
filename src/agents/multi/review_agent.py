@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
 from ...utils.logger import logger
+from ..utils import render_template, extract_text_content
 
 __all__ = ["review_agent_node"]
 
@@ -14,10 +15,7 @@ _REVIEW_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" 
 _REVIEW_PROMPT_STR = _REVIEW_PROMPT_PATH.read_text(encoding="utf-8")
 
 def _render_template(template: str, variables: Dict[str, str]) -> str:
-    rendered = template
-    for key, value in variables.items():
-        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
-    return rendered
+    return render_template(template, variables)
 
 
 def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
@@ -43,7 +41,7 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             continue
         prompt_text = _render_template(_REVIEW_PROMPT_STR, {"generated_code": content})
         res = llm.invoke(prompt_text)
-        text = res.content if hasattr(res, "content") else str(res)
+        text = extract_text_content(res)
         reviews[path] = text
         # Parse structured outcome for control flow
         outcome = "REJECT"

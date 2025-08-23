@@ -18,7 +18,7 @@ from src.config.settings import BATCH_SIZE
 from src.config.eval_methods import EvalMethod, ALL_EVAL_METHODS
 from src.utils.logger import setup_logger
 from src.agents.graph_router import build_graph
-from src.cli.runner import run_and_save_report
+from src.cli.runner import run_and_save_report, RESULTS_SCHEMA_COLUMNS
 
 
 ProcessMode = Literal["api", "clone"]
@@ -122,7 +122,9 @@ async def _run_all(
                         if scenario_key is None:
                             # Be robust to unnamed first column exported as index
                             scenario_key = str(row.name)
-                        return await run_and_save_report(app, scenario_key, output_root, eval_method=method, model_name=model_name)
+                        # Only write prep for the first method to avoid duplicates
+                        write_prep = method == methods_to_run[0]
+                        return await run_and_save_report(app, scenario_key, output_root, eval_method=method, model_name=model_name, process_mode=mode, write_prep=write_prep)
                     except Exception as exc:  # pragma: no cover – runtime resilience
                         logger.exception("[run_all] Error processing scenario %s (%s)", row.get("id", row.name), method)
                         return []
@@ -135,6 +137,8 @@ async def _run_all(
                     per_file_results = await fut
                     if per_file_results:
                         df = pd.DataFrame(per_file_results)
+                        # Enforce unified column order/schema
+                        df = df.reindex(columns=RESULTS_SCHEMA_COLUMNS)
                         header = not results_path.exists() or results_path.stat().st_size == 0
                         df.to_csv(results_path, mode="a", header=header, index=False)
                         completed += 1

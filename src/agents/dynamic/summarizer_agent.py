@@ -20,7 +20,7 @@ __all__ = ["summarizer_agent_node"]
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-_SUMMARY_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "summarizer_prompt.txt"
+_SUMMARY_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "dynamic" / "summarizer_prompt.txt"
 _SUMMARY_PROMPT_STR = _SUMMARY_PROMPT_PATH.read_text(encoding="utf-8")
 
 def _render_template(template: str, variables: Dict[str, str]) -> str:
@@ -78,7 +78,7 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 counts = state.setdefault("token_counts", {}).setdefault(
                     path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}
                 )
-                counts["system_prompt"] += count_tokens(encoder, _SUMMARY_PROMPT_STR)
+                counts["system_prompt"] += count_tokens(encoder, prompt_text)
                 counts["original"] += count_tokens(encoder, original_text)
                 if parent_label == "A":
                     counts["diff_a"] += count_tokens(encoder, diff_text)

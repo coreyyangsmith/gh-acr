@@ -85,6 +85,27 @@ def _plot_metric_bars(
         plt.ylim(*ylim)
     plt.title(title)
 
+    # Draw median line and interquartile candle (p25-p75) if present
+    p25_col = value_col.replace("mean", "p25") if value_col.endswith("_mean") else None
+    p75_col = value_col.replace("mean", "p75") if value_col.endswith("_mean") else None
+    median_col = value_col.replace("mean", "median") if value_col.endswith("_mean") else None
+    if p25_col and p75_col and median_col and all(c in work.columns for c in [p25_col, p75_col, median_col]):
+        p25_by_method = dict(zip(work["method"].astype(str), work[p25_col].astype(float)))
+        p75_by_method = dict(zip(work["method"].astype(str), work[p75_col].astype(float)))
+        med_by_method = dict(zip(work["method"].astype(str), work[median_col].astype(float)))
+        for i, m in enumerate(methods):
+            p25 = p25_by_method.get(m, np.nan)
+            p75 = p75_by_method.get(m, np.nan)
+            med = med_by_method.get(m, np.nan)
+            if not (np.isfinite(p25) and np.isfinite(p75)):
+                continue
+            # Candle: vertical line from p25 to p75 at bar center
+            cx = bars[i].get_x() + bars[i].get_width() / 2.0
+            plt.vlines(cx, p25, p75, colors="k", linewidth=3)
+            # Median tick mark
+            if np.isfinite(med):
+                plt.hlines(med, cx - bars[i].get_width() * 0.2, cx + bars[i].get_width() * 0.2, colors="k", linewidth=2)
+
     # Annotate values on top of bars (consider error bar upper bound if present)
     upper_err = None
     if yerr is not None and isinstance(yerr, np.ndarray) and yerr.shape[0] == 2:

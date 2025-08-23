@@ -28,6 +28,13 @@ def method_summary(df: pd.DataFrame) -> pd.DataFrame:
             denom = float(g["total_cost"].mean())
             qpd = float(g["similarity"].mean()) / denom if denom and not np.isnan(denom) and denom != 0 else np.nan
 
+        # Percentiles helper
+        def _q(series: pd.Series, q: float) -> float:
+            try:
+                return float(series.quantile(q))
+            except Exception:
+                return float("nan")
+
         rows.append(
             {
                 "method": method,
@@ -35,10 +42,21 @@ def method_summary(df: pd.DataFrame) -> pd.DataFrame:
                 "exact_match_rate": round(em, 4),
                 "em_ci_low": round(em_lo, 4),
                 "em_ci_high": round(em_hi, 4),
+                # Similarity (mean/median + IQR)
                 "similarity_mean": round(float(g["similarity"].mean()), 4) if "similarity" in g else np.nan,
                 "similarity_median": round(float(g["similarity"].median()), 4) if "similarity" in g else np.nan,
+                "similarity_p25": round(_q(g["similarity"], 0.25), 4) if "similarity" in g else np.nan,
+                "similarity_p75": round(_q(g["similarity"], 0.75), 4) if "similarity" in g else np.nan,
+                # BLEU-3
                 "bleu3_mean": round(float(g.get("bleu3", pd.Series(dtype=float)).mean()), 4) if "bleu3" in g else np.nan,
+                "bleu3_median": round(float(g.get("bleu3", pd.Series(dtype=float)).median()), 4) if "bleu3" in g else np.nan,
+                "bleu3_p25": round(_q(g.get("bleu3", pd.Series(dtype=float)), 0.25), 4) if "bleu3" in g else np.nan,
+                "bleu3_p75": round(_q(g.get("bleu3", pd.Series(dtype=float)), 0.75), 4) if "bleu3" in g else np.nan,
+                # ROUGE-L
                 "rouge_l_mean": round(float(g.get("rouge_l", pd.Series(dtype=float)).mean()), 4) if "rouge_l" in g else np.nan,
+                "rouge_l_median": round(float(g.get("rouge_l", pd.Series(dtype=float)).median()), 4) if "rouge_l" in g else np.nan,
+                "rouge_l_p25": round(_q(g.get("rouge_l", pd.Series(dtype=float)), 0.25), 4) if "rouge_l" in g else np.nan,
+                "rouge_l_p75": round(_q(g.get("rouge_l", pd.Series(dtype=float)), 0.75), 4) if "rouge_l" in g else np.nan,
                 "avg_total_cost": round(float(g["total_cost"].mean()), 6) if "total_cost" in g else np.nan,
                 "avg_processing_time_s": round(float(g["processing_time_s"].mean()), 3) if "processing_time_s" in g else np.nan,
                 "cost_per_success": round(cost_per_success(g["total_cost"], g["exact_match"]), 6) if {"total_cost", "exact_match"}.issubset(g.columns) else np.nan,

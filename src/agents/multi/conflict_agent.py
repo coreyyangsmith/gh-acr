@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from ..llm_base import get_backend, count_tokens
+from ..utils import render_template, extract_text_content
 from ...utils.logger import logger
 
 __all__ = ["conflict_agent_node"]
@@ -17,10 +18,7 @@ _PLAN_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / 
 _PLAN_PROMPT_STR = _PLAN_PROMPT_PATH.read_text(encoding="utf-8")
 
 def _render_template(template: str, variables: Dict[str, str]) -> str:
-    rendered = template
-    for key, value in variables.items():
-        rendered = rendered.replace(f"{{{{ {key} }}}}", value)
-    return rendered
+    return render_template(template, variables)
 
 
 def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
@@ -56,7 +54,7 @@ def conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             },
         )
         result = llm.invoke(prompt_text)
-        content = result.content if hasattr(result, "content") else str(result)
+        content = extract_text_content(result)
         try:
             plan = json.loads(content)
         except Exception:

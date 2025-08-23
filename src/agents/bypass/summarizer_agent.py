@@ -19,7 +19,7 @@ __all__ = ["summarizer_agent_node"]
 # Prompt templates
 # ---------------------------------------------------------------------------
 
-_SUMMARY_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "multi" / "summarizer_prompt.txt"
+_SUMMARY_PROMPT_PATH = Path(__file__).resolve().parents[2] / "prompts" / "bypass" / "summarizer_prompt.txt"
 _SUMMARY_PROMPT_STR = _SUMMARY_PROMPT_PATH.read_text(encoding="utf-8")
 
 def _render_template(template: str, variables: Dict[str, str]) -> str:

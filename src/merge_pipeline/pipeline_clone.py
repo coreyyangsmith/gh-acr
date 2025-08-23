@@ -23,18 +23,23 @@ from git import Repo, GitCommandError
 from langgraph.graph import END, StateGraph
 from langgraph.pregel import Pregel
 
+from ..dataset.loader import load_benchmark
+
 # Agent resolver node
-from ..agents.agent import resolve_conflict_agent_node
 from ..agents.base_agent import (
     resolve_conflict_base_a_node,
     resolve_conflict_base_b_node,
 )
+from ..agents.agent import resolve_conflict_agent_node
 from ..agents.multi import resolve_conflict_multi_agent_node
 from ..agents.bypass import resolve_conflict_bypass_multi_agent_node
-from ..dataset.loader import DATA_PATH, load_benchmark
+from ..agents.dynamic import resolve_conflict_dynamic_agent_node
+
+# Evaluation
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
 from ..eval.bleu import per_file as bleu_per_file, overall as bleu_overall
 from ..eval.rouge_l import per_file as rouge_per_file, overall as rouge_overall
+from rapidfuzz.distance import Levenshtein as RFLevenshtein  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -186,9 +191,15 @@ def _read_files_at_commit(repo: Repo, commit_sha: str, paths: List[str]) -> File
 
 
 def _diff_ratio(a: str, b: str) -> float:
-    """Return a similarity ratio between *a* and *b* using difflib."""
+    """Return normalized Levenshtein similarity in [0,1] between *a* and *b*."""
 
-    return difflib.SequenceMatcher(None, a, b).ratio()
+    try:
+        return float(RFLevenshtein.normalized_similarity(a, b))
+    except Exception:
+        # Fallback to 1.0 if both empty, else 0.0 for degenerate cases
+        if not a and not b:
+            return 1.0
+        return 0.0
 
 
 # ---------------------------------------------------------------------------
@@ -383,8 +394,11 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "bypass":
         resolver_node_name = "resolve_bypass_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass_multi_agent_node)
+    elif eval_method == "dynamic":
+        resolver_node_name = "resolve_dynamic"
+        sg.add_node(resolver_node_name, resolve_conflict_dynamic_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', or 'bypass'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', or 'dynamic'.")
 
     sg.add_node("evaluate", evaluate_node)
 

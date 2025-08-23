@@ -30,6 +30,5 @@ BATCH_SIZE: int = _batch_size_val
 # Default dataset CSV to use for evaluation runs. Can be overridden via
 # environment variable DATASET_CSV. This centralizes selection of the input
 # benchmark file used across the application.
-_default_dataset_csv = Path(__file__).resolve().parents[2] / "data" / "small_test.csv"
-_dataset_csv_env = os.getenv("DATASET_CSV")
-DATA_PATH: Path = Path(_dataset_csv_env).expanduser() if _dataset_csv_env else _default_dataset_csv
+
+DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "single.csv"
