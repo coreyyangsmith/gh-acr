@@ -32,7 +32,11 @@ from ..agents.base_agent import (
 )
 from ..agents.multi import resolve_conflict_multi_agent_node
 from ..agents.bypass import resolve_conflict_bypass_multi_agent_node
+from ..agents.bypass2 import resolve_conflict_bypass2_multi_agent_node
+from ..agents.bypass3 import resolve_conflict_bypass3_multi_agent_node
 from ..agents.dynamic import resolve_conflict_dynamic_agent_node
+from ..agents.bypass_only import resolve_conflict_bypass_only_multi_agent_node
+from ..agents.bypass4 import resolve_conflict_bypass4_multi_agent_node
 from rapidfuzz.distance import Levenshtein as RFLevenshtein  # type: ignore
 
 # Local logger for this module
@@ -196,7 +200,8 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     eval_method
         "agent" (default) – use the `resolve_conflict_agent_node` (LLM-based).
         "base"  – use the simple parent-A stub.
-        "bypass_multi" – multi-agent with early global analyzer.
+        "bypass_multi" – multi-agent with early global analyzer (alias for "bypass").
+        "bypass2"/"bypass3" – alternative bypass agent variants.
     """
     sg = StateGraph(dict)
 
@@ -218,11 +223,23 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     elif eval_method in ("bypass", "bypass_multi"):
         resolver_node_name = "resolve_bypass_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass_multi_agent_node)
+    elif eval_method == "bypass2":
+        resolver_node_name = "resolve_bypass2_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass2_multi_agent_node)
+    elif eval_method == "bypass3":
+        resolver_node_name = "resolve_bypass3_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass3_multi_agent_node)
+    elif eval_method == "bypass4":
+        resolver_node_name = "resolve_bypass4_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass4_multi_agent_node)
     elif eval_method == "dynamic":
         resolver_node_name = "resolve_dynamic"
         sg.add_node(resolver_node_name, resolve_conflict_dynamic_agent_node)
+    elif eval_method == "bypass_only":
+        resolver_node_name = "resolve_bypass_only_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass_only_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', or 'dynamic'.")
+        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', 'bypass2', 'bypass3', 'bypass4', 'bypass_only', or 'dynamic'.")
 
     sg.add_node("evaluate", evaluate_node)
 
@@ -240,7 +257,7 @@ def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "dynamic" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "bypass2" | "bypass3" | "bypass4" | "bypass_only" | "dynamic" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

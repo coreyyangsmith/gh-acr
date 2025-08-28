@@ -89,20 +89,25 @@ def _run_startup_once() -> None:
                 try:
                     Langfuse(public_key=public_key, secret_key=secret_key, host=host)  # noqa: F841
                     logger.info("Langfuse initialized (host=%s)", host)
+                    os.environ["LANGFUSE_READY"] = "1"
                 except Exception as e:
                     logger.warning("Langfuse init failed, disabling tracing: %s", e)
                     os.environ["LANGFUSE_ENABLED"] = "0"
+                    os.environ["LANGFUSE_READY"] = "0"
             else:
                 logger.info("Langfuse host not reachable; disabling tracing for this run.")
                 os.environ["LANGFUSE_ENABLED"] = "0"
+                os.environ["LANGFUSE_READY"] = "0"
         else:
             logger.info("Langfuse keys not set; tracing disabled.")
             os.environ["LANGFUSE_ENABLED"] = "0"
+            os.environ["LANGFUSE_READY"] = "0"
     else:
         if Langfuse is None:
             logger.info("Langfuse not installed; tracing disabled.")
         else:
             logger.info("Langfuse explicitly disabled via LANGFUSE_ENABLED.")
+        os.environ["LANGFUSE_READY"] = "0"
 
     # Optionally trigger early tracer initialization so first LLM call is traced
     try:

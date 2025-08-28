@@ -50,17 +50,18 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     logger = setup_logger(__name__)
 
-    # Attach Langfuse callback to the LangGraph app so graph nodes are traced
+    # Attach Langfuse callback only if explicitly enabled AND startup marked it ready
     langfuse_handler = None
-    try:
-        from langfuse.langchain import CallbackHandler as LangfuseCallback  # type: ignore
-        langfuse_handler = LangfuseCallback()
+    if str(os.getenv("LANGFUSE_ENABLED", "0")).strip().lower() in ("1", "true", "yes", "on") and str(os.getenv("LANGFUSE_READY", "0")).strip() in ("1", "true", "TRUE"):
         try:
-            app = app.with_config({"callbacks": [langfuse_handler]})
+            from langfuse.langchain import CallbackHandler as LangfuseCallback  # type: ignore
+            langfuse_handler = LangfuseCallback()
+            try:
+                app = app.with_config({"callbacks": [langfuse_handler]})
+            except Exception:
+                pass
         except Exception:
-            pass
-    except Exception:
-        pass
+            langfuse_handler = None
 
     init_state = {
         "scenario_id": scenario_id,
@@ -71,14 +72,15 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     # Derive a session id for tracing (per conversation/scenario)
     session_id = f"{scenario_id}:{eval_method}"
-    try:
-        from langfuse.decorators import langfuse_context  # type: ignore
+    if langfuse_handler is not None:
         try:
-            langfuse_context.update_current_trace(session_id=session_id)  # type: ignore[attr-defined]
+            from langfuse.decorators import langfuse_context  # type: ignore
+            try:
+                langfuse_context.update_current_trace(session_id=session_id)  # type: ignore[attr-defined]
+            except Exception:
+                pass
         except Exception:
             pass
-    except Exception:
-        pass
 
     # ---------------------------------------------------------------------------
     # Optional pre-run preparation: clone repository (clone mode only)
@@ -179,28 +181,32 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
         # Multi-style outputs: include bypass to mirror multi folder structure
-        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "dynamic")
+        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "dynamic", "bypass_only")
         if is_multi_like:
             (llm_out_dir / "summaries").mkdir(exist_ok=True)
             (llm_out_dir / "reviews").mkdir(exist_ok=True)
             if eval_method == "dynamic":
                 (llm_out_dir / "prompts").mkdir(exist_ok=True)
-            # Persist the merge plan as text
-            try:
-                import json
-                plan_obj = result.get("conflict_plan", {})
-                (llm_out_dir / "plan.txt").write_text(
-                    json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
-                )
-                if eval_method == "dynamic":
-                    dyn_prompts = result.get("dynamic_prompts", {}) or {}
-                    (llm_out_dir / "prompts.json").write_text(
-                        json.dumps(dyn_prompts, indent=2, ensure_ascii=False), encoding="utf-8"
-                    )
-            except Exception:
-                pass
+            # Persist the merge plan as text (skip for bypass_only)
+            if eval_method != "bypass_only":
+                try:
+                    import json
+                    plan_obj = result.get("conflict_plan", {})
+                    # Only write if a plan exists (avoid empty file spam)
+                    if plan_obj:
+                        (llm_out_dir / "plan.txt").write_text(
+                            json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
+                        )
+                    if eval_method == "dynamic":
+                        dyn_prompts = result.get("dynamic_prompts", {}) or {}
+                        if dyn_prompts:
+                            (llm_out_dir / "prompts.json").write_text(
+                                json.dumps(dyn_prompts, indent=2, ensure_ascii=False), encoding="utf-8"
+                            )
+                except Exception:
+                    pass
             # Persist bypass analyzer output if present
-            if eval_method in ("bypass", "bypass_multi"):
+            if eval_method in ("bypass", "bypass_multi", "bypass_only"):
                 decision = str(result.get("bypass_decision", "")).strip()
                 analyzer_raw = str(result.get("bypass_analyzer_output", "")).strip()
                 try:
@@ -209,6 +215,12 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                     )
                 except Exception:
                     pass
+                # If bypass_only defaulted to 'A' after invalid outputs, persist a flag
+                if eval_method == "bypass_only" and result.get("bypass_only_defaulted"):
+                    try:
+                        (llm_out_dir / "bypass_only_defaulted.flag").write_text("defaulted_to_A", encoding="utf-8")
+                    except Exception:
+                        pass
 
     for file_path in files:
         file_slug = file_path.replace("/", "_").replace("\\", "_")
@@ -242,7 +254,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         # Duplicate LLM output into central per-method directory (simple/, multi/, bypass/)
         if eval_method != "base":
             # Agent-specific file base within its directory
-            is_bypass_like = eval_method in ("bypass", "bypass_multi")
+            is_bypass_like = eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4")
             base_name = f"bypass_{file_slug}" if is_bypass_like else file_slug
 
             (llm_out_dir / f"{base_name}.txt").write_text(
@@ -255,6 +267,22 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 (llm_out_dir / f"{base_name}.diff").write_text(diff_text, encoding="utf-8")
                 # Also provide a .txt variant to ensure all agent outputs are available as text files
                 (llm_out_dir / f"{base_name}_final_diff.txt").write_text(diff_text, encoding="utf-8")
+
+            # Provide clearly named final artifacts for bypass family
+            if eval_method in ("bypass", "bypass2", "bypass3", "bypass4"):
+                merged_out = result["resolved_contents"].get(file_path, "")
+                try:
+                    (llm_out_dir / f"{file_slug}__FINAL_MERGED.txt").write_text(merged_out, encoding="utf-8")
+                except Exception:
+                    pass
+                final_diff_map = result.get("final_diffs", {})
+                if final_diff_map:
+                    diff_text = final_diff_map.get(file_path, "")
+                    try:
+                        (llm_out_dir / f"{file_slug}__FINAL_DIFF.diff").write_text(diff_text, encoding="utf-8")
+                        (llm_out_dir / f"{file_slug}__FINAL_DIFF.txt").write_text(diff_text, encoding="utf-8")
+                    except Exception:
+                        pass
 
             # ---------------- multi/bypass extra outputs -------------------
             if eval_method in ("multi", "bypass", "bypass_multi", "dynamic"):
@@ -384,7 +412,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     # -------------------------------------------------------------------
     per_file_rows = []
     # Determine bypass method label for this scenario (A/B/MIX) or NA for others
-    if eval_method in ("bypass", "bypass_multi"):
+    if eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass_only"):
         bypass_label = str(result.get("bypass_method") or result.get("bypass_decision", "MIX")).upper()
         # Normalize to short form if full form present
         if bypass_label in ("ALL_A", "A"):

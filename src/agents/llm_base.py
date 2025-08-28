@@ -647,11 +647,10 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         # Fallback: rely on per-call callbacks by callers; we still return handler via config
         pass
 
-    # Attach Langfuse callback handler if enabled and available
-    if os.getenv("LANGFUSE_ENABLED", "1").strip().lower() in ("1", "true", "yes", "on"):
+    # Attach Langfuse callback handler only if startup marked it ready
+    if os.getenv("LANGFUSE_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on") and os.getenv("LANGFUSE_READY", "0").strip() in ("1", "true", "TRUE"):
         try:
             if LangfuseCallback is not None:
-                # The actual session id will be attached at call time via config.metadata
                 handler = LangfuseCallback()
                 raw_llm = raw_llm.with_config({"callbacks": [handler]})  # type: ignore[attr-defined]
         except Exception:
