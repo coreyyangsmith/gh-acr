@@ -37,6 +37,11 @@ from ..agents.bypass3 import resolve_conflict_bypass3_multi_agent_node
 from ..agents.dynamic import resolve_conflict_dynamic_agent_node
 from ..agents.bypass_only import resolve_conflict_bypass_only_multi_agent_node
 from ..agents.bypass4 import resolve_conflict_bypass4_multi_agent_node
+from ..agents.bypass5 import resolve_conflict_bypass5_multi_agent_node
+from ..agents.bypass6 import resolve_conflict_bypass6_multi_agent_node
+from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
+from ..agents.bypass8 import resolve_conflict_bypass8_multi_agent_node
+from ..agents.bypass_only2 import resolve_conflict_bypass_only2_multi_agent_node
 from rapidfuzz.distance import Levenshtein as RFLevenshtein  # type: ignore
 
 # Local logger for this module
@@ -54,7 +59,10 @@ FileContents = Dict[str, str]
 # Helper utilities
 # ---------------------------------------------------------------------------
 
-def _read_files_via_api(client: GithubClient, owner: str, repo: str, commit_sha: str, paths: List[str]) -> FileContents:
+
+def _read_files_via_api(
+    client: GithubClient, owner: str, repo: str, commit_sha: str, paths: List[str]
+) -> FileContents:
     """Return the UTF-8 contents of *paths* at *commit_sha* using the GitHub API."""
     out: FileContents = {}
     for path in paths:
@@ -78,6 +86,7 @@ def _diff_ratio(a: str, b: str) -> float:
 # ---------------------------------------------------------------------------
 # LangGraph nodes (stateless callables)
 # ---------------------------------------------------------------------------
+
 
 def load_sample_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Load the CSV row given a *scenario_id* in *state*."""
@@ -124,7 +133,9 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     merge_base_commit = client.get_merge_base(owner, repo_name, parents[0], parents[1])
     ancestor_sha = merge_base_commit["sha"]
 
-    ancestor_contents = _read_files_via_api(client, owner, repo_name, ancestor_sha, files)
+    ancestor_contents = _read_files_via_api(
+        client, owner, repo_name, ancestor_sha, files
+    )
     parent_a_contents = _read_files_via_api(client, owner, repo_name, parents[0], files)
     parent_b_contents = _read_files_via_api(client, owner, repo_name, parents[1], files)
 
@@ -136,13 +147,25 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
         p_b_lines = parent_b_contents.get(path, "").splitlines(keepends=True)
 
         diffs_a[path] = "".join(
-            difflib.unified_diff(a_lines, p_a_lines, fromfile=f"ancestor/{path}", tofile=f"parent_a/{path}")
+            difflib.unified_diff(
+                a_lines,
+                p_a_lines,
+                fromfile=f"ancestor/{path}",
+                tofile=f"parent_a/{path}",
+            )
         )
         diffs_b[path] = "".join(
-            difflib.unified_diff(a_lines, p_b_lines, fromfile=f"ancestor/{path}", tofile=f"parent_b/{path}")
+            difflib.unified_diff(
+                a_lines,
+                p_b_lines,
+                fromfile=f"ancestor/{path}",
+                tofile=f"parent_b/{path}",
+            )
         )
 
-    truth_contents = _read_files_via_api(client, owner, repo_name, scenario["merge_commit_hash"], files)
+    truth_contents = _read_files_via_api(
+        client, owner, repo_name, scenario["merge_commit_hash"], files
+    )
 
     return {
         **state,
@@ -167,7 +190,7 @@ def evaluate_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Compare stub *resolution* to the *ground truth* merge commit."""
     pred_contents: FileContents = state["resolved_contents"]
     truth_contents: FileContents = state["truth_contents"]
-    
+
     em_results = em_per_file(pred_contents, truth_contents)
 
     ratios = {
@@ -191,6 +214,7 @@ def evaluate_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
 # ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
+
 
 def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder function
     """Return a LangGraph *Pregel* application.
@@ -232,14 +256,31 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     elif eval_method == "bypass4":
         resolver_node_name = "resolve_bypass4_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass4_multi_agent_node)
+    elif eval_method == "bypass5":
+        resolver_node_name = "resolve_bypass5_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass5_multi_agent_node)
+    elif eval_method == "bypass6":
+        resolver_node_name = "resolve_bypass6_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass6_multi_agent_node)
+    elif eval_method == "bypass7":
+        resolver_node_name = "resolve_bypass7_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass7_multi_agent_node)
+    elif eval_method == "bypass8":
+        resolver_node_name = "resolve_bypass8_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass8_multi_agent_node)
     elif eval_method == "dynamic":
         resolver_node_name = "resolve_dynamic"
         sg.add_node(resolver_node_name, resolve_conflict_dynamic_agent_node)
     elif eval_method == "bypass_only":
         resolver_node_name = "resolve_bypass_only_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass_only_multi_agent_node)
+    elif eval_method == "bypass_only2":
+        resolver_node_name = "resolve_bypass_only2_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass_only2_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', 'bypass2', 'bypass3', 'bypass4', 'bypass_only', or 'dynamic'.")
+        raise ValueError(
+            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', 'bypass2', 'bypass3', 'bypass4', 'bypass5', 'bypass6', 'bypass7', 'bypass8', 'bypass_only', 'bypass_only2', or 'dynamic'."
+        )
 
     sg.add_node("evaluate", evaluate_node)
 
@@ -250,14 +291,14 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     sg.add_edge(resolver_node_name, "evaluate")
     sg.add_edge("evaluate", END)
 
-    return sg.compile() 
+    return sg.compile()
 
 
 def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "bypass2" | "bypass3" | "bypass4" | "bypass_only" | "dynamic" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "bypass2" | "bypass3" | "bypass4" | "bypass5" | "bypass6" | "bypass7" | "bypass8" | "bypass_only" | "bypass_only2" | "dynamic" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

@@ -1,0 +1,36 @@
+You are a senior merge reviewer. Based on the following file-by-file summaries of changes for Parent A and Parent B, make a decisive judgement on which side to keep.
+
+Your options are ONLY:
+
+A → choose Parent A for all files
+
+B → choose Parent B for all files
+
+⚠️ Important: Respond with a SINGLE CAPITAL LETTER only: "A" or "B". Do not include any other text.
+
+Consider:
+
+Overall risk
+
+Coherence across the full set of files
+
+Whether one parent is clearly superior
+
+Input:
+Summaries Parent A:
+{a_summary}
+
+Summaries Parent B:
+{b_summary}
+
+Diffs A:
+{a_diff}
+
+Diffs B:
+{b_diff}
+
+Output (STRICTLY one of these exact strings):
+A
+B
+
+Answer:

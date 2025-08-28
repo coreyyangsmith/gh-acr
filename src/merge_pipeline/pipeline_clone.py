@@ -38,6 +38,11 @@ from ..agents.bypass3 import resolve_conflict_bypass3_multi_agent_node
 from ..agents.dynamic import resolve_conflict_dynamic_agent_node
 from ..agents.bypass_only import resolve_conflict_bypass_only_multi_agent_node
 from ..agents.bypass4 import resolve_conflict_bypass4_multi_agent_node
+from ..agents.bypass5 import resolve_conflict_bypass5_multi_agent_node
+from ..agents.bypass6 import resolve_conflict_bypass6_multi_agent_node
+from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
+from ..agents.bypass8 import resolve_conflict_bypass8_multi_agent_node
+from ..agents.bypass_only2 import resolve_conflict_bypass_only2_multi_agent_node
 
 # Evaluation
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
@@ -58,6 +63,7 @@ FileContents = Dict[str, str]
 # ---------------------------------------------------------------------------
 # Helper utilities
 # ---------------------------------------------------------------------------
+
 
 def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
     """Clone *or* reuse the repository referenced by *sample*.
@@ -85,7 +91,9 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
     if not acquired:
         logger.warning("Timeout acquiring lock for %s; proceeding without lock", dest)
 
-    def _force_remove_dir(path: Path, *, retries: int = 20, delay_s: float = 0.25) -> bool:
+    def _force_remove_dir(
+        path: Path, *, retries: int = 20, delay_s: float = 0.25
+    ) -> bool:
         def _on_rm_error(func, p, exc_info):  # make read-only writable and retry
             try:
                 os.chmod(p, stat.S_IWRITE)
@@ -120,12 +128,20 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                 if origin_url and origin_url.endswith(f"{sample['name']}.git"):
                     logger.info("Reusing existing clone at %s", dest)
                     return repo
-                logger.warning("Existing directory at %s has unexpected origin; deleting and recloning", dest)
+                logger.warning(
+                    "Existing directory at %s has unexpected origin; deleting and recloning",
+                    dest,
+                )
             except Exception:
-                logger.warning("Existing directory at %s is not a valid git repo; deleting and recloning", dest)
+                logger.warning(
+                    "Existing directory at %s is not a valid git repo; deleting and recloning",
+                    dest,
+                )
             removed = _force_remove_dir(dest)
             if not removed and dest.exists():
-                logger.error("Failed to remove invalid repo directory after retries: %s", dest)
+                logger.error(
+                    "Failed to remove invalid repo directory after retries: %s", dest
+                )
                 raise RuntimeError(f"Cannot remove stale repo directory: {dest}")
 
         logger.info("Cloning %s → %s", repo_url, dest)
@@ -136,7 +152,9 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
             msg = str(exc)
             # Windows path length issues – retry with longpaths enabled
             if "Filename too long" in msg:
-                logger.warning("Encountered 'Filename too long'. Retrying with core.longpaths=true …")
+                logger.warning(
+                    "Encountered 'Filename too long'. Retrying with core.longpaths=true …"
+                )
                 env = os.environ.copy()
                 env["GIT_CONFIG_PARAMETERS"] = "core.longpaths=true"
                 return Repo.clone_from(repo_url, dest, env=env)
@@ -144,13 +162,21 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
             if "already exists and is not an empty directory" in msg:
                 try:
                     repo = Repo(dest)
-                    logger.info("Detected concurrent clone completion; reusing %s", dest)
+                    logger.info(
+                        "Detected concurrent clone completion; reusing %s", dest
+                    )
                     return repo
                 except Exception:
-                    logger.warning("Destination exists but not a valid repo; removing and retrying: %s", dest)
+                    logger.warning(
+                        "Destination exists but not a valid repo; removing and retrying: %s",
+                        dest,
+                    )
                     removed = _force_remove_dir(dest)
                     if not removed and dest.exists():
-                        logger.error("Failed to remove directory before retry after multiple attempts: %s", dest)
+                        logger.error(
+                            "Failed to remove directory before retry after multiple attempts: %s",
+                            dest,
+                        )
                         raise
                     # Second attempt wrapped to re-handle race conditions
                     try:
@@ -160,10 +186,16 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                         if "already exists and is not an empty directory" in msg2:
                             try:
                                 repo = Repo(dest)
-                                logger.info("Concurrent clone finished during retry; reusing %s", dest)
+                                logger.info(
+                                    "Concurrent clone finished during retry; reusing %s",
+                                    dest,
+                                )
                                 return repo
                             except Exception:
-                                logger.error("Clone retry failed and repo still invalid at %s", dest)
+                                logger.error(
+                                    "Clone retry failed and repo still invalid at %s",
+                                    dest,
+                                )
                         raise
             raise
     finally:
@@ -175,7 +207,9 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
             logger.warning("Failed to remove repo lock file: %s", lock_path)
 
 
-def _read_files_at_commit(repo: Repo, commit_sha: str, paths: List[str]) -> FileContents:
+def _read_files_at_commit(
+    repo: Repo, commit_sha: str, paths: List[str]
+) -> FileContents:
     """Return the UTF-8 contents of *paths* at *commit_sha*.
 
     Any binary files (decode error) are silently skipped.
@@ -209,6 +243,7 @@ def _diff_ratio(a: str, b: str) -> float:
 # ---------------------------------------------------------------------------
 # LangGraph nodes (stateless callables)
 # ---------------------------------------------------------------------------
+
 
 def load_sample_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Load the CSV row given a *scenario_id* in *state*."""
@@ -272,7 +307,9 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     try:
         merge_base_commit = repo.merge_base(parents[0], parents[1])[0]
     except Exception as exc:
-        logger.exception("Failed to compute merge-base for %s vs %s", parents[0], parents[1])
+        logger.exception(
+            "Failed to compute merge-base for %s vs %s", parents[0], parents[1]
+        )
         raise
     ancestor_contents = _read_files_at_commit(repo, merge_base_commit.hexsha, files)
     parent_a_contents = _read_files_at_commit(repo, parents[0], files)
@@ -288,12 +325,18 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
 
         diffs_a[path] = "".join(
             difflib.unified_diff(
-                a_lines, p_a_lines, fromfile=f"ancestor/{path}", tofile=f"parent_a/{path}"
+                a_lines,
+                p_a_lines,
+                fromfile=f"ancestor/{path}",
+                tofile=f"parent_a/{path}",
             )
         )
         diffs_b[path] = "".join(
             difflib.unified_diff(
-                a_lines, p_b_lines, fromfile=f"ancestor/{path}", tofile=f"parent_b/{path}"
+                a_lines,
+                p_b_lines,
+                fromfile=f"ancestor/{path}",
+                tofile=f"parent_b/{path}",
             )
         )
 
@@ -346,7 +389,10 @@ def evaluate_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             )
         )
 
-    ratios = {path: _diff_ratio(pred_contents.get(path, ""), truth) for path, truth in truth_contents.items()}
+    ratios = {
+        path: _diff_ratio(pred_contents.get(path, ""), truth)
+        for path, truth in truth_contents.items()
+    }
 
     # Store results back into state for downstream consumers (runner.py)
     state["truth_contents"] = truth_contents
@@ -367,6 +413,7 @@ def evaluate_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
 # ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
+
 
 def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     """Return a LangGraph *Pregel* application.
@@ -408,14 +455,31 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "bypass4":
         resolver_node_name = "resolve_bypass4_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass4_multi_agent_node)
+    elif eval_method == "bypass5":
+        resolver_node_name = "resolve_bypass5_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass5_multi_agent_node)
+    elif eval_method == "bypass6":
+        resolver_node_name = "resolve_bypass6_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass6_multi_agent_node)
+    elif eval_method == "bypass7":
+        resolver_node_name = "resolve_bypass7_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass7_multi_agent_node)
+    elif eval_method == "bypass8":
+        resolver_node_name = "resolve_bypass8_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass8_multi_agent_node)
     elif eval_method == "dynamic":
         resolver_node_name = "resolve_dynamic"
         sg.add_node(resolver_node_name, resolve_conflict_dynamic_agent_node)
     elif eval_method == "bypass_only":
         resolver_node_name = "resolve_bypass_only_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass_only_multi_agent_node)
+    elif eval_method == "bypass_only2":
+        resolver_node_name = "resolve_bypass_only2_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_bypass_only2_multi_agent_node)
     else:
-        raise ValueError(f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', 'bypass2', 'bypass3', 'bypass4', 'bypass_only', or 'dynamic'.")
+        raise ValueError(
+            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', 'bypass2', 'bypass3', 'bypass4', 'bypass5', 'bypass6', 'bypass7', 'bypass8', 'bypass_only', 'bypass_only2', or 'dynamic'."
+        )
 
     sg.add_node("evaluate", evaluate_node)
 
@@ -426,14 +490,14 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     sg.add_edge(resolver_node_name, "evaluate")
     sg.add_edge("evaluate", END)
 
-    return sg.compile() 
+    return sg.compile()
 
 
 def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "bypass2" | "bypass3" | "bypass4" | "bypass_only" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "bypass2" | "bypass3" | "bypass4" | "bypass5" | "bypass6" | "bypass7" | "bypass8" | "bypass_only" | "bypass_only2" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")
