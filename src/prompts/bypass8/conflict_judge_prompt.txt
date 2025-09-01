@@ -20,6 +20,9 @@ Tie-breakers (in order):
 Passing tests/build > fewer files/lines changed > no new dependencies > preserves public API > better docs/comments.
 
 Inputs:
+Original File:
+{original_code}
+
 Summaries Parent A:
 {a_summary}
 

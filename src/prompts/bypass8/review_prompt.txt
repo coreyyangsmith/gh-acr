@@ -38,13 +38,5 @@ The root is a **JSON object** containing exactly these keys:
 
 ---
 
-### Example (valid JSON)
-{
-  "outcome": "REJECT",
-  "rationale": "The added enum constant is missing a descriptive comment, and its placement disrupts the established ordering of constants in Parameter.java."
-}
-
----
-
 generated_code:
 {{ generated_code }}

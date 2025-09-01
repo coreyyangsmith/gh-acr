@@ -41,27 +41,6 @@ The root is a **JSON object** containing exactly these two keys:
 
 ---
 
-### Example (valid JSON)
-{
-  "changes": [
-    {
-      "type": "addition",
-      "location": "Parameter enum",
-      "snippet": "\"\"\"",
-      "description": "Added new enum constant UPDATE_CHECK_DISABLED with code \"update-check-disabled\" to disable update checks (default: false)."
-    },
-    {
-      "type": "addition",
-      "location": "Parameter enum",
-      "snippet": "\"\"\"",
-      "description": "Added new enum constant APPLICATION_NAME with code \"application-name\" to specify explicit application name."
-    }
-  ],
-  "likely_intent": "Introduce configuration options to disable update checks and to specify an explicit application name, enhancing configurability and control."
-}
-
----
-
 original_code:
 {{ original_code }}
 

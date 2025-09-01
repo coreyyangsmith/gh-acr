@@ -95,6 +95,12 @@ python -m src.cli.run_all --methods dynamic --max-scenarios 50 --mode clone
 python -m src.cli.run_all --n-easy 20 --n-medium 20 --n-hard 10 --mode clone --model-name openai/gpt-4o-mini
 
 python -m src.cli.run_all --mode clone --methods agent bypass bypass2 bypass3 bypass_only
+
+python -m src.cli.run_all --mode clone --methods agent bypass bypass_only bypass2 bypass3
+python -m src.cli.run_all --mode clone --methods agent bypass_only2 bypass5 bypass6 bypass7 bypass8
+
+python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7
+
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.2-1B
 
 ```

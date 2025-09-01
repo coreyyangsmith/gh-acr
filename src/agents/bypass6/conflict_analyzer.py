@@ -45,6 +45,10 @@ def conflict_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D4
     summaries: Dict[str, Dict[str, str]] = state.get("summaries", {}) or {}
     diffs_a: Dict[str, str] = state.get("diffs_a", {}) or {}
     diffs_b: Dict[str, str] = state.get("diffs_b", {}) or {}
+    ancestor_contents: Dict[str, str] = state.get("ancestor_contents", {}) or {}
+    original_code = "\n\n".join(
+        f"{p}: {ancestor_contents.get(p, '')}" for p in summaries.keys()
+    )    
 
     model_name = state.get("model_name") or os.getenv(
         "OPENAI_MODEL", "openai/gpt-4o-mini"
@@ -69,7 +73,7 @@ def conflict_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D4
         raw_output = f"Heuristic decision based on summary lengths (A={len_a}, B={len_b}): {decision}"
     else:
         prompt_text = _PROMPT_STR.format(
-            a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff
+            a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff, original_code=original_code
         )
         result = llm.invoke(prompt_text)
         content = result.content if hasattr(result, "content") else str(result)

@@ -47,22 +47,6 @@ The root is a **JSON object** containing exactly these three keys:
 
 ---
 
-### Example (valid JSON)
-{
-  "strategy": "Merge the two sets of changes by adding all new enum constants from both sides, ensuring minimal and backward-compatible modifications. When both sides modify the same symbol, resolve by including both additions with clear comments. Preserve existing code structure and formatting to ensure backward compatibility.",
-  "steps": [
-    "Identify existing enum constants in Parameter.java.",
-    "Add the new constant JMX_EXPOSE_ENABLED from a_diff after LOGGER_CLASS, with accompanying comment.",
-    "Add the new constants UPDATE_CHECK_DISABLED and APPLICATION_NAME from b_diff after existing constants, with appropriate comments.",
-    "Ensure the order of constants is logical and consistent, placing new constants after existing ones.",
-    "Verify that all added constants have unique names and string codes, and that comments clarify their purpose.",
-    "Maintain existing code structure and formatting to ensure backward compatibility."
-  ],
-  "resolution": "Include all new enum constants: LOGGER_CLASS, JMX_EXPOSE_ENABLED, UPDATE_CHECK_DISABLED, and APPLICATION_NAME, with comments. Do not modify existing constants beyond addition."
-}
-
----
-
 a_diff:
 {{ a_diff }}
 

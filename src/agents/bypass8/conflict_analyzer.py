@@ -42,6 +42,10 @@ def conflict_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D4
     b_sum = "\n\n".join(f"{p}: {s.get('summary_b', '')}" for p, s in summaries.items())
     a_diff = "\n\n".join(f"{p}: {diffs_a.get(p, '')}" for p in summaries.keys())
     b_diff = "\n\n".join(f"{p}: {diffs_b.get(p, '')}" for p in summaries.keys())
+    ancestor_contents: Dict[str, str] = state.get("ancestor_contents", {}) or {}
+    original_code = "\n\n".join(
+        f"{p}: {ancestor_contents.get(p, '')}" for p in summaries.keys()
+    )
 
     if llm is None:
         logger.warning("No LLM backend available for analyzer; using heuristic.")
@@ -54,7 +58,11 @@ def conflict_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D4
         raw_output = f"Heuristic decision based on summary lengths (A={len_a}, B={len_b}): {decision}"
     else:
         prompt_text = _PROMPT_STR.format(
-            a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff
+            a_summary=a_sum,
+            b_summary=b_sum,
+            a_diff=a_diff,
+            b_diff=b_diff,
+            original_code=original_code,
         )
         result = llm.invoke(prompt_text)
         content = result.content if hasattr(result, "content") else str(result)

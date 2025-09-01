@@ -2,7 +2,7 @@ import pandas as pd
 
 def main():
     # Define file paths
-    input_file = "data/2025_08_27_results_all.csv"  # Update this path as needed
+    input_file = "data/2025_08_28_results_all.csv"  # Update this path as needed
     output_file = "data/output_filtered.csv"  # Update this path as needed
     
     # Read the CSV file

@@ -412,7 +412,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     # -------------------------------------------------------------------
     per_file_rows = []
     # Determine bypass method label for this scenario (A/B/MIX) or NA for others
-    if eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass_only"):
+    if eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass_only", "bypass_only2", "bypass5", "bypass6", "bypass7", "bypass8"):
         bypass_label = str(result.get("bypass_method") or result.get("bypass_decision", "MIX")).upper()
         # Normalize to short form if full form present
         if bypass_label in ("ALL_A", "A"):

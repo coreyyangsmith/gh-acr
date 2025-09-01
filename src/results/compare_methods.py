@@ -377,6 +377,36 @@ def _save_box_summary_table(
     out_df.to_csv(save_csv_path, index=False)
 
 
+def _save_markdown_table(
+    df: pd.DataFrame,
+    *,
+    save_md_path: Path,
+) -> None:
+    """Write a GitHub-flavored Markdown table for the provided DataFrame.
+
+    Falls back to simple string formatting to avoid optional deps.
+    """
+    if df is None or df.empty:
+        return
+
+    cols = [str(c) for c in df.columns]
+
+    def _fmt_cell(v: object) -> str:
+        if pd.isna(v):
+            return ""
+        # Values in summary are already rounded; keep string form
+        return str(v)
+
+    lines: list[str] = []
+    lines.append("| " + " | ".join(cols) + " |")
+    lines.append("| " + " | ".join(["---"] * len(cols)) + " |")
+    for _, row in df.iterrows():
+        values = [_fmt_cell(row[c]) for c in df.columns]
+        lines.append("| " + " | ".join(values) + " |")
+
+    save_md_path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def main(flags: Flags) -> None:
     flags.output_dir.mkdir(parents=True, exist_ok=True)
     data = load_results(flags.results_csv)
@@ -386,6 +416,9 @@ def main(flags: Flags) -> None:
 
     summary = method_summary(df)
     palette_map = _build_palette_map(DEFAULT_METHOD_ORDER)
+
+    # Save consolidated summary as Markdown for easy sharing
+    _save_markdown_table(summary, save_md_path=flags.output_dir / "table_all.md")
 
     # 1) Exact Match Rate (bar, not boxplot)
     if "exact_match_rate" in summary.columns:
