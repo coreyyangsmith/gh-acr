@@ -471,10 +471,18 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         # Respect per-request output token limits using max_tokens (Chat Completions)
         model_cfg = MODEL_COSTS.get(model_name, {}) or MODEL_COSTS.get(f"openai/{backend_name}", {})
         max_out = int(model_cfg.get("output_limit", 0))
+        # Some GPT-5 variants do not accept a temperature parameter; omit when backend_name startswith "gpt-5"
+        is_gpt5 = backend_name.startswith("gpt-5")
         if max_out > 0:
-            raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0, max_tokens=max_out)  # type: ignore[call-arg]
+            if is_gpt5:
+                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, max_tokens=max_out)  # type: ignore[call-arg]
+            else:
+                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0, max_tokens=max_out)  # type: ignore[call-arg]
         else:
-            raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
+            if is_gpt5:
+                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name)  # type: ignore[call-arg]
+            else:
+                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
         enc = _tiktoken_encoder(backend_name)
     # Local transformers model ----------------------------------------------
     elif model_name.startswith("local:"):

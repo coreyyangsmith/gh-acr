@@ -1,0 +1,5 @@
+| method | n | exact_match_rate | em_ci_low | em_ci_high | similarity_mean | similarity_median | similarity_p25 | similarity_p75 | bleu3_mean | bleu3_median | bleu3_p25 | bleu3_p75 | rouge_l_mean | rouge_l_median | rouge_l_p25 | rouge_l_p75 | avg_total_cost | avg_processing_time_s | cost_per_success | time_per_success_s | quality_per_dollar |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| base_a | 50 | 0.18 | 0.08 | 0.3 | 0.9068 | 0.9805 | 0.8984 | 0.9993 | 0.9221 | 0.9758 | 0.8995 | 0.9995 | 0.9384 | 0.9845 | 0.9381 | 0.9998 | 0.0 | 49.037 | 0.0 | 272.427 |  |
+| base_b | 50 | 0.12 | 0.04 | 0.22 | 0.8673 | 0.9445 | 0.8689 | 0.9923 | 0.8772 | 0.9348 | 0.8576 | 0.9909 | 0.9071 | 0.9712 | 0.9128 | 0.9948 | 0.0 | 38.577 | 0.0 | 321.474 |  |
+| prep | 50 | 0.0 | 0.0 | 0.0 |  |  |  |  |  |  |  |  |  |  |  |  | 0.0 | 18.572 |  |  |  |

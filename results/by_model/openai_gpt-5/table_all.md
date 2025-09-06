@@ -1,0 +1,4 @@
+| method | n | exact_match_rate | em_ci_low | em_ci_high | similarity_mean | similarity_median | similarity_p25 | similarity_p75 | bleu3_mean | bleu3_median | bleu3_p25 | bleu3_p75 | rouge_l_mean | rouge_l_median | rouge_l_p25 | rouge_l_p75 | avg_total_cost | avg_processing_time_s | cost_per_success | time_per_success_s | quality_per_dollar |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| agent | 49 | 0.2653 | 0.1429 | 0.3878 | 0.9195 | 0.9949 | 0.963 | 0.9998 | 0.9335 | 0.9967 | 0.9813 | 1.0 | 0.9441 | 0.9978 | 0.9822 | 1.0 | 0.063204 | 143.312 | 0.238232 | 540.177 | 14.548529 |
+| bypass7 | 50 | 0.14 | 0.06 | 0.24 | 0.8698 | 0.9462 | 0.8299 | 0.9892 | 0.8806 | 0.9399 | 0.8354 | 0.9905 | 0.9084 | 0.9722 | 0.9037 | 0.9947 | 0.039419 | 142.013 | 0.281562 | 1014.38 | 22.066079 |

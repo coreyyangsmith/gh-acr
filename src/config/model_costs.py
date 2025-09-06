@@ -18,6 +18,33 @@ MODEL_COSTS = {
         "output_cost_per_1k": 0.0006,
         "tokenizer": "o200k_base"
     },
+    "openai/gpt-5-nano": {
+        "input_limit": 400_000,
+        "output_limit": 128_000,
+        "sliding_window": False,
+        "total_limit": 528_000,
+        "input_cost_per_1k": 0.00005,
+        "output_cost_per_1k": 0.00040,
+        "tokenizer": "o200k_base"
+    },
+    "openai/gpt-5-mini": {
+        "input_limit": 400_000,
+        "output_limit": 128_000,
+        "sliding_window": False,
+        "total_limit": 528_000,
+        "input_cost_per_1k": 0.00025,
+        "output_cost_per_1k": 0.002,
+        "tokenizer": "o200k_base"
+    },
+    "openai/gpt-5": {
+        "input_limit": 400_000,
+        "output_limit": 128_000,
+        "sliding_window": False,
+        "total_limit": 528_000,
+        "input_cost_per_1k": 0.00125,
+        "output_cost_per_1k": 0.010,
+        "tokenizer": "o200k_base"
+    },            
     "local:distilbert/distilgpt2": {
         "input_limit": 512,
         "output_limit": 512,

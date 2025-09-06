@@ -77,7 +77,11 @@ def _get_runnable(model_name: str):  # noqa: D401
         _RUNNABLE_CACHE[model_name] = (None, None)  # type: ignore
         return _RUNNABLE_CACHE[model_name]
 
-    llm = ChatOpenAI(api_key=_OPENAI_API_KEY, model=model_name, temperature=0)  # type: ignore[call-arg]
+    # Omit temperature for GPT-5 variants which do not support it
+    if model_name.split("/", 1)[-1].startswith("gpt-5"):
+        llm = ChatOpenAI(api_key=_OPENAI_API_KEY, model=model_name)  # type: ignore[call-arg]
+    else:
+        llm = ChatOpenAI(api_key=_OPENAI_API_KEY, model=model_name, temperature=0)  # type: ignore[call-arg]
     runnable = llm
     encoder = _get_encoder(model_name)
     _RUNNABLE_CACHE[model_name] = (encoder, runnable)

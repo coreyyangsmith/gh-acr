@@ -70,16 +70,25 @@ def main(flags: Flags) -> None:
     if flags.instance_col not in df.columns:
         raise ValueError(f"Missing instance column '{flags.instance_col}' in results")
 
+    # Ensure token columns exist and are numeric
+    for c in ["tokens_in", "tokens_out"]:
+        if c not in df.columns:
+            df[c] = 0.0
+        else:
+            df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
+
     # Aggregate per instance
     group_cols = [flags.instance_col]
     per_instance = (
-        df.groupby(group_cols)[["cost_in", "cost_out", "total_cost"]]
+        df.groupby(group_cols)[["cost_in", "cost_out", "total_cost", "tokens_in", "tokens_out"]]
         .sum()
         .reset_index()
         .rename(columns={
             "cost_in": "cost_in_sum",
             "cost_out": "cost_out_sum",
             "total_cost": "total_cost_sum",
+            "tokens_in": "tokens_in_sum",
+            "tokens_out": "tokens_out_sum",
         })
     )
 
@@ -92,6 +101,8 @@ def main(flags: Flags) -> None:
                 "cost_in_total": float(df["cost_in"].sum()),
                 "cost_out_total": float(df["cost_out"].sum()),
                 "total_cost_total": float(df["total_cost"].sum()),
+                "tokens_in_total": float(df["tokens_in"].sum()),
+                "tokens_out_total": float(df["tokens_out"].sum()),
             }
         ]
     )
@@ -114,6 +125,8 @@ def main(flags: Flags) -> None:
             "cost_in_total": float(totals.loc[0, "cost_in_total"]),
             "cost_out_total": float(totals.loc[0, "cost_out_total"]),
             "total_cost_total": float(totals.loc[0, "total_cost_total"]),
+            "tokens_in_total": float(totals.loc[0, "tokens_in_total"]),
+            "tokens_out_total": float(totals.loc[0, "tokens_out_total"]),
         }
     )
 

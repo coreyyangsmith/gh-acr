@@ -23,7 +23,8 @@ python -m src.dataset.process_ggb --input-csv 2025-08-11-ggb --output-csv git_go
 
 Takes in data/git_good_bench.csv and outputs `git_good_bench_merge_commits.csv`
 
-
+Remove duplicates
+python -m src.results.remove_duplicates --input-csv data/git_good_bench_merge_commits.csv
 
 # Subset
 If you're processing a subset of the entire dataset, we can split by difficulty or a random seed % of the overall dataset:
@@ -99,7 +100,9 @@ python -m src.cli.run_all --mode clone --methods agent bypass bypass2 bypass3 by
 python -m src.cli.run_all --mode clone --methods agent bypass bypass_only bypass2 bypass3
 python -m src.cli.run_all --mode clone --methods agent bypass_only2 bypass5 bypass6 bypass7 bypass8
 
-python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7
+python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5-nano
+python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5-mini
+python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
 
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.2-1B
 
@@ -110,6 +113,10 @@ python -m src.cli.run_all --mode clone --methods agent multi --model-name local:
 python -m src.results.main
 python -m src.results.compare_methods
 ```
+
+
+Processing Outputs (find missing)
+python -m src.results.find_missing_results --results-csv data/2025_08_29_results_all.csv --results-per-instance 10 --remove-prep
 
 
 # Utils
