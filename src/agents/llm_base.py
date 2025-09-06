@@ -617,26 +617,162 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         tok.truncation_side = os.getenv("LOCAL_TRUNCATION_SIDE", "left")
         tok.model_max_length = npos - reserve_new
 
-        hf_pipe = pipeline(
-            "text-generation",
-            model=model,
-            tokenizer=tok,
-            truncation=True,
-            max_new_tokens=reserve_new,
-            do_sample=True,
-            temperature=0.7,
-            top_p=0.9,
-        )
-        logger.info(
-            "[local] Initialized HuggingFacePipeline for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, truncation=%s)",
-            requested,
-            npos,
-            tok.model_max_length,
-            reserve_new,
-            True,
-        )
-        raw_llm = HuggingFacePipeline(pipeline=hf_pipe)  # type: ignore[call-arg]
-        enc = tok
+        # If this is a Qwen3 model, wrap with chat template and recommended settings
+        is_qwen3 = "qwen3" in requested.lower() or "/qwen3-" in requested.lower()
+        if is_qwen3:
+            # Create a lightweight wrapper that formats a single-string prompt
+            # into Qwen3's chat template and applies recommended decoding params.
+            class _FakeGen:
+                def __init__(self, text: str):
+                    self.text = text
+
+            class _FakeResponse:
+                def __init__(self, text: str):
+                    self.generations = [[_FakeGen(text)]]
+
+            class Qwen3ChatWrapper:
+                def __init__(self, model_obj, tokenizer_obj):
+                    self._model = model_obj
+                    self._tok = tokenizer_obj
+                    self._callbacks: list[Any] = []
+                    # Thinking switch (default on per Qwen3 best-practice)
+                    self._enable_thinking = os.getenv("QWEN3_ENABLE_THINKING", "1").strip().lower() in ("1", "true", "yes", "on")
+                    # Sampling presets
+                    if self._enable_thinking:
+                        self._temperature = float(os.getenv("QWEN3_TEMPERATURE", "0.6"))
+                        self._top_p = float(os.getenv("QWEN3_TOP_P", "0.95"))
+                        self._top_k = int(os.getenv("QWEN3_TOP_K", "20"))
+                    else:
+                        self._temperature = float(os.getenv("QWEN3_TEMPERATURE", "0.7"))
+                        self._top_p = float(os.getenv("QWEN3_TOP_P", "0.8"))
+                        self._top_k = int(os.getenv("QWEN3_TOP_K", "20"))
+                    # Default to a larger output window for Qwen3
+                    default_qwen_max = max(reserve_new, 2048)
+                    self._max_new = int(os.getenv("QWEN3_MAX_NEW_TOKENS", str(default_qwen_max)))
+                    # Optional YaRN scaling via tokenizer config override (Transformers >= 4.51)
+                    try:
+                        if os.getenv("QWEN3_ENABLE_YARN", "0").strip().lower() in ("1", "true", "yes", "on"):
+                            factor = float(os.getenv("QWEN3_YARN_FACTOR", "4.0"))
+                            orig = int(os.getenv("QWEN3_YARN_ORIG_CTX", str(getattr(self._model.config, "max_position_embeddings", 32768))))
+                            # Some tokenizers support dynamic json override; best-effort here
+                            if hasattr(self._model, "config") and hasattr(self._model.config, "rope_scaling"):
+                                self._model.config.rope_scaling = {
+                                    "rope_type": "yarn",
+                                    "factor": float(factor),
+                                    "original_max_position_embeddings": int(orig),
+                                }
+                    except Exception:
+                        pass
+
+                def with_config(self, config: dict[str, Any] | None = None):  # type: ignore[override]
+                    try:
+                        if config and "callbacks" in config:
+                            self._callbacks = list(config.get("callbacks") or [])
+                    except Exception:
+                        pass
+                    return self
+
+                def invoke(self, prompt_text: str, config: RunnableConfig | None = None):  # type: ignore[override]
+                    try:
+                        # Resolve callbacks from config as well
+                        callbacks = list(self._callbacks)
+                        try:
+                            if config and isinstance(config, dict):
+                                callbacks.extend(list(config.get("callbacks") or []))  # type: ignore[arg-type]
+                        except Exception:
+                            pass
+
+                        # Prepare chat-formatted input
+                        messages = [{"role": "user", "content": str(prompt_text)}]
+                        chat_text = self._tok.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=True,
+                            enable_thinking=bool(self._enable_thinking),
+                        )
+
+                        # Notify start
+                        run_id = id(self) ^ hash(chat_text)
+                        for cb in callbacks:
+                            try:
+                                cb.on_llm_start({"name": "qwen3-local"}, [chat_text], run_id=run_id)
+                            except Exception:
+                                pass
+
+                        # Generation
+                        pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
+                        generator = pipeline(
+                            "text-generation",
+                            model=self._model,
+                            tokenizer=self._tok,
+                            truncation=True,
+                        )
+                        outputs = generator(
+                            chat_text,
+                            do_sample=True,
+                            temperature=self._temperature,
+                            top_p=self._top_p,
+                            top_k=self._top_k,
+                            max_new_tokens=self._max_new,
+                            eos_token_id=self._tok.eos_token_id,
+                            pad_token_id=pad_id,
+                            num_return_sequences=1,
+                        )
+                        full_text = outputs[0].get("generated_text", "")
+                        # Strip prompt prefix if present
+                        if full_text.startswith(chat_text):
+                            answer_text = full_text[len(chat_text):].lstrip()
+                        else:
+                            answer_text = full_text
+
+                        # Notify end (best-effort for token accounting)
+                        fake_resp = _FakeResponse(answer_text)
+                        for cb in callbacks:
+                            try:
+                                cb.on_llm_end(fake_resp, run_id=run_id)
+                            except Exception:
+                                pass
+
+                        return AIMessage(content=answer_text)
+                    except Exception as e:  # pragma: no cover
+                        for cb in self._callbacks:
+                            try:
+                                cb.on_llm_error(e, run_id=id(self))
+                            except Exception:
+                                pass
+                        raise
+
+            raw_llm = Qwen3ChatWrapper(model, tok)
+            enc = tok
+            logger.info(
+                "[local] Initialized Qwen3 chat wrapper for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, thinking=%s)",
+                requested,
+                npos,
+                tok.model_max_length,
+                reserve_new,
+                True,
+            )
+        else:
+            hf_pipe = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tok,
+                truncation=True,
+                max_new_tokens=reserve_new,
+                do_sample=True,
+                temperature=0.7,
+                top_p=0.9,
+            )
+            logger.info(
+                "[local] Initialized HuggingFacePipeline for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, truncation=%s)",
+                requested,
+                npos,
+                tok.model_max_length,
+                reserve_new,
+                True,
+            )
+            raw_llm = HuggingFacePipeline(pipeline=hf_pipe)  # type: ignore[call-arg]
+            enc = tok
     
     else:
         logger.warning("Unknown model_name scheme %s", model_name)

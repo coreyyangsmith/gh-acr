@@ -106,3 +106,5 @@ zstandard==0.23.0
 rouge-score==0.1.2
 sacrebleu==2.4.3
 rapidfuzz==3.10.1
+transformers>=4.51.0
+accelerate>=1.0.1
