@@ -64,12 +64,39 @@ MODEL_COSTS = {
         "tokenizer": "llama"
     },
     "local:meta-llama/Llama-3.1-8B": {
-    "input_limit": 8192,
-    "output_limit": 8192,
-    "sliding_window": False,
-    "total_limit": 8192,
-    "input_cost_per_1k": 0,
-    "output_cost_per_1k": 0,
-    "tokenizer": "llama"
+        "input_limit": 128_000,
+        "output_limit": 2048,
+        "sliding_window": False,
+        "total_limit": 128_000,
+        "input_cost_per_1k": 0,
+        "output_cost_per_1k": 0,
+        "tokenizer": "llama"
+    },
+    "local:Qwen/Qwen3-8B": {
+        "input_limit": 32_000,
+        "output_limit": 32_000,
+        "sliding_window": False,
+        "total_limit": 32_768,
+        "input_cost_per_1k": 0,
+        "output_cost_per_1k": 0,
+        "tokenizer": "qwen"
+    },
+    "local:google/codegemma-7b-it": {
+        "input_limit": 8192,
+        "output_limit": 8192,
+        "sliding_window": False,
+        "total_limit": 8192,
+        "input_cost_per_1k": 0,
+        "output_cost_per_1k": 0,
+        "tokenizer": "gemma"
+    },
+   "local:meta-llama/Llama-3.1-8B": {
+        "input_limit": 128_000,
+        "output_limit": 128_000,
+        "sliding_window": False,
+        "total_limit": 128_000,
+        "input_cost_per_1k": 0,
+        "output_cost_per_1k": 0,
+        "tokenizer": "llama"
     }
 }
