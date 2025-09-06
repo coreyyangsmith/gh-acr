@@ -103,8 +103,12 @@ python -m src.cli.run_all --mode clone --methods agent bypass_only2 bypass5 bypa
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5-nano
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5-mini
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
-
+python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.2-1B
+python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.1-8B
+python -m src.cli.run_all --mode clone --methods agent multi --model-name local:Qwen/Qwen3-8B
+python -m src.cli.run_all --mode clone --methods agent multi --model-name local:google/codegemma-7b-it
+
 
 ```
 
