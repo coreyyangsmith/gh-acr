@@ -26,6 +26,7 @@ def main(
     mode: Literal["api", "clone"] = "api",
     eval_method: EvalMethod = "agent",
     model_name: str | None = None,
+    results_filename: str | None = None,
 ):
     """Run the merge-resolution pipeline for a single *scenario_id*.
 
@@ -42,20 +43,27 @@ def main(
         "base_b" – baseline parent-B resolver.
     """
     asyncio.run(
-        _run(scenario_id=scenario_id, mode=mode, eval_method=eval_method, model_name=model_name),
+        _run(scenario_id=scenario_id, mode=mode, eval_method=eval_method, model_name=model_name, results_filename=results_filename),
     )
 
 
-async def _run(scenario_id: str, mode: str, eval_method: str, model_name: str | None):
+async def _run(scenario_id: str, mode: str, eval_method: str, model_name: str | None, results_filename: str | None):
     """Internal async runner."""
 
     app = build_graph(process_mode=mode, eval_method=eval_method)
-    output_root = Path.cwd() / "data" / "output"
+    # Nest outputs under data/<model>/<id>
+    output_root = Path.cwd() / "data"
     
     per_file_results = await run_and_save_report(app, scenario_id, output_root, eval_method=eval_method, model_name=model_name, process_mode=mode, write_prep=True)
 
     # Append the evaluation to a CSV (one row per file)
-    results_path = Path.cwd() / "data" / "results.csv"
+    # Allow overriding the results CSV filename via flag
+    if results_filename:
+        rp = Path(results_filename)
+        results_path = rp if rp.is_absolute() else (Path.cwd() / "data" / rp.name)
+    else:
+        results_path = Path.cwd() / "data" / "results.csv"
+    results_path.parent.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(per_file_results)
     # Enforce unified column order/schema
     df = df.reindex(columns=RESULTS_SCHEMA_COLUMNS)

@@ -27,6 +27,7 @@ def main(
     mode: Literal["api", "clone"] = "api",
     eval_method: EvalMethod = "agent",
     model_name: str | None = None,
+    results_filename: str | None = None,
     n_easy: int | None = None,
     n_medium: int | None = None,
     n_hard: int | None = None,
@@ -48,6 +49,7 @@ def main(
             mode=mode,
             eval_method=eval_method,
             model_name=model_name,
+            results_filename=results_filename,
             n_easy=n_easy,
             n_medium=n_medium,
             n_hard=n_hard,
@@ -55,22 +57,28 @@ def main(
     )
 
 
-async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_name: str | None, n_easy: int | None, n_medium: int | None, n_hard: int | None):
+async def _run(max_scenarios: int | None, mode: str, eval_method: str, *, model_name: str | None, results_filename: str | None, n_easy: int | None, n_medium: int | None, n_hard: int | None):
     """Internal async runner."""
 
     logger = setup_logger()
     app = build_graph(process_mode=mode, eval_method=eval_method)
-    output_root = Path.cwd() / "data" / "output"
+    # Nest outputs under data/<model>/<id>
+    output_root = Path.cwd() / "data"
 
-    # Build results filename based on current date and evaluation method, e.g. "2025_07_26_agent_results.csv"
-    date_str = datetime.date.today().strftime("%Y_%m_%d")
-    results_filename = f"{date_str}_{eval_method}_results.csv"
-    results_path = Path.cwd() / "data" / results_filename
+    # Build results filename (allow override)
+    if results_filename:
+        rp = Path(results_filename)
+        results_path = rp if rp.is_absolute() else (Path.cwd() / "data" / rp.name)
+    else:
+        date_str = datetime.date.today().strftime("%Y_%m_%d")
+        default_name = f"{date_str}_{eval_method}_results.csv"
+        results_path = Path.cwd() / "data" / default_name
 
     # Clear previous results if the file exists
     if results_path.exists():
         logger.info("Removing existing results file: %s", results_path)
         results_path.unlink()
+    results_path.parent.mkdir(parents=True, exist_ok=True)
 
     benchmark_df = load_benchmark()
 

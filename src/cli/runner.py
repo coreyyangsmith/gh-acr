@@ -170,7 +170,13 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     sample_row = result["sample_row"]
     df_index = sample_row["df_index"]
-    scenario_dir = output_root / str(df_index)
+    # Place outputs under data/<model_name>/<id>
+    if eval_method in ("base_a", "base_b", "base", "prep"):
+        raw_model_dir = "nan"
+    else:
+        raw_model_dir = (model_name or os.getenv("OPENAI_MODEL", "")).strip() or "nan"
+    safe_model_dir = raw_model_dir.replace("/", "_").replace("\\", "_").strip() or "nan"
+    scenario_dir = output_root / safe_model_dir / str(df_index)
     files = sample_row["scenario_json"]["files_in_merge_conflict"]
 
     # -------------------------------------------------------------------

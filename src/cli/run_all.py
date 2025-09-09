@@ -29,6 +29,7 @@ def main(
     mode: ProcessMode = "clone",
     methods: list[EvalMethod] | None = None,
     model_name: str | None = None,
+    results_filename: str | None = None,
     n_easy: int | None = None,
     n_medium: int | None = None,
     n_hard: int | None = None,
@@ -55,6 +56,7 @@ def main(
             mode=mode,
             methods=methods,
             model_name=model_name,
+            results_filename=results_filename,
             n_easy=n_easy,
             n_medium=n_medium,
             n_hard=n_hard,
@@ -68,6 +70,7 @@ async def _run_all(
     mode: ProcessMode,
     methods: list[EvalMethod] | None,
     model_name: str | None,
+    results_filename: str | None,
     n_easy: int | None,
     n_medium: int | None,
     n_hard: int | None,
@@ -98,14 +101,20 @@ async def _run_all(
     elif max_scenarios is not None:
         benchmark_df = benchmark_df.head(max_scenarios)
 
-    output_root = Path.cwd() / "data" / "output"
+    # Nest outputs under data/<model>/<id>
+    output_root = Path.cwd() / "data"
 
-    # Aggregate results into a single CSV per run
-    date_str = datetime.date.today().strftime("%Y_%m_%d")
-    results_path = Path.cwd() / "data" / f"{date_str}_results_all.csv"
+    # Aggregate results into a single CSV per run (allow override)
+    if results_filename:
+        rp = Path(results_filename)
+        results_path = rp if rp.is_absolute() else (Path.cwd() / "data" / rp.name)
+    else:
+        date_str = datetime.date.today().strftime("%Y_%m_%d")
+        results_path = Path.cwd() / "data" / f"{date_str}_results_all.csv"
     if results_path.exists():
         logger.info("Removing existing results file: %s", results_path)
         results_path.unlink()
+    results_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Process in batches, streaming results to CSV as they complete
     total = len(benchmark_df)
