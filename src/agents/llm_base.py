@@ -618,7 +618,9 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         tok.model_max_length = npos - reserve_new
 
         # If this is a Qwen3 model, wrap with chat template and recommended settings
-        is_qwen3 = "qwen3" in requested.lower() or "/qwen3-" in requested.lower()
+        requested_lower = requested.lower()
+        is_qwen3 = "qwen3" in requested_lower or "/qwen3-" in requested_lower
+        is_gptoss = ("gpt-oss" in requested_lower) or ("/gpt-oss-" in requested_lower) or ("openai/gpt-oss" in requested_lower)
         if is_qwen3:
             # Create a lightweight wrapper that formats a single-string prompt
             # into Qwen3's chat template and applies recommended decoding params.
@@ -751,6 +753,113 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 tok.model_max_length,
                 reserve_new,
                 True,
+            )
+        elif is_gptoss:
+            # Create a lightweight wrapper that formats input via the model's chat template
+            # using the Harmony response format and allows setting reasoning level.
+            class _FakeGen:
+                def __init__(self, text: str):
+                    self.text = text
+
+            class _FakeResponse:
+                def __init__(self, text: str):
+                    self.generations = [[_FakeGen(text)]]
+
+            class GPTOSSChatWrapper:
+                def __init__(self, model_obj, tokenizer_obj):
+                    self._model = model_obj
+                    self._tok = tokenizer_obj
+                    self._callbacks: list[Any] = []
+                    # Reasoning level can be low|medium|high (default: medium)
+                    self._reasoning_level = os.getenv("GPT_OSS_REASONING_LEVEL", "medium").strip().lower()
+                    # Default to a larger output window for chat-style models
+                    default_max = max(reserve_new, 2048)
+                    self._max_new = int(os.getenv("GPT_OSS_MAX_NEW_TOKENS", str(default_max)))
+                    # Sampling presets (tune as needed)
+                    self._temperature = float(os.getenv("GPT_OSS_TEMPERATURE", "0.7"))
+                    self._top_p = float(os.getenv("GPT_OSS_TOP_P", "0.9"))
+
+                def with_config(self, config: dict[str, Any] | None = None):  # type: ignore[override]
+                    try:
+                        if config and "callbacks" in config:
+                            self._callbacks = list(config.get("callbacks") or [])
+                    except Exception:
+                        pass
+                    return self
+
+                def invoke(self, prompt_text: str, config: RunnableConfig | None = None):  # type: ignore[override]
+                    try:
+                        callbacks = list(self._callbacks)
+                        try:
+                            if config and isinstance(config, dict):
+                                callbacks.extend(list(config.get("callbacks") or []))  # type: ignore[arg-type]
+                        except Exception:
+                            pass
+
+                        # Prepare Harmony-formatted chat via tokenizer template
+                        sys_msg = {"role": "system", "content": f"Reasoning: {self._reasoning_level}"}
+                        messages = [sys_msg, {"role": "user", "content": str(prompt_text)}]
+                        chat_text = self._tok.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=True,
+                        )
+
+                        # Notify start
+                        run_id = id(self) ^ hash(chat_text)
+                        for cb in callbacks:
+                            try:
+                                cb.on_llm_start({"name": "gpt-oss-local"}, [chat_text], run_id=run_id)
+                            except Exception:
+                                pass
+
+                        # Generation
+                        pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
+                        generator = pipeline(
+                            "text-generation",
+                            model=self._model,
+                            tokenizer=self._tok,
+                            truncation=True,
+                        )
+                        outputs = generator(
+                            chat_text,
+                            do_sample=True,
+                            temperature=self._temperature,
+                            top_p=self._top_p,
+                            max_new_tokens=self._max_new,
+                            eos_token_id=self._tok.eos_token_id,
+                            pad_token_id=pad_id,
+                            num_return_sequences=1,
+                        )
+                        full_text = outputs[0].get("generated_text", "")
+                        answer_text = full_text[len(chat_text):].lstrip() if full_text.startswith(chat_text) else full_text
+
+                        # Notify end (best-effort)
+                        fake_resp = _FakeResponse(answer_text)
+                        for cb in callbacks:
+                            try:
+                                cb.on_llm_end(fake_resp, run_id=run_id)
+                            except Exception:
+                                pass
+
+                        return AIMessage(content=answer_text)
+                    except Exception as e:  # pragma: no cover
+                        for cb in self._callbacks:
+                            try:
+                                cb.on_llm_error(e, run_id=id(self))
+                            except Exception:
+                                pass
+                        raise
+
+            raw_llm = GPTOSSChatWrapper(model, tok)
+            enc = tok
+            logger.info(
+                "[local] Initialized GPT-OSS chat wrapper for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, reasoning=%s)",
+                requested,
+                npos,
+                tok.model_max_length,
+                reserve_new,
+                os.getenv("GPT_OSS_REASONING_LEVEL", "medium").strip().lower(),
             )
         else:
             hf_pipe = pipeline(

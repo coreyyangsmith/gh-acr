@@ -90,6 +90,15 @@ MODEL_COSTS = {
         "output_cost_per_1k": 0,
         "tokenizer": "gemma"
     },
+    "local:openai/gpt-oss-20b": {
+        "input_limit": 128_000,
+        "output_limit": 16_000,
+        "sliding_window": False,
+        "total_limit": 144_000,
+        "input_cost_per_1k": 0,
+        "output_cost_per_1k": 0,
+        "tokenizer": "gpt_oss"
+    },
    "local:meta-llama/Llama-3.1-8B": {
         "input_limit": 128_000,
         "output_limit": 128_000,

@@ -104,10 +104,21 @@ python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --m
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5-mini
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
+
+
+
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.2-1B
-python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.1-8B
-python -m src.cli.run_all --mode clone --methods agent multi --model-name local:Qwen/Qwen3-8B
-python -m src.cli.run_all --mode clone --methods agent multi --model-name local:google/codegemma-7b-it
+python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.1-8B --results_filename 2025-09-10-llama-hard
+python -m src.cli.run_all --mode clone --methods agent multi --model-name local:Qwen/Qwen3-8B --results_filename 2025-09-10-qwen-hard
+python -m src.cli.run_all --mode clone --methods agent multi --model-name local:google/codegemma-7b-it --results_filename 2025-09-10-gemma-hard
+
+# gpt-oss-20b (local via Transformers)
+# Pre-download (optional, offline):
+#   huggingface-cli download openai/gpt-oss-20b --local-dir data/models/openai__gpt-oss-20b --include "*"
+# Recommended env (PowerShell one-liners):
+#   $env:HF_LOCAL_ONLY="0"; $env:HF_DEVICE_MAP="auto"; $env:HF_TORCH_DTYPE="auto"; $env:HF_TRUST_REMOTE_CODE="1"; $env:GPT_OSS_REASONING_LEVEL="medium"
+# Run with gpt-oss-20b:
+python -m src.cli.run_all --mode clone --methods agent multi --model-name local:openai/gpt-oss-20b --results_filename 2025-09-11-gpt-oss-20b
 
 
 ```
