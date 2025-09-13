@@ -340,6 +340,47 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
             )
         )
 
+    # Collect commit messages for the commits contributing to each side (A/B).
+    # We restrict to commits that touched the conflicted files for focus.
+    commit_messages_a = ""
+    commit_messages_b = ""
+    try:
+        commits_a = list(
+            repo.iter_commits(
+                f"{merge_base_commit.hexsha}..{parents[0]}", paths=files
+            )
+        )
+        if commits_a:
+            lines_a = []
+            for c in reversed(commits_a):  # oldest → newest
+                summary = getattr(c, "summary", "")
+                message = getattr(c, "message", "") or ""
+                lines_a.append(f"SHA: {c.hexsha}\nTitle: {summary}\n\n{message.strip()}")
+            commit_messages_a = "\n\n-----\n\n".join(lines_a)
+        else:
+            # Fallback to the parent commit's own message
+            commit_messages_a = (repo.commit(parents[0]).message or "").strip()
+    except Exception:
+        commit_messages_a = ""
+
+    try:
+        commits_b = list(
+            repo.iter_commits(
+                f"{merge_base_commit.hexsha}..{parents[1]}", paths=files
+            )
+        )
+        if commits_b:
+            lines_b = []
+            for c in reversed(commits_b):  # oldest → newest
+                summary = getattr(c, "summary", "")
+                message = getattr(c, "message", "") or ""
+                lines_b.append(f"SHA: {c.hexsha}\nTitle: {summary}\n\n{message.strip()}")
+            commit_messages_b = "\n\n-----\n\n".join(lines_b)
+        else:
+            commit_messages_b = (repo.commit(parents[1]).message or "").strip()
+    except Exception:
+        commit_messages_b = ""
+
     return {
         **state,
         "repo_path": repo.working_dir,
@@ -348,6 +389,8 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
         "parent_b_contents": parent_b_contents,
         "diffs_a": diffs_a,
         "diffs_b": diffs_b,
+        "commit_messages_a": commit_messages_a,
+        "commit_messages_b": commit_messages_b,
         "status": "context_prepared",
     }
 

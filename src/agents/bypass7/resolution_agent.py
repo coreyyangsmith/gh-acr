@@ -33,6 +33,8 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
 
     resolved: Dict[str, str] = {}
     final_diffs: Dict[str, str] = {}
+    # Maintain per-file resolution history across retries (iteration 1..N)
+    resolution_history: Dict[str, list[str]] = state.get("resolution_history", {}) or {}
 
     ancestor_contents = state.get("ancestor_contents", {})
     diffs_a = state.get("diffs_a", {})
@@ -67,6 +69,11 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 parent_a.get(path, "") if choice == "A" else parent_b.get(path, "")
             )
             resolved[path] = merged_text
+            try:
+                history_list = resolution_history.setdefault(path, [])
+                history_list.append(merged_text)
+            except Exception:
+                pass
             counts["output"] += count_tokens(encoder, merged_text)
             continue
         import json
@@ -88,6 +95,11 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
         content = extract_text_content(result)
         merged_text = content.strip("\n")
         resolved[path] = merged_text
+        try:
+            history_list = resolution_history.setdefault(path, [])
+            history_list.append(merged_text)
+        except Exception:
+            pass
         counts["output"] += count_tokens(encoder, merged_text)
         try:
             import difflib
@@ -104,6 +116,7 @@ def resolution_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
 
     state["resolved_contents"] = resolved
     state["final_diffs"] = final_diffs
+    state["resolution_history"] = resolution_history
     state["status"] = "resolved_multi"
     logger.info("Resolution agent finished.")
     return state

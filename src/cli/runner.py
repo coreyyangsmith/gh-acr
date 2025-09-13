@@ -39,6 +39,7 @@ RESULTS_SCHEMA_COLUMNS = [
     "total_cost",
     "processing_time_s",
     "difficulty",
+    "project_size",
 ]
 
 async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_method: str, model_name: str | None = None, process_mode: str | None = None, write_prep: bool = True):
@@ -179,6 +180,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     scenario_dir = output_root / safe_model_dir / str(df_index)
     files = sample_row["scenario_json"]["files_in_merge_conflict"]
 
+    # Note: commit messages are written inside each per-file directory below
+
     # -------------------------------------------------------------------
     # Prepare per-eval-method LLM output directory (simple/, multi/, bypass/ …)
     # -------------------------------------------------------------------
@@ -187,14 +190,16 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
         # Multi-style outputs: include bypass to mirror multi folder structure
-        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "dynamic", "bypass_only")
+        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "dynamic", "bypass_only", "bypass7")
         if is_multi_like:
-            (llm_out_dir / "summaries").mkdir(exist_ok=True)
-            (llm_out_dir / "reviews").mkdir(exist_ok=True)
+            # Skip redundant folders for bypass7; it writes per-file artifacts under <llm_out_dir>/<file_slug>/
+            if eval_method != "bypass7":
+                (llm_out_dir / "summaries").mkdir(exist_ok=True)
+                (llm_out_dir / "reviews").mkdir(exist_ok=True)
             if eval_method == "dynamic":
                 (llm_out_dir / "prompts").mkdir(exist_ok=True)
-            # Persist the merge plan as text (skip for bypass_only)
-            if eval_method != "bypass_only":
+            # Persist the merge plan as text (skip for bypass_only and bypass7 – bypass7 writes per-file only)
+            if eval_method not in ("bypass_only", "bypass7"):
                 try:
                     import json
                     plan_obj = result.get("conflict_plan", {})
@@ -257,22 +262,34 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             result.get("diffs_truth", {}).get(file_path, ""), encoding="utf-8"
         )
 
+        # Write commit messages into each file directory (clone mode only fields)
+        try:
+            cm_a = str(result.get("commit_messages_a", "")).strip()
+            cm_b = str(result.get("commit_messages_b", "")).strip()
+            if cm_a:
+                (file_dir / "a_commit_message.txt").write_text(cm_a, encoding="utf-8")
+            if cm_b:
+                (file_dir / "b_commit_message.txt").write_text(cm_b, encoding="utf-8")
+        except Exception:
+            pass
+
         # Duplicate LLM output into central per-method directory (simple/, multi/, bypass/)
         if eval_method != "base":
             # Agent-specific file base within its directory
-            is_bypass_like = eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4")
+            is_bypass_like = eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass7")
             base_name = f"bypass_{file_slug}" if is_bypass_like else file_slug
 
-            (llm_out_dir / f"{base_name}.txt").write_text(
-                result["resolved_contents"].get(file_path, ""), encoding="utf-8"
-            )
-            # Also persist final diff if available from multi/bypass resolver
-            final_diff_map = result.get("final_diffs", {})
-            if final_diff_map:
-                diff_text = final_diff_map.get(file_path, "")
-                (llm_out_dir / f"{base_name}.diff").write_text(diff_text, encoding="utf-8")
-                # Also provide a .txt variant to ensure all agent outputs are available as text files
-                (llm_out_dir / f"{base_name}_final_diff.txt").write_text(diff_text, encoding="utf-8")
+            if eval_method != "bypass7":
+                (llm_out_dir / f"{base_name}.txt").write_text(
+                    result["resolved_contents"].get(file_path, ""), encoding="utf-8"
+                )
+                # Also persist final diff if available from multi/bypass resolver
+                final_diff_map = result.get("final_diffs", {})
+                if final_diff_map:
+                    diff_text = final_diff_map.get(file_path, "")
+                    (llm_out_dir / f"{base_name}.diff").write_text(diff_text, encoding="utf-8")
+                    # Also provide a .txt variant to ensure all agent outputs are available as text files
+                    (llm_out_dir / f"{base_name}_final_diff.txt").write_text(diff_text, encoding="utf-8")
 
             # Provide clearly named final artifacts for bypass family
             if eval_method in ("bypass", "bypass2", "bypass3", "bypass4"):
@@ -291,15 +308,42 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                         pass
 
             # ---------------- multi/bypass extra outputs -------------------
-            if eval_method in ("multi", "bypass", "bypass_multi", "dynamic"):
+            if eval_method in ("multi", "bypass", "bypass_multi", "dynamic", "bypass7"):
                 summaries = result.get("summaries", {}).get(file_path, {})
-                prefix = "bypass_" if is_bypass_like else ""
-                (llm_out_dir / "summaries" / f"{prefix}{file_slug}_A.txt").write_text(
-                    summaries.get("summary_a", ""), encoding="utf-8"
-                )
-                (llm_out_dir / "summaries" / f"{prefix}{file_slug}_B.txt").write_text(
-                    summaries.get("summary_b", ""), encoding="utf-8"
-                )
+                if eval_method == "bypass7":
+                    # Write simplified names for bypass7 inside a per-file subdirectory
+                    per_file_agent_dir = llm_out_dir / file_slug
+                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    (per_file_agent_dir / "a_summary.txt").write_text(
+                        summaries.get("summary_a", ""), encoding="utf-8"
+                    )
+                    (per_file_agent_dir / "b_summary.txt").write_text(
+                        summaries.get("summary_b", ""), encoding="utf-8"
+                    )
+                    # Also write plan at per-file level if useful (JSON subset per file)
+                    try:
+                        import json
+                        plan_obj = result.get("conflict_plan", {}) or {}
+                        # Always write a per-file plan; default to "merge" if missing
+                        single_plan = {file_path: plan_obj.get(file_path, "merge")}
+                        (per_file_agent_dir / "plan.txt").write_text(
+                            json.dumps(single_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+                        )
+                        # Also include the full agent plan for convenience under the slug folder
+                        if plan_obj:
+                            (per_file_agent_dir / "agent_plan.txt").write_text(
+                                json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
+                            )
+                    except Exception:
+                        pass
+                else:
+                    prefix = "bypass_" if is_bypass_like else ""
+                    (llm_out_dir / "summaries" / f"{prefix}{file_slug}_A.txt").write_text(
+                        summaries.get("summary_a", ""), encoding="utf-8"
+                    )
+                    (llm_out_dir / "summaries" / f"{prefix}{file_slug}_B.txt").write_text(
+                        summaries.get("summary_b", ""), encoding="utf-8"
+                    )
                 if eval_method == "dynamic":
                     dyn_prompts = result.get("dynamic_prompts", {}) or {}
                     dyn_text = str(dyn_prompts.get(file_path, "")).strip()
@@ -309,30 +353,97 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                         pass
                 reviews = result.get("reviews", {})
                 if reviews:
-                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}.txt").write_text(
-                        reviews.get(file_path, ""), encoding="utf-8"
-                    )
+                    if eval_method == "bypass7":
+                        # Write review iterations if present
+                        per_file_agent_dir = llm_out_dir / file_slug
+                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                        hist = result.get("review_history", {}) or {}
+                        items = hist.get(file_path, [])
+                        if items:
+                            for idx, txt in enumerate(items, start=1):
+                                (per_file_agent_dir / f"review{idx}.txt").write_text(txt, encoding="utf-8")
+                        else:
+                            (per_file_agent_dir / "review.txt").write_text(
+                                reviews.get(file_path, ""), encoding="utf-8"
+                            )
+                    else:
+                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}.txt").write_text(
+                            reviews.get(file_path, ""), encoding="utf-8"
+                        )
                 # Persist structured review results and accumulated feedback history as txt
                 rr = result.get("review_results", {}) or {}
                 rr_item = rr.get(file_path)
                 if isinstance(rr_item, dict):
                     outcome = str(rr_item.get("outcome", "")).strip()
                     rationale = str(rr_item.get("rationale", "")).strip()
-                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}_results.txt").write_text(
-                        f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
-                    )
+                    if eval_method == "bypass7":
+                        per_file_agent_dir = llm_out_dir / file_slug
+                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                        (per_file_agent_dir / "review_results.txt").write_text(
+                            f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
+                        )
+                    else:
+                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}_results.txt").write_text(
+                            f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
+                        )
                 feedback_map = result.get("review_feedback", {}) or {}
                 fb_text = str(feedback_map.get(file_path, "")).strip()
                 if fb_text:
-                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback.txt").write_text(
-                        fb_text, encoding="utf-8"
-                    )
+                    if eval_method == "bypass7":
+                        per_file_agent_dir = llm_out_dir / file_slug
+                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                        (per_file_agent_dir / "review_feedback.txt").write_text(
+                            fb_text, encoding="utf-8"
+                        )
+                    else:
+                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback.txt").write_text(
+                            fb_text, encoding="utf-8"
+                        )
                 fb_hist = result.get("review_feedback_history", {}) or {}
                 hist_entries = fb_hist.get(file_path, [])
                 if hist_entries:
-                    (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback_history.txt").write_text(
-                        "\n\n".join(hist_entries), encoding="utf-8"
-                    )
+                    if eval_method == "bypass7":
+                        per_file_agent_dir = llm_out_dir / file_slug
+                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                        (per_file_agent_dir / "review_feedback_history.txt").write_text(
+                            "\n\n".join(hist_entries), encoding="utf-8"
+                        )
+                    else:
+                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback_history.txt").write_text(
+                            "\n\n".join(hist_entries), encoding="utf-8"
+                        )
+
+                # For bypass7, also persist resolution iterations if present
+                if eval_method == "bypass7":
+                    res_hist = result.get("resolution_history", {}) or {}
+                    r_items = res_hist.get(file_path, [])
+                    per_file_agent_dir = llm_out_dir / file_slug
+                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    if r_items:
+                        for idx, txt in enumerate(r_items, start=1):
+                            (per_file_agent_dir / f"resolution{idx}.txt").write_text(txt, encoding="utf-8")
+                    else:
+                        # Single resolution fallback name
+                        (per_file_agent_dir / "resolution1.txt").write_text(
+                            result["resolved_contents"].get(file_path, ""), encoding="utf-8"
+                        )
+
+                    # Also include the final merged and diff artifacts inside the per-file directory
+                    merged_out = result["resolved_contents"].get(file_path, "")
+                    try:
+                        (per_file_agent_dir / f"bypass_{file_slug}.txt").write_text(merged_out, encoding="utf-8")
+                    except Exception:
+                        pass
+                    final_diff_map = result.get("final_diffs", {})
+                    if final_diff_map:
+                        diff_text = final_diff_map.get(file_path, "")
+                        try:
+                            (per_file_agent_dir / f"bypass_{file_slug}.diff").write_text(diff_text, encoding="utf-8")
+                            (per_file_agent_dir / f"bypass_{file_slug}_final_diff.txt").write_text(diff_text, encoding="utf-8")
+                            # Convenience duplicate: final_diff.txt without prefix
+                            (per_file_agent_dir / "final_diff.txt").write_text(diff_text, encoding="utf-8")
+                        except Exception:
+                            pass
 
     eval_ = result.get("evaluation", {})
 
@@ -474,6 +585,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             "total_cost": round(cost_in_file + cost_out_file, 6),
             "processing_time_s": round(elapsed_sec, 3),
             "difficulty": difficulty,
+            "project_size": sample_row.get("project_size", ""),
         })
 
     # If we recorded a prep item, prepend it so it's written before file rows

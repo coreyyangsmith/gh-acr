@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict
+import json
 import os
 from pathlib import Path
 
@@ -44,6 +45,9 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
     diffs_a: Dict[str, str] = state.get("diffs_a", {}) or {}
     diffs_b: Dict[str, str] = state.get("diffs_b", {}) or {}
     ancestor_contents: Dict[str, str] = state.get("ancestor_contents", {}) or {}
+    # Optional (clone mode): aggregated commit messages for A and B ranges
+    commit_messages_a: str = str(state.get("commit_messages_a", "") or "")
+    commit_messages_b: str = str(state.get("commit_messages_b", "") or "")
 
     model_name = state.get("model_name") or os.getenv(
         "OPENAI_MODEL", "openai/gpt-4o-mini"
@@ -68,13 +72,45 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
             ("B", diffs_b.get(path, "")),
         ):
             if not diff_text:
-                summary_pair[f"summary_{parent_label.lower()}"] = "(no changes)"
+                # Even if no changes, still provide a structured JSON with commit message context
+                commit_text = commit_messages_a if parent_label == "A" else commit_messages_b
+                commit_lines = commit_text.splitlines() if commit_text else []
+                subject = commit_lines[0] if commit_lines else ""
+                body = "\n".join(commit_lines[1:]) if len(commit_lines) > 1 else ""
+                summary_pair[f"summary_{parent_label.lower()}"] = json.dumps(
+                    {
+                        "parent": parent_label,
+                        "file_path": path,
+                        "summary": "(no changes)",
+                        "commit_message": {
+                            "subject": subject,
+                            "body": body,
+                        },
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
                 continue
 
             if llm is None:
                 logger.warning(f"No LLM backend available, using heuristic for {path}.")
-                summary_pair[f"summary_{parent_label.lower()}"] = _fallback_summary(
-                    diff_text
+                commit_text = commit_messages_a if parent_label == "A" else commit_messages_b
+                heuristic = _fallback_summary(diff_text)
+                commit_lines = commit_text.splitlines() if commit_text else []
+                subject = commit_lines[0] if commit_lines else ""
+                body = "\n".join(commit_lines[1:]) if len(commit_lines) > 1 else ""
+                summary_pair[f"summary_{parent_label.lower()}"] = json.dumps(
+                    {
+                        "parent": parent_label,
+                        "file_path": path,
+                        "summary": heuristic,
+                        "commit_message": {
+                            "subject": subject,
+                            "body": body,
+                        },
+                    },
+                    ensure_ascii=False,
+                    indent=2,
                 )
             else:
                 prompt_text = _render_template(
@@ -84,9 +120,28 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                         "patch": diff_text,
                     },
                 )
+                # Append commit messages as additional context if available
+                commit_text = commit_messages_a if parent_label == "A" else commit_messages_b
+                if commit_text:
+                    prompt_text = f"{prompt_text}\n\n[COMMIT_MESSAGES]\n{commit_text}"
                 result = llm.invoke(prompt_text)
                 content = result.content if hasattr(result, "content") else str(result)
-                summary_pair[f"summary_{parent_label.lower()}"] = content.strip()
+                commit_lines = commit_text.splitlines() if commit_text else []
+                subject = commit_lines[0] if commit_lines else ""
+                body = "\n".join(commit_lines[1:]) if len(commit_lines) > 1 else ""
+                summary_pair[f"summary_{parent_label.lower()}"] = json.dumps(
+                    {
+                        "parent": parent_label,
+                        "file_path": path,
+                        "summary": content.strip(),
+                        "commit_message": {
+                            "subject": subject,
+                            "body": body,
+                        },
+                    },
+                    ensure_ascii=False,
+                    indent=2,
+                )
                 counts = state.setdefault("token_counts", {}).setdefault(
                     path,
                     {
@@ -99,6 +154,9 @@ def summarizer_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D40
                 )
                 counts["system_prompt"] += count_tokens(encoder, _SUMMARY_PROMPT_STR)
                 counts["original"] += count_tokens(encoder, original_text)
+                if commit_text:
+                    # Attribute commit message tokens to input as additional context
+                    counts["original"] += count_tokens(encoder, commit_text)
                 if parent_label == "A":
                     counts["diff_a"] += count_tokens(encoder, diff_text)
                 else:

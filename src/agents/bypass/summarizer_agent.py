@@ -1,4 +1,4 @@
-t """Summariser agent – describes how each parent diff changes the file using an LLM.
+"""Summariser agent – describes how each parent diff changes the file using an LLM.
 
 If an LLM backend is not available (e.g. missing API key) it falls back to a
 crude line-count heuristic so the pipeline never crashes.

@@ -48,6 +48,10 @@ class Flags:
     results_csv: Optional[Path] = None
     output_dir: Path = Path("results")
     show: bool = True
+    # Optional: filter results to rows whose 'file_name' contains this substring (case-insensitive)
+    file: Optional[str] = None
+    # Optional: filter results by difficulty label(s). Accepts comma-separated values (e.g., "easy,medium").
+    difficulty: Optional[str] = None
 
 
 # =============================================================================
@@ -264,6 +268,93 @@ def _boxplot_metric(
                 color="#555",
                 transform=ax.get_xaxis_transform(),  # x in data, y in axes coords
             )
+
+    # ------------------------------------------------------------------
+    # Statistical callouts: median, Q1/Q3, and 95% CI of the mean
+    # ------------------------------------------------------------------
+    try:
+        # Light clutter control: only annotate if not too many methods
+        if len(order) <= 12:
+            fmt = (lambda v: f"{v:.3f}") if label_fmt is None else label_fmt
+            for i, m in enumerate(order):
+                series = (
+                    work.loc[work["eval_method"].astype(str) == m, column]
+                    .astype(float)
+                    .dropna()
+                )
+                if series.empty:
+                    continue
+                values = series.to_numpy()
+                q1, med, q3 = np.percentile(values, [25, 50, 75])
+                mean = float(np.mean(values))
+                std = float(np.std(values, ddof=1)) if values.size > 1 else 0.0
+                n = values.size
+                # 95% CI of the mean using normal approx
+                if n > 1:
+                    sem = std / np.sqrt(n)
+                    ci_low = mean - 1.96 * sem
+                    ci_high = mean + 1.96 * sem
+                else:
+                    ci_low = mean
+                    ci_high = mean
+
+                # Place small text labels slightly to the right of each box position
+                x_text = i + 0.18
+                # Median
+                ax.annotate(
+                    f"median {fmt(float(med))}",
+                    (i, med),
+                    xytext=(12, 0),
+                    textcoords="offset points",
+                    ha="left",
+                    va="center",
+                    fontsize=8,
+                    color="#222",
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#bbb", alpha=0.7),
+                )
+                # Q1/Q3 stacked labels near respective quartiles
+                ax.annotate(
+                    f"q1 {fmt(float(q1))}",
+                    (i, q1),
+                    xytext=(12, 0),
+                    textcoords="offset points",
+                    ha="left",
+                    va="center",
+                    fontsize=8,
+                    color="#444",
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#bbb", alpha=0.7),
+                )
+                ax.annotate(
+                    f"q3 {fmt(float(q3))}",
+                    (i, q3),
+                    xytext=(12, 0),
+                    textcoords="offset points",
+                    ha="left",
+                    va="center",
+                    fontsize=8,
+                    color="#444",
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#bbb", alpha=0.7),
+                )
+
+                # 95% CI whisker line at x offset and a label in the middle
+                x_ci = i + 0.26
+                ax.plot([x_ci, x_ci], [ci_low, ci_high], color="#333", linewidth=1.2, zorder=3)
+                ax.plot([x_ci - 0.03, x_ci + 0.03], [ci_low, ci_low], color="#333", linewidth=1.2, zorder=3)
+                ax.plot([x_ci - 0.03, x_ci + 0.03], [ci_high, ci_high], color="#333", linewidth=1.2, zorder=3)
+                ax.annotate(
+                    f"95% CI\n{fmt(float(ci_low))}–{fmt(float(ci_high))}",
+                    (x_ci, (ci_low + ci_high) / 2.0),
+                    xytext=(8, 0),
+                    textcoords="offset points",
+                    ha="left",
+                    va="center",
+                    fontsize=8,
+                    color="#222",
+                    bbox=dict(boxstyle="round,pad=0.2", fc="white", ec="#bbb", alpha=0.7),
+                )
+    except Exception:
+        # Fail-safe: never break rendering if annotation fails
+        pass
 
     fig.tight_layout()
     fig.savefig(save_path, dpi=150)
@@ -655,6 +746,20 @@ def main(flags: Flags) -> None:
     flags.output_dir.mkdir(parents=True, exist_ok=True)
     data = load_results(flags.results_csv)
     df = data.dataframe
+    # Optional filter by file name substring
+    if flags.file:
+        if "file_name" not in df.columns:
+            raise ValueError("File filter provided but 'file_name' column not found in results.")
+        needle = str(flags.file).strip().lower()
+        if needle:
+            df = df[df["file_name"].astype(str).str.lower().str.contains(needle, na=False)]
+    # Optional filter by difficulty (comma-separated allowed)
+    if flags.difficulty:
+        if "difficulty" not in df.columns:
+            raise ValueError("Difficulty filter provided but 'difficulty' column not found in results.")
+        desired = [s.strip().lower() for s in str(flags.difficulty).split(",") if s.strip()]
+        if desired:
+            df = df[df["difficulty"].astype(str).str.lower().isin(desired)]
     _render_all_outputs(df, output_dir=flags.output_dir, show=flags.show)
 
 

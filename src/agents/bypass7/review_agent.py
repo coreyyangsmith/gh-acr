@@ -31,6 +31,8 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     import json
 
     reviews: Dict[str, str] = {}
+    # Maintain per-file review history across iterations
+    review_history: Dict[str, list[str]] = state.get("review_history", {}) or {}
     review_results: Dict[str, Dict[str, str]] = {}
 
     files = (
@@ -51,6 +53,10 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
         res = llm.invoke(prompt_text)
         text = extract_text_content(res)
         reviews[path] = text
+        try:
+            review_history.setdefault(path, []).append(text)
+        except Exception:
+            pass
         outcome = "REJECT"
         rationale = ""
         try:
@@ -73,6 +79,7 @@ def review_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
         counts["output"] += count_tokens(encoder, text)
 
     state["reviews"] = reviews
+    state["review_history"] = review_history
     state["review_results"] = review_results
     state["status"] = "reviewed"
     logger.info("Review agent finished.")
