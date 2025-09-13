@@ -1,0 +1,5 @@
+| difficulty | Tiny | Small | Medium | Large | Huge | Unknown |
+| --- | --- | --- | --- | --- | --- | --- |
+| easy | 0 | 44 | 507 | 286 | 40 | 0 |
+| medium | 0 | 24 | 231 | 106 | 18 | 0 |
+| hard | 0 | 35 | 362 | 214 | 42 | 0 |

@@ -128,7 +128,15 @@ python -m src.cli.run_all --mode clone --methods agent multi --model-name local:
 python -m src.results.main
 python -m src.results.compare_methods
 ```
-
+python src/dataset/add_difficulty.py data/results/qwen_easy.csv --difficulty easy --output data/results/qwen_easy_processed.csv
+python src/dataset/add_difficulty.py data/results/gemma_easy.csv --difficulty easy --output data/results/gemma_easy_processed.csv
+python src/dataset/add_difficulty.py data/results/llama_easy.csv --difficulty easy --output data/results/llama_easy_processed.csv
+python src/dataset/add_difficulty.py data/results/qwen_medium.csv --difficulty medium --output data/results/qwen_medium_processed.csv
+python src/dataset/add_difficulty.py data/results/gemma_medium.csv --difficulty medium --output data/results/gemma_medium_processed.csv
+python src/dataset/add_difficulty.py data/results/llama_medium.csv --difficulty medium --output data/results/llama_medium_processed.csv
+python src/dataset/add_difficulty.py data/results/qwen_hard.csv --difficulty hard --output data/results/qwen_hard_processed.csv
+python src/dataset/add_difficulty.py data/results/gemma_hard.csv --difficulty hard --output data/results/gemma_hard_processed.csv
+python src/dataset/add_difficulty.py data/results/llama_hard.csv --difficulty hard --output data/results/llama_hard_processed.csv
 
 Processing Outputs (find missing)
 python -m src.results.find_missing_results --results-csv data/2025_08_29_results_all.csv --results-per-instance 10 --remove-prep
