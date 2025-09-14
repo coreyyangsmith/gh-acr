@@ -145,6 +145,92 @@ def _save_box_summary_table(
 
 
 # =============================================================================
+# Method x Model summary table (EM + medians)
+# =============================================================================
+
+def _method_model_summary(
+    df: pd.DataFrame, *, method_order: Optional[list[str]] = None
+) -> pd.DataFrame:
+    """Return summary grouped by (eval_method, model_name).
+
+    Columns produced if source columns exist:
+      - EM: mean of exact_match (converted to {0,1})
+      - similarity_median: median of similarity
+      - BLEU_median: median of bleu3
+      - ROUGE_median: median of rouge_l
+    """
+    if "eval_method" not in df.columns:
+        return pd.DataFrame()
+
+    work = pd.DataFrame()
+    work["eval_method"] = df["eval_method"].astype(str)
+    # Ensure model_name exists
+    work["model_name"] = (
+        df.get("model_name", pd.Series(["unknown"] * len(df)))
+        .astype(str)
+        .fillna("unknown")
+    )
+
+    # EM (exact_match → {0,1})
+    if "exact_match" in df.columns:
+        em_series = df["exact_match"]
+        # Handle different encodings of truthy values
+        if pd.api.types.is_bool_dtype(em_series):
+            em_numeric = em_series.astype(int)
+        else:
+            em_numeric = (
+                em_series.astype(str).str.lower().isin(["true", "1", "yes", "y", "t"]).astype(int)
+            )
+        work["EM"] = em_numeric
+
+    # Numeric conversions for medians (ignore non-numeric via NaN)
+    if "similarity" in df.columns:
+        work["similarity_median_src"] = pd.to_numeric(df["similarity"], errors="coerce")
+    if "bleu3" in df.columns:
+        work["BLEU_median_src"] = pd.to_numeric(df["bleu3"], errors="coerce")
+    if "rouge_l" in df.columns:
+        work["ROUGE_median_src"] = pd.to_numeric(df["rouge_l"], errors="coerce")
+
+    if work.empty:
+        return pd.DataFrame()
+
+    agg_map: dict[str, str] = {}
+    if "EM" in work.columns:
+        agg_map["EM"] = "mean"
+    if "similarity_median_src" in work.columns:
+        agg_map["similarity_median_src"] = "median"
+    if "BLEU_median_src" in work.columns:
+        agg_map["BLEU_median_src"] = "median"
+    if "ROUGE_median_src" in work.columns:
+        agg_map["ROUGE_median_src"] = "median"
+
+    if not agg_map:
+        return pd.DataFrame()
+
+    grouped = work.groupby(["eval_method", "model_name"], dropna=False).agg(agg_map).reset_index()
+    # Rename aggregated columns to desired output names
+    rename_map = {
+        "similarity_median_src": "similarity_median",
+        "BLEU_median_src": "BLEU_median",
+        "ROUGE_median_src": "ROUGE_median",
+    }
+    grouped = grouped.rename(columns=rename_map)
+
+    # Order rows: methods by DEFAULT_METHOD_ORDER, then model_name alphabetically
+    present_methods = grouped["eval_method"].astype(str).unique().tolist()
+    ordered_methods = _order_from_present(present_methods, method_order)
+    grouped["_method_order_key"] = grouped["eval_method"].astype(str).map({m: i for i, m in enumerate(ordered_methods)})
+    grouped = grouped.sort_values(by=["_method_order_key", "model_name"]).drop(columns=["_method_order_key"])\
+                     .reset_index(drop=True)
+
+    # Round numeric columns to 3 decimals for readability
+    numeric_cols = [c for c in ["EM", "similarity_median", "BLEU_median", "ROUGE_median"] if c in grouped.columns]
+    if numeric_cols:
+        grouped[numeric_cols] = grouped[numeric_cols].astype(float).round(3)
+
+    return grouped
+
+# =============================================================================
 # Box plots (improved styling, simpler code)
 # =============================================================================
 
@@ -445,6 +531,14 @@ def _render_all_outputs(df: pd.DataFrame, *, output_dir: Path, show: bool) -> No
     # Base summary table (per method) and a simple markdown export for quick viewing
     summary = method_summary(df)
     _save_markdown_table(summary, save_md_path=output_dir / "table_all.md")
+
+    # Method x Model summary (EM mean + medians for similarity/BLEU/ROUGE)
+    mm_summary = _method_model_summary(df, method_order=DEFAULT_METHOD_ORDER)
+    if mm_summary is not None and not mm_summary.empty:
+        mm_csv = output_dir / "table_method_model.csv"
+        mm_md = output_dir / "table_method_model.md"
+        mm_summary.to_csv(mm_csv, index=False)
+        _save_markdown_table(mm_summary, save_md_path=mm_md)
 
     # -------------------------
     # Exact Match — Bars

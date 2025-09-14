@@ -26,6 +26,9 @@ from ..eval.rouge_l import per_file as rouge_per_file, overall as rouge_overall
 
 # Import the dedicated merge agent node
 from ..agents.agent import resolve_conflict_agent_node
+from ..agents.agent2 import resolve_conflict_agent2_node
+from ..agents.agent3 import resolve_conflict_agent3_node
+from ..agents.agent4 import resolve_conflict_agent4_node
 from ..agents.base_agent import (
     resolve_conflict_base_a_node,
     resolve_conflict_base_b_node,
@@ -40,6 +43,11 @@ from ..agents.bypass4 import resolve_conflict_bypass4_multi_agent_node
 from ..agents.bypass5 import resolve_conflict_bypass5_multi_agent_node
 from ..agents.bypass6 import resolve_conflict_bypass6_multi_agent_node
 from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
+from ..agents.new_bypass import resolve_conflict_new_bypass_multi_agent_node
+from ..agents.new_bypass2 import resolve_conflict_new_bypass2_multi_agent_node
+from ..agents.new_bypass3 import resolve_conflict_new_bypass3_multi_agent_node
+from ..agents.new_bypass4 import resolve_conflict_new_bypass4_multi_agent_node
+from ..agents.new_bypass5 import resolve_conflict_new_bypass5_multi_agent_node
 from ..agents.bypass8 import resolve_conflict_bypass8_multi_agent_node
 from ..agents.bypass_only2 import resolve_conflict_bypass_only2_multi_agent_node
 from rapidfuzz.distance import Levenshtein as RFLevenshtein  # type: ignore
@@ -235,6 +243,15 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     if eval_method == "agent":
         resolver_node_name = "resolve_agent"
         sg.add_node(resolver_node_name, resolve_conflict_agent_node)
+    elif eval_method == "agent2":
+        resolver_node_name = "resolve_agent2"
+        sg.add_node(resolver_node_name, resolve_conflict_agent2_node)
+    elif eval_method == "agent3":
+        resolver_node_name = "resolve_agent3"
+        sg.add_node(resolver_node_name, resolve_conflict_agent3_node)
+    elif eval_method == "agent4":
+        resolver_node_name = "resolve_agent4"
+        sg.add_node(resolver_node_name, resolve_conflict_agent4_node)
     elif eval_method == "base_a":
         resolver_node_name = "resolve_base_a"
         sg.add_node(resolver_node_name, resolve_conflict_base_a_node)
@@ -265,6 +282,21 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
     elif eval_method == "bypass7":
         resolver_node_name = "resolve_bypass7_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass7_multi_agent_node)
+    elif eval_method == "new_bypass":
+        resolver_node_name = "resolve_new_bypass_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_new_bypass_multi_agent_node)
+    elif eval_method == "new_bypass2":
+        resolver_node_name = "resolve_new_bypass2_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_new_bypass2_multi_agent_node)
+    elif eval_method == "new_bypass3":
+        resolver_node_name = "resolve_new_bypass3_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_new_bypass3_multi_agent_node)
+    elif eval_method == "new_bypass4":
+        resolver_node_name = "resolve_new_bypass4_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_new_bypass4_multi_agent_node)
+    elif eval_method == "new_bypass5":
+        resolver_node_name = "resolve_new_bypass5_multi"
+        sg.add_node(resolver_node_name, resolve_conflict_new_bypass5_multi_agent_node)
     elif eval_method == "bypass8":
         resolver_node_name = "resolve_bypass8_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass8_multi_agent_node)
@@ -279,7 +311,7 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401 – builder
         sg.add_node(resolver_node_name, resolve_conflict_bypass_only2_multi_agent_node)
     else:
         raise ValueError(
-            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', 'bypass2', 'bypass3', 'bypass4', 'bypass5', 'bypass6', 'bypass7', 'bypass8', 'bypass_only', 'bypass_only2', or 'dynamic'."
+            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'multi', 'bypass', 'bypass2', 'bypass3', 'bypass4', 'bypass5', 'bypass6', 'bypass7', 'bypass8', 'new_bypass', 'new_bypass2', 'new_bypass3', 'new_bypass4', 'new_bypass5', 'bypass_only', 'bypass_only2', or 'dynamic'."
         )
 
     sg.add_node("evaluate", evaluate_node)

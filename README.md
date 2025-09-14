@@ -100,6 +100,7 @@ python -m src.cli.run_all --mode clone --methods agent bypass bypass2 bypass3 by
 python -m src.cli.run_all --mode clone --methods agent bypass bypass_only bypass2 bypass3
 python -m src.cli.run_all --mode clone --methods agent bypass_only2 bypass5 bypass6 bypass7 bypass8
 
+python -m src.cli.run_all --mode clone --methods bypass7 --model-name openai/gpt-5-nano
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5-nano
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5-mini
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
@@ -127,6 +128,19 @@ python -m src.cli.run_all --mode clone --methods agent multi --model-name local:
 ```
 python -m src.results.main
 python -m src.results.compare_methods
+
+
+python -m src.results.compare_methods --results_csv data/2025_09_06_gpt_comparison_results_all.csv
+python -m src.results.compare_methods --results_csv data/2025-09-13_first_results.csv
+
+python -m src.results.compare_methods --results_csv data/results/gemma_results_all.csv
+python -m src.results.compare_methods --results_csv data/results/llama_results_all.csv
+python -m src.results.compare_methods --results_csv data/results/qwen_results_all.csv
+
+python -m src.results.compare_methods --results_csv data/results/gemma_easy_processed.csv
+python -m src.results.compare_methods --results_csv data/results/llama_easy_processed.csv
+python -m src.results.compare_methods --results_csv data/results/qwen_results_all.csv
+
 ```
 python src/dataset/add_difficulty.py data/results/qwen_easy.csv --difficulty easy --output data/results/qwen_easy_processed.csv
 python src/dataset/add_difficulty.py data/results/gemma_easy.csv --difficulty easy --output data/results/gemma_easy_processed.csv

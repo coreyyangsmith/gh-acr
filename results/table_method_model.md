@@ -1,0 +1,9 @@
+| eval_method | model_name | EM | similarity_median | BLEU_median | ROUGE_median |
+| --- | --- | --- | --- | --- | --- |
+| agent | local:Qwen/Qwen3-8B | 0.163 | 0.977 | 0.979 | 0.988 |
+| agent | local:google/codegemma-7b-it | 0.163 | 0.977 | 0.979 | 0.988 |
+| agent | local:meta-llama/Llama-3.1-8B | 0.163 | 0.978 | 0.979 | 0.988 |
+| bypass7 | local:Qwen/Qwen3-8B | 0.096 | 0.939 | 0.948 | 0.967 |
+| bypass7 | local:google/codegemma-7b-it | 0.096 | 0.939 | 0.948 | 0.967 |
+| bypass7 | local:meta-llama/Llama-3.1-8B | 0.096 | 0.938 | 0.947 | 0.967 |
+| prep | nan | 0.0 |  |  |  |

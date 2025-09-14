@@ -451,8 +451,9 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
 def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa: D401
     """Return *(encoder, llm)* for *model_name*.
 
-    • If no suitable backend/credentials, returns (None, None).
-    • Backends are cached so multiple calls with the same name are cheap.
+    Raises a RuntimeError/ValueError if the requested backend cannot be
+    initialized. Backends are cached so multiple calls with the same name
+    are cheap.
     """
     raw_llm: Optional[Any] = None
     enc: Optional[Any] = None
@@ -462,8 +463,9 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         backend_name = model_name.split("/", 1)[1]
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
-            logger.warning("OPENAI_API_KEY missing – cannot load OpenAI backend.")
-            return None, None
+            msg = f"OPENAI_API_KEY missing – cannot load OpenAI backend for model: {backend_name}"
+            logger.error(msg)
+            raise RuntimeError(msg)
         try:
             from langchain_openai import ChatOpenAI  # type: ignore
         except ImportError:
@@ -491,12 +493,13 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
             from langchain_community.llms import HuggingFacePipeline  # type: ignore
         except ImportError as exc:  # pragma: no cover
-            logger.warning("Transformers pipeline unavailable: %s", exc)
-            return None, None
+            logger.error("Transformers pipeline unavailable: %s", exc)
+            raise RuntimeError(f"Transformers pipeline unavailable: {exc}")
         requested = (model_path or "").strip()
         if not requested:
-            logger.warning("local: backend requires a model id or path, e.g. local:gpt2")
-            return None, None
+            msg = "local: backend requires a model id or path, e.g. local:gpt2"
+            logger.error(msg)
+            raise ValueError(msg)
         # Load user-specified local path or HF repo id (offline-first)
         os.makedirs(DEFAULT_HF_CACHE_DIR, exist_ok=True)
         logger.info(
@@ -884,11 +887,14 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             enc = tok
     
     else:
-        logger.warning("Unknown model_name scheme %s", model_name)
-        return None, None
+        msg = f"Unknown model_name scheme {model_name}"
+        logger.error(msg)
+        raise ValueError(msg)
 
     if raw_llm is None:
-        return None, None
+        msg = f"Failed to initialize LLM backend for model_name={model_name}"
+        logger.error(msg)
+        raise RuntimeError(msg)
 
     # Attach a LangChain callback so that rate limiting and cost logging happen
     # while preserving LangChain/OpenInference spans for the terminal LLM call.

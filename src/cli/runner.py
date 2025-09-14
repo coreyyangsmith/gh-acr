@@ -190,16 +190,16 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
         # Multi-style outputs: include bypass to mirror multi folder structure
-        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "dynamic", "bypass_only", "bypass7")
+        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "dynamic", "bypass_only", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5")
         if is_multi_like:
             # Skip redundant folders for bypass7; it writes per-file artifacts under <llm_out_dir>/<file_slug>/
-            if eval_method != "bypass7":
+            if eval_method not in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                 (llm_out_dir / "summaries").mkdir(exist_ok=True)
                 (llm_out_dir / "reviews").mkdir(exist_ok=True)
             if eval_method == "dynamic":
                 (llm_out_dir / "prompts").mkdir(exist_ok=True)
             # Persist the merge plan as text (skip for bypass_only and bypass7 – bypass7 writes per-file only)
-            if eval_method not in ("bypass_only", "bypass7"):
+            if eval_method not in ("bypass_only", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                 try:
                     import json
                     plan_obj = result.get("conflict_plan", {})
@@ -276,10 +276,10 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         # Duplicate LLM output into central per-method directory (simple/, multi/, bypass/)
         if eval_method != "base":
             # Agent-specific file base within its directory
-            is_bypass_like = eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass7")
+            is_bypass_like = eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5")
             base_name = f"bypass_{file_slug}" if is_bypass_like else file_slug
 
-            if eval_method != "bypass7":
+            if eval_method not in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                 (llm_out_dir / f"{base_name}.txt").write_text(
                     result["resolved_contents"].get(file_path, ""), encoding="utf-8"
                 )
@@ -308,9 +308,9 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                         pass
 
             # ---------------- multi/bypass extra outputs -------------------
-            if eval_method in ("multi", "bypass", "bypass_multi", "dynamic", "bypass7"):
+            if eval_method in ("multi", "bypass", "bypass_multi", "dynamic", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                 summaries = result.get("summaries", {}).get(file_path, {})
-                if eval_method == "bypass7":
+                if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                     # Write simplified names for bypass7 inside a per-file subdirectory
                     per_file_agent_dir = llm_out_dir / file_slug
                     per_file_agent_dir.mkdir(parents=True, exist_ok=True)
@@ -353,7 +353,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                         pass
                 reviews = result.get("reviews", {})
                 if reviews:
-                    if eval_method == "bypass7":
+                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                         # Write review iterations if present
                         per_file_agent_dir = llm_out_dir / file_slug
                         per_file_agent_dir.mkdir(parents=True, exist_ok=True)
@@ -376,7 +376,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 if isinstance(rr_item, dict):
                     outcome = str(rr_item.get("outcome", "")).strip()
                     rationale = str(rr_item.get("rationale", "")).strip()
-                    if eval_method == "bypass7":
+                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                         per_file_agent_dir = llm_out_dir / file_slug
                         per_file_agent_dir.mkdir(parents=True, exist_ok=True)
                         (per_file_agent_dir / "review_results.txt").write_text(
@@ -389,7 +389,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 feedback_map = result.get("review_feedback", {}) or {}
                 fb_text = str(feedback_map.get(file_path, "")).strip()
                 if fb_text:
-                    if eval_method == "bypass7":
+                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                         per_file_agent_dir = llm_out_dir / file_slug
                         per_file_agent_dir.mkdir(parents=True, exist_ok=True)
                         (per_file_agent_dir / "review_feedback.txt").write_text(
@@ -402,7 +402,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 fb_hist = result.get("review_feedback_history", {}) or {}
                 hist_entries = fb_hist.get(file_path, [])
                 if hist_entries:
-                    if eval_method == "bypass7":
+                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                         per_file_agent_dir = llm_out_dir / file_slug
                         per_file_agent_dir.mkdir(parents=True, exist_ok=True)
                         (per_file_agent_dir / "review_feedback_history.txt").write_text(
@@ -414,7 +414,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                         )
 
                 # For bypass7, also persist resolution iterations if present
-                if eval_method == "bypass7":
+                if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                     res_hist = result.get("resolution_history", {}) or {}
                     r_items = res_hist.get(file_path, [])
                     per_file_agent_dir = llm_out_dir / file_slug
@@ -529,7 +529,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     # -------------------------------------------------------------------
     per_file_rows = []
     # Determine bypass method label for this scenario (A/B/MIX) or NA for others
-    if eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass_only", "bypass_only2", "bypass5", "bypass6", "bypass7", "bypass8"):
+    if eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass_only", "bypass_only2", "bypass5", "bypass6", "bypass7", "bypass8", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
         bypass_label = str(result.get("bypass_method") or result.get("bypass_decision", "MIX")).upper()
         # Normalize to short form if full form present
         if bypass_label in ("ALL_A", "A"):
