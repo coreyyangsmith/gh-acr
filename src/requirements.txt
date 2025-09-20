@@ -105,3 +105,9 @@ zstandard==0.23.0
 rouge-score==0.1.2
 sacrebleu==2.4.3
 rapidfuzz==3.13.0
+transformers==4.56.1
+tokenizers==0.22.0
+huggingface_hub==0.34.4
+safetensors==0.5.3
+accelerate==1.10.1
+torch==2.7.1

@@ -32,4 +32,5 @@ BATCH_SIZE: int = _batch_size_val
 # benchmark file used across the application.
 
 # DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "single.csv"
-DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "single.csv"
+# DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "git_good_bench_merge_commits_subset_10pc.csv"
+DATA_PATH = Path(__file__).resolve().parents[2] / "data" / "git_good_bench_merge_commits_all.csv"

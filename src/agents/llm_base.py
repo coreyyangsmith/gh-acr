@@ -64,6 +64,42 @@ def _get_hf_token() -> Optional[str]:
             return tok.strip()
     return None
 
+def _should_use_accelerate() -> bool:
+    # Respect HF_DEVICE_MAP if the user explicitly asked
+    v = os.getenv("HF_DEVICE_MAP", "").strip().lower()
+    if v in {"auto", "cpu"} or v.isdigit() or v.startswith("cuda"):
+        return True
+    # Otherwise: single-GPU H100 can hold 8B comfortably -> no need to shard
+    return False
+
+def _weights_exist_locally(model_id: str) -> bool:
+    try:
+        # Very cheap heuristic: look for any *.safetensors under the cache subdir
+        root = os.path.join(DEFAULT_HF_CACHE_DIR, model_id.replace("/", os.sep))
+        for base, _, files in os.walk(root):
+            if any(f.endswith(".safetensors") for f in files):
+                return True
+    except Exception:
+        pass
+    return False
+
+
+def _pick_torch_dtype() -> Any:
+    # prefer env override first
+    dt = _parse_torch_dtype_env()
+    if dt == "auto":
+        dt = None
+    if dt is not None:
+        return dt
+    # default: bf16 on CUDA, else fp32
+    try:
+        if torch is not None and torch.cuda.is_available():
+            # Hopper/Ampere -> bf16 is ideal
+            return torch.bfloat16
+    except Exception:
+        pass
+    return torch.float32
+
 
 def _parse_torch_dtype_env() -> Optional[Any]:  # type: ignore[override]
     """Return torch dtype from HF_TORCH_DTYPE env or 'auto' string, else None.
@@ -100,32 +136,18 @@ def _get_device_map_from_env() -> Any:  # type: ignore[override]
     """
     v = os.getenv("HF_DEVICE_MAP", "").strip().lower()
     if not v:
-        try:
-            if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
-                return {"": 0}
-        except Exception:
-            pass
         return "auto"
     if v == "auto":
-        try:
-            if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
-                return {"": 0}
-        except Exception:
-            pass
+        if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
+            return {"": 0}
         return "auto"
     if v == "cpu":
         return {"": "cpu"}
     if v.isdigit():
-        try:
-            return {"": int(v)}
-        except Exception:
-            return "auto"
+        return {"": int(v)}
     if v.startswith("cuda"):
-        try:
-            idx = int(v.split(":", 1)[1]) if ":" in v else 0
-            return {"": idx}
-        except Exception:
-            return "auto"
+        idx = int(v.split(":", 1)[1]) if ":" in v else 0
+        return {"": idx}
     return "auto"
 
 
@@ -200,20 +222,38 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
             revision=HF_REVISION,
             trust_remote_code=HF_TRUST_REMOTE_CODE,
         )
-        device_map = _get_device_map_from_env()
-        dtype = _parse_torch_dtype_env()
-        logger.info("[local] Loading model with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            local_files_only=True,
-            cache_dir=DEFAULT_HF_CACHE_DIR,
-            token=hf_token,
-            revision=HF_REVISION,
-            trust_remote_code=HF_TRUST_REMOTE_CODE,
-            device_map=device_map,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=True,
-        )
+        use_accel = _should_use_accelerate()
+        dtype = _pick_torch_dtype()
+        local_ok = _weights_exist_locally(model_id)
+
+        if use_accel:
+            # Use Accelerate only if explicitly requested
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                cache_dir=DEFAULT_HF_CACHE_DIR,
+                token=hf_token,
+                revision=HF_REVISION,
+                trust_remote_code=True,
+                device_map="auto",            # let Accelerate place modules
+                torch_dtype=dtype,            # real torch.dtype
+                low_cpu_mem_usage=True,       # Accelerate path likes this True
+                use_safetensors=True,
+            )
+        else:
+            # Normal load (no meta), then .to("cuda:0") if available
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                cache_dir=DEFAULT_HF_CACHE_DIR,
+                token=hf_token,
+                revision=HF_REVISION,
+                trust_remote_code=True,
+                local_files_only=bool(local_ok),  # only lock to local if weights exist
+                torch_dtype=dtype,
+                low_cpu_mem_usage=False,          # ensure real weights materialize now
+                use_safetensors=True,
+            )
+            if torch is not None and torch.cuda.is_available():
+                model.to("cuda:0")
         logger.info("[local] Model devices: %s", ", ".join(_collect_model_devices(model)))
         logger.info("[local] Loaded model+tokenizer from cache (local_files_only=True): %s", model_id)
     except Exception:
@@ -229,19 +269,38 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
             revision=HF_REVISION,
             trust_remote_code=HF_TRUST_REMOTE_CODE,
         )
-        device_map = _get_device_map_from_env()
-        dtype = _parse_torch_dtype_env()
-        logger.info("[local] Loading model (download) with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            cache_dir=DEFAULT_HF_CACHE_DIR,
-            token=hf_token,
-            revision=HF_REVISION,
-            trust_remote_code=HF_TRUST_REMOTE_CODE,
-            device_map=device_map,
-            torch_dtype=dtype,
-            low_cpu_mem_usage=True,
-        )
+        use_accel = _should_use_accelerate()
+        dtype = _pick_torch_dtype()
+        local_ok = _weights_exist_locally(model_id)
+
+        if use_accel:
+            # Use Accelerate only if explicitly requested
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                cache_dir=DEFAULT_HF_CACHE_DIR,
+                token=hf_token,
+                revision=HF_REVISION,
+                trust_remote_code=True,
+                device_map="auto",            # let Accelerate place modules
+                torch_dtype=dtype,            # real torch.dtype
+                low_cpu_mem_usage=True,       # Accelerate path likes this True
+                use_safetensors=True,
+            )
+        else:
+            # Normal load (no meta), then .to("cuda:0") if available
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                cache_dir=DEFAULT_HF_CACHE_DIR,
+                token=hf_token,
+                revision=HF_REVISION,
+                trust_remote_code=True,
+                local_files_only=bool(local_ok),  # only lock to local if weights exist
+                torch_dtype=dtype,
+                low_cpu_mem_usage=False,          # ensure real weights materialize now
+                use_safetensors=True,
+            )
+            if torch is not None and torch.cuda.is_available():
+                model.to("cuda:0")
         logger.info("[local] Model devices (download): %s", ", ".join(_collect_model_devices(model)))
         logger.info("[local] Downloaded model+tokenizer and cached: %s", model_id)
     # --- Safety against position-id overflow ---
@@ -511,53 +570,47 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         hf_token = _get_hf_token()
         try:
             # Prefer explicit GPT-2 tokenizer for distilgpt2
-            if "distilgpt2" in requested:
-                try:
-                    from transformers import GPT2Tokenizer  # type: ignore
-                    tok = GPT2Tokenizer.from_pretrained(
-                        requested,
-                        local_files_only=True,
-                        cache_dir=DEFAULT_HF_CACHE_DIR,
-                        token=hf_token,
-                        revision=HF_REVISION,
-                        trust_remote_code=HF_TRUST_REMOTE_CODE,
-                    )
-                    logger.info("[local] Using GPT2Tokenizer for %s (cache-only)", requested)
-                except Exception:
-                    # Fallback to AutoTokenizer if GPT2Tokenizer is unavailable
-                    tok = AutoTokenizer.from_pretrained(
-                        requested,
-                        local_files_only=True,
-                        cache_dir=DEFAULT_HF_CACHE_DIR,
-                        token=hf_token,
-                        revision=HF_REVISION,
-                        trust_remote_code=HF_TRUST_REMOTE_CODE,
-                    )
-                    logger.info("[local] GPT2Tokenizer unavailable; fell back to AutoTokenizer for %s (cache-only)", requested)
-            else:
-                tok = AutoTokenizer.from_pretrained(
-                    requested,
-                    local_files_only=True,
-                    cache_dir=DEFAULT_HF_CACHE_DIR,
-                    token=hf_token,
-                    revision=HF_REVISION,
-                    trust_remote_code=HF_TRUST_REMOTE_CODE,
-                )
-                logger.info("[local] Loaded tokenizer from cache for %s via AutoTokenizer", requested)
-            device_map = _get_device_map_from_env()
-            dtype = _parse_torch_dtype_env()
-            logger.info("[local] Loading cached model with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
-            model = AutoModelForCausalLM.from_pretrained(
+            tok = AutoTokenizer.from_pretrained(
                 requested,
-                device_map=device_map,
                 local_files_only=True,
                 cache_dir=DEFAULT_HF_CACHE_DIR,
                 token=hf_token,
                 revision=HF_REVISION,
                 trust_remote_code=HF_TRUST_REMOTE_CODE,
-                torch_dtype=dtype,
-                low_cpu_mem_usage=True,
             )
+            logger.info("[local] Loaded tokenizer from cache for %s via AutoTokenizer", requested)
+            use_accel = _should_use_accelerate()
+            dtype = _pick_torch_dtype()
+            local_ok = _weights_exist_locally(requested)
+
+            if use_accel:
+                # Use Accelerate only if explicitly requested
+                model = AutoModelForCausalLM.from_pretrained(
+                    requested,
+                    cache_dir=DEFAULT_HF_CACHE_DIR,
+                    token=hf_token,
+                    revision=HF_REVISION,
+                    trust_remote_code=True,
+                    device_map="auto",            # let Accelerate place modules
+                    torch_dtype=dtype,            # real torch.dtype
+                    low_cpu_mem_usage=True,       # Accelerate path likes this True
+                    use_safetensors=True,
+                )
+            else:
+                # Normal load (no meta), then .to("cuda:0") if available
+                model = AutoModelForCausalLM.from_pretrained(
+                    requested,
+                    cache_dir=DEFAULT_HF_CACHE_DIR,
+                    token=hf_token,
+                    revision=HF_REVISION,
+                    trust_remote_code=True,
+                    local_files_only=bool(local_ok),  # only lock to local if weights exist
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=False,          # ensure real weights materialize now
+                    use_safetensors=True,
+                )
+                if torch is not None and torch.cuda.is_available():
+                    model.to("cuda:0")
             logger.info("[local] Model devices (cached): %s", ", ".join(_collect_model_devices(model)))
             logger.info("[local] Loaded model from cache for %s (device_map=auto)", requested)
         except Exception:
@@ -593,19 +646,38 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                     trust_remote_code=HF_TRUST_REMOTE_CODE,
                 )
                 logger.info("[local] Downloaded AutoTokenizer for %s to %s", requested, DEFAULT_HF_CACHE_DIR)
-            device_map = _get_device_map_from_env()
-            dtype = _parse_torch_dtype_env()
-            logger.info("[local] Loading downloaded model with device_map=%s, torch_dtype=%s", device_map, getattr(dtype, "__name__", dtype))
-            model = AutoModelForCausalLM.from_pretrained(
-                requested,
-                device_map=device_map,
-                cache_dir=DEFAULT_HF_CACHE_DIR,
-                token=hf_token,
-                revision=HF_REVISION,
-                trust_remote_code=HF_TRUST_REMOTE_CODE,
-                torch_dtype=dtype,
-                low_cpu_mem_usage=True,
-            )
+            use_accel = _should_use_accelerate()
+            dtype = _pick_torch_dtype()
+            local_ok = _weights_exist_locally(requested)
+
+            if use_accel:
+                # Use Accelerate only if explicitly requested
+                model = AutoModelForCausalLM.from_pretrained(
+                    requested,
+                    cache_dir=DEFAULT_HF_CACHE_DIR,
+                    token=hf_token,
+                    revision=HF_REVISION,
+                    trust_remote_code=True,
+                    device_map="auto",            # let Accelerate place modules
+                    torch_dtype=dtype,            # real torch.dtype
+                    low_cpu_mem_usage=True,       # Accelerate path likes this True
+                    use_safetensors=True,
+                )
+            else:
+                # Normal load (no meta), then .to("cuda:0") if available
+                model = AutoModelForCausalLM.from_pretrained(
+                    requested,
+                    cache_dir=DEFAULT_HF_CACHE_DIR,
+                    token=hf_token,
+                    revision=HF_REVISION,
+                    trust_remote_code=True,
+                    local_files_only=bool(local_ok),  # only lock to local if weights exist
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=False,          # ensure real weights materialize now
+                    use_safetensors=True,
+                )
+                if torch is not None and torch.cuda.is_available():
+                    model.to("cuda:0")
             logger.info("[local] Model devices (downloaded): %s", ", ".join(_collect_model_devices(model)))
             logger.info("[local] Downloaded model %s to %s (device_map=auto)", requested, DEFAULT_HF_CACHE_DIR)
         # --- Safety against position-id overflow (same as tiny helper) ---
@@ -693,7 +765,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                             messages,
                             tokenize=False,
                             add_generation_prompt=True,
-                            enable_thinking=bool(self._enable_thinking),
+                            enable_thinking=False, #Hardcode to False for Qwen3, for now
                         )
 
                         # Notify start
@@ -706,10 +778,11 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
 
                         # Generation
                         pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
+                        local_tok = self._tok.__class__.from_pretrained(self._tok.name_or_path, use_fast=True, trust_remote_code=True)
                         generator = pipeline(
                             "text-generation",
                             model=self._model,
-                            tokenizer=self._tok,
+                            tokenizer=local_tok,
                             truncation=True,
                         )
                         outputs = generator(
