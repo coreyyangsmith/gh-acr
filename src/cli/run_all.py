@@ -21,7 +21,7 @@ from src.agents.graph_router import build_graph
 from src.cli.runner import run_and_save_report, RESULTS_SCHEMA_COLUMNS
 
 
-ProcessMode = Literal["api", "clone"]
+ProcessMode = Literal["clone"]
 
 
 def main(
@@ -41,7 +41,7 @@ def main(
     max_scenarios
         Optional cap on total scenarios (ignored if difficulty sampling is used).
     mode
-        Processing mode: "api" or "clone" (defaults to "clone").
+        Processing mode: "clone" (defaults to "clone").
     methods
         Subset of evaluation methods to run. Defaults to all: ["base_a", "base_b", "agent", "multi", "bypass_multi"].
     model_name

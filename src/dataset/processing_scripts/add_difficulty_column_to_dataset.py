@@ -1,3 +1,19 @@
+"""CLI and helpers to add a difficulty column to a CSV.
+
+Usage (PowerShell examples):
+    # Modify the file in-place, creating the column if missing
+    python -m src.dataset.processing_scripts.add_difficulty_column_to_dataset data/git_good_bench.csv --difficulty easy
+
+    # Write to a new file next to the input
+    python -m src.dataset.processing_scripts.add_difficulty_column_to_dataset data/git_good_bench.csv -d hard -o data/git_good_bench_hard.csv
+
+Notes
+-----
+- The delimiter is auto-detected when possible, unless ``--delimiter`` is set.
+- The script preserves all existing columns and only adds/updates the
+  specified difficulty column.
+"""
+
 import argparse
 import csv
 import os
@@ -7,6 +23,14 @@ from typing import Optional
 
 
 def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments for the difficulty writer CLI.
+
+    Returns
+    -------
+    argparse.Namespace
+        Parsed arguments including input path, difficulty, column name,
+        output path, encoding, and delimiter (optional).
+    """
     parser = argparse.ArgumentParser(
         description=(
             "Add or update a difficulty column for all rows in a CSV file. "
@@ -58,6 +82,18 @@ def parse_args() -> argparse.Namespace:
 
 
 def _sniff_dialect(sample: str) -> Optional[csv.Dialect]:
+    """Try to infer a CSV dialect from a text sample.
+
+    Parameters
+    ----------
+    sample
+        Initial bytes read from the file to feed into ``csv.Sniffer``.
+
+    Returns
+    -------
+    Optional[csv.Dialect]
+        A detected dialect when successful; otherwise ``None``.
+    """
     try:
         return csv.Sniffer().sniff(sample, delimiters=",;\t|")
     except csv.Error:
@@ -72,6 +108,38 @@ def add_difficulty_to_csv(
     encoding: str = "utf-8",
     delimiter: Optional[str] = None,
 ) -> Path:
+    """Add or update a difficulty column for all rows in a CSV file.
+
+    Parameters
+    ----------
+    input_path
+        Path to the source CSV file.
+    difficulty
+        One of ``{"easy", "medium", "hard"}``.
+    column_name
+        Name of the column to write (default: ``"difficulty"``).
+    output_path
+        Destination CSV path. If ``None``, the input file is updated in-place
+        via an atomic replace.
+    encoding
+        Text encoding for reading/writing.
+    delimiter
+        Optional delimiter to force. If ``None``, the function attempts to
+        sniff the dialect from the file sample.
+
+    Returns
+    -------
+    pathlib.Path
+        The path of the written CSV (either ``input_path`` if in-place or the
+        provided ``output_path``).
+
+    Raises
+    ------
+    FileNotFoundError
+        If ``input_path`` does not exist.
+    ValueError
+        If the CSV appears to have no header row.
+    """
     if not input_path.exists():
         raise FileNotFoundError(f"Input CSV not found: {input_path}")
 
@@ -159,6 +227,7 @@ def add_difficulty_to_csv(
 
 
 def main() -> None:
+    """Entry point when executed as a module or script."""
     args = parse_args()
     result_path = add_difficulty_to_csv(
         input_path=args.input_csv,

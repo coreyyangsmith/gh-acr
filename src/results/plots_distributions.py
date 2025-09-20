@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Distribution visualizations: ECDFs/violins, token composition, and cost breakdowns."""
+
 from pathlib import Path
 from typing import Optional
 
@@ -10,6 +12,10 @@ import seaborn as sns
 
 
 def ecdf_or_violin(df: pd.DataFrame, *, metrics: list[str], kind: str = "violin", save_prefix: Optional[Path] = None, show: bool = True) -> None:
+    """Plot ECDF or violin per metric, faceted by `eval_method`.
+
+    Saves one PNG per metric to `<save_prefix>_{metric}_{kind}.png` if `save_prefix` is provided.
+    """
     for metric in metrics:
         plt.figure(figsize=(10, 6))
         if kind == "ecdf":
@@ -27,6 +33,7 @@ def ecdf_or_violin(df: pd.DataFrame, *, metrics: list[str], kind: str = "violin"
 
 
 def token_composition_stacks(df: pd.DataFrame, *, save_path: Optional[Path] = None, show: bool = True) -> None:
+    """Stacked bars of average token component shares per method."""
     cols = [
         "tokens_system_prompt",
         "tokens_original",
@@ -61,6 +68,7 @@ def token_composition_stacks(df: pd.DataFrame, *, save_path: Optional[Path] = No
 
 
 def cost_breakdown(df: pd.DataFrame, *, save_path: Optional[Path] = None, show: bool = True) -> None:
+    """Stacked cost shares (input/output) per method with $/1k token annotations."""
     if not {"cost_in", "cost_out"}.issubset(df.columns):
         return
     agg = df.groupby("eval_method")[

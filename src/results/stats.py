@@ -1,3 +1,10 @@
+"""Statistical helpers for result analyses.
+
+This module groups small, dependency-light utilities used across result
+summaries and comparisons: bootstrap confidence intervals, exact match rate,
+cost/time per success, nonparametric tests, and simple correlations.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,10 +15,10 @@ import pandas as pd
 
 
 def bootstrap_ci(series: pd.Series, *, n_boot: int = 2000, ci: float = 0.95, statistic: Callable[[np.ndarray], float] | None = None, random_state: int = 42) -> tuple[float, float]:
-    """Nonparametric bootstrap confidence interval for a statistic.
+    """Return a nonparametric bootstrap confidence interval for a statistic.
 
-    Defaults to mean if statistic is None.
-    Returns (low, high).
+    - Defaults to the mean if `statistic` is not provided.
+    - Returns a tuple `(low, high)` for the given `ci` level.
     """
     rng = np.random.default_rng(random_state)
     clean = series.dropna().to_numpy()
@@ -29,23 +36,26 @@ def bootstrap_ci(series: pd.Series, *, n_boot: int = 2000, ci: float = 0.95, sta
 
 
 def exact_match_rate(series_bool: pd.Series) -> float:
+    """Compute the mean of a boolean series as a float (exact match rate)."""
     return float(series_bool.astype(bool).mean())
 
 
 def cost_per_success(total_cost: pd.Series, exact_match: pd.Series) -> float:
+    """Total cost divided by the number of successes; NaN if zero successes."""
     successes = exact_match.astype(bool).sum()
     return float(total_cost.sum() / successes) if successes > 0 else float("nan")
 
 
 def time_per_success(total_time: pd.Series, exact_match: pd.Series) -> float:
+    """Total time divided by the number of successes; NaN if zero successes."""
     successes = exact_match.astype(bool).sum()
     return float(total_time.sum() / successes) if successes > 0 else float("nan")
 
 
 def paired_wilcoxon(delta: pd.Series) -> tuple[float, float]:
-    """Return (statistic, p_value) using Wilcoxon signed-rank on paired deltas.
+    """Return (statistic, p_value) for Wilcoxon signed-rank on paired deltas.
 
-    Note: Requires scipy. If not available, returns (nan, nan).
+    Requires SciPy; if unavailable, returns `(nan, nan)`.
     """
     try:
         from scipy.stats import wilcoxon
@@ -59,15 +69,16 @@ def paired_wilcoxon(delta: pd.Series) -> tuple[float, float]:
 
 
 def cliffs_delta(x: pd.Series, y: pd.Series) -> float:
-    """Compute Cliff's delta effect size for paired samples x and y.
+    """Compute Cliff's delta effect size for paired samples `x` and `y`.
 
-    Positive means x > y. Range ~ [-1, 1].
+    Positive values mean `x` tends to be larger than `y`. Range approximately
+    in [-1, 1]. Uses all pairwise comparisons.
     """
     x_clean = x.dropna().to_numpy()
     y_clean = y.dropna().to_numpy()
     if x_clean.size == 0 or y_clean.size == 0:
         return float("nan")
-    # Use all pairwise comparisons (can be heavy). For moderate sizes it's fine.
+    # Pairwise comparisons; for moderate sizes this is acceptable.
     greater = 0
     lesser = 0
     ties = 0
@@ -81,5 +92,6 @@ def cliffs_delta(x: pd.Series, y: pd.Series) -> float:
 
 
 def correlation_table(df: pd.DataFrame, cols: list[str]) -> pd.DataFrame:
+    """Return a rounded correlation table for the selected columns."""
     return df[cols].corr().round(3)
 

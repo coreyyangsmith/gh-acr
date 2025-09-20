@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-"""Extract rows from a source CSV whose IDs appear in another CSV.
+"""Extract rows from one CSV based on ID membership from another CSV.
 
-Usage examples (PowerShell):
+This utility reads an IDs list from one CSV and filters a source CSV so that
+only rows with matching IDs are retained. Matching can be configured to be
+case-insensitive and whitespace-normalized. By default, values are coerced to
+strings before comparison for robustness.
+
+Usage (PowerShell examples):
     # All params are flags (no positionals)
-    python -m src.dataset.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --output-csv data/source_filtered.csv --ids-column id --source-id-column id
+    python -m src.dataset.processing_scripts.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --output-csv data/source_filtered.csv --ids-column id --source-id-column id
 
     # Case-insensitive match on stringified IDs; preserve leading index column
-    python -m src.dataset.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --case-insensitive true --preserve-index-col true
+    python -m src.dataset.processing_scripts.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --case-insensitive true --preserve-index-col true
 """
 
 from pathlib import Path
@@ -24,7 +29,24 @@ def _normalize_ids(
     trim_whitespace: bool,
     case_insensitive: bool,
 ) -> pd.Series:
-    """Normalize an ID column for robust matching across CSVs."""
+    """Normalize an ID column for robust cross-file matching.
+
+    Parameters
+    ----------
+    series
+        The input series containing IDs.
+    coerce_to_string
+        If True, cast values to string before normalization.
+    trim_whitespace
+        If True and the dtype is string-like, strip leading/trailing spaces.
+    case_insensitive
+        If True and the dtype is string-like, lower-case the values.
+
+    Returns
+    -------
+    pandas.Series
+        The normalized series.
+    """
     result = series
     if coerce_to_string:
         result = result.astype(str)
@@ -36,6 +58,7 @@ def _normalize_ids(
 
 
 def _derive_default_output_path(source_csv: Path, ids_csv: Path) -> Path:
+    """Derive a default output path based on the input filenames."""
     src = source_csv.expanduser().resolve()
     ids = ids_csv.expanduser().resolve()
     return src.with_name(f"{src.stem}_extracted_by_{ids.stem}.csv")
@@ -54,9 +77,37 @@ def extract_rows_by_ids(
     preserve_index_col: bool = True,
     drop_duplicates_in_ids: bool = True,
 ) -> Path:
-    """Filter ``source_csv`` rows whose ``source_id_column`` is in ``ids_csv``'s ``ids_column``.
+    """Filter rows of ``source_csv`` where ``source_id_column`` is in the IDs CSV.
 
-    Returns the path to the written CSV.
+    Parameters
+    ----------
+    ids_csv
+        Path to the CSV containing an IDs column.
+    source_csv
+        Path to the CSV to be filtered.
+    output_csv
+        Optional destination CSV path. If omitted, a name is auto-derived next
+        to the source file using the pattern ``<source>_extracted_by_<ids>.csv``.
+    ids_column
+        Column name in the IDs CSV from which to read IDs (default: ``"id"``).
+    source_id_column
+        Column name in the source CSV to match against (default: ``"id"``).
+    case_insensitive
+        Apply case-insensitive matching for string-like columns.
+    trim_whitespace
+        Strip whitespace for string-like columns during normalization.
+    coerce_to_string
+        Cast values to string prior to normalization and comparison.
+    preserve_index_col
+        If True, read the source with ``index_col=0`` and write with index to
+        preserve the leading unnamed index column convention used elsewhere.
+    drop_duplicates_in_ids
+        If True, deduplicate the IDs list prior to matching.
+
+    Returns
+    -------
+    pathlib.Path
+        Path to the written filtered CSV.
     """
 
     ids_path = Path(ids_csv).expanduser().resolve()
@@ -136,10 +187,10 @@ def cli(
 ) -> None:
     """CLI wrapper – all parameters are flags.
 
-    Required flags: --ids-csv, --source-csv
-    Optional flags: --output-csv, --ids-column, --source-id-column, --case-insensitive,
-                    --trim-whitespace, --coerce-to-string, --preserve-index-col,
-                    --drop-duplicates-in-ids
+    Required flags: ``--ids-csv``, ``--source-csv``
+    Optional flags: ``--output-csv``, ``--ids-column``, ``--source-id-column``,
+    ``--case-insensitive``, ``--trim-whitespace``, ``--coerce-to-string``,
+    ``--preserve-index-col``, ``--drop-duplicates-in-ids``.
     """
 
     extract_rows_by_ids(

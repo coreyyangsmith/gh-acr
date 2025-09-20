@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+"""Split counts by difficulty and project size, exporting CSV and Markdown.
+
+Project size can be provided directly or derived from lines-of-code columns.
+"""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -17,6 +22,7 @@ SIZE_LABELS = ["Tiny", "Small", "Medium", "Large", "Huge"]
 
 
 def _size_from_loc(loc: float) -> str:
+    """Map a (non-negative) LOC count to a size bucket."""
     try:
         v = float(loc)
     except Exception:
@@ -35,6 +41,7 @@ def _size_from_loc(loc: float) -> str:
 
 
 def _normalize_project_size_column(df: pd.DataFrame, *, project_size_col: Optional[str], allow_derive_from_loc: bool) -> pd.Series:
+    """Normalize a project size column or derive it from LOC if permitted."""
     # Use project_size column from CSV (do not compute from LOC unless explicitly allowed)
     col = project_size_col if project_size_col else ("project_size" if "project_size" in df.columns else None)
     if col is not None and col in df.columns:
@@ -64,6 +71,7 @@ def _normalize_project_size_column(df: pd.DataFrame, *, project_size_col: Option
 
 
 def _save_markdown_table(df: pd.DataFrame, path: Path) -> None:
+    """Write a simple GitHub-flavored markdown table to `path`."""
     if df is None or df.empty:
         return
     cols = [str(c) for c in df.columns]
@@ -89,6 +97,7 @@ def _save_markdown_table(df: pd.DataFrame, path: Path) -> None:
 
 @dataclass
 class Flags:
+    """Arguments controlling inputs and normalization behavior."""
     input_csv: Path
     output_dir: Path = Path("results")
     difficulty_col: str = "difficulty"
@@ -99,6 +108,7 @@ class Flags:
 
 
 def main(flags: Flags) -> None:
+    """Compute a difficulty×project size count table and save CSV/Markdown."""
     flags.output_dir.mkdir(parents=True, exist_ok=True)
 
     df = pd.read_csv(flags.input_csv)

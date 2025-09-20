@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""One-stop CLI to generate tables and plots for results analyses."""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -26,6 +28,7 @@ from .diagnostics import head_to_head_paired_plot, bland_altman, compute_paired_
 
 @dataclass
 class Flags:
+    """CLI switches to control which artifacts are generated and saved."""
     results_csv: Optional[Path] = None
     output_dir: Path = Path("results")
     show: bool = True
@@ -60,6 +63,7 @@ class Flags:
 
 
 def main(flags: Flags) -> None:
+    """Load results and generate selected tables/plots into `output_dir`."""
     flags.output_dir.mkdir(parents=True, exist_ok=True)
     data = load_results(flags.results_csv)
     df = data.dataframe

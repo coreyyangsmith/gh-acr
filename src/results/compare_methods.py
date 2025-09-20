@@ -1,3 +1,15 @@
+"""End-to-end rendering of comparison tables and plots for evaluation results.
+
+This module provides a CLI and helpers to produce:
+- per-method summary tables and method×model tables
+- boxplots and grouped bar charts for metrics (similarity, BLEU-3, ROUGE-L,
+  processing time, tokens, and costs)
+- convenience exports of CSV/Markdown tables used in the paper/README
+
+The public entrypoint is `main(Flags)` and the script can be invoked via
+`python -m src.results.compare_methods --help`.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -45,6 +57,7 @@ sns.set_theme(
 
 @dataclass
 class Flags:
+    """CLI flags controlling which artifacts to render and where to save them."""
     results_csv: Optional[Path] = None
     output_dir: Path = Path("results")
     show: bool = True
@@ -59,18 +72,23 @@ class Flags:
 # =============================================================================
 
 def _order_from_present(present: Iterable[str], desired: Optional[list[str]] = None) -> list[str]:
-    """Return 'present' ordered by desired (DEFAULT_METHOD_ORDER) then append any unknowns."""
+    """Return labels in the desired order followed by any unknown ones.
+
+    Ensures consistent method ordering across all visualizations.
+    """
     present_list = [str(x) for x in present]
     desired = desired or DEFAULT_METHOD_ORDER
     return [m for m in desired if m in present_list] + [m for m in present_list if m not in desired]
 
 
 def _palette_for(labels: list[str], base: str = "deep") -> dict[str, tuple[float, float, float]]:
+    """Stable mapping from label → color for consistent plots across figures."""
     pal = sns.color_palette(base, max(3, len(labels)))
     return {lab: pal[i % len(pal)] for i, lab in enumerate(labels)}
 
 
 def _slugify_model_name(name: object) -> str:
+    """Filesystem-safe key derived from a model name."""
     s = str(name)
     try:
         s = s.strip().lower().replace("/", "_").replace("\\", "_").replace(":", "_")
@@ -109,7 +127,11 @@ def _save_box_summary_table(
     save_csv_path: Path,
     method_order: Optional[list[str]] = None,
 ) -> None:
-    """Write per-method box summary (count, min, q1, median, q3, max, mean, std) to CSV."""
+    """Write a per-method box summary to CSV.
+
+    Columns: count, min, q1, median, q3, max, mean, std.
+    Only methods present in the input are included, ordered by `method_order`.
+    """
     if "eval_method" not in df.columns or column not in df.columns:
         return
     work = df[["eval_method", column]].copy()
@@ -150,6 +172,7 @@ def _save_box_summary_table(
 
 def _method_model_summary(
     df: pd.DataFrame, *, method_order: Optional[list[str]] = None
+
 ) -> pd.DataFrame:
     """Return summary grouped by (eval_method, model_name).
 
@@ -526,6 +549,11 @@ def _bars_by_model(
 # =============================================================================
 
 def _render_all_outputs(df: pd.DataFrame, *, output_dir: Path, show: bool) -> None:
+    """Render all tables and figures into `output_dir`.
+
+    This orchestrates the common set of outputs used throughout analyses and the
+    README, guarding each artifact on the presence of its required columns.
+    """
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Base summary table (per method) and a simple markdown export for quick viewing
@@ -837,6 +865,7 @@ def _render_all_outputs(df: pd.DataFrame, *, output_dir: Path, show: bool) -> No
 # =============================================================================
 
 def main(flags: Flags) -> None:
+    """Entry point for CLI: load results, optionally filter, and render outputs."""
     flags.output_dir.mkdir(parents=True, exist_ok=True)
     data = load_results(flags.results_csv)
     df = data.dataframe

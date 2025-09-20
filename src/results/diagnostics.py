@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Diagnostics: head-to-head plots, Bland–Altman, paired tests, and helpers."""
+
 from pathlib import Path
 from typing import Optional, Sequence
 
@@ -20,7 +22,7 @@ def head_to_head_paired_plot(
     save_path: Optional[Path] = None,
     show: bool = True,
 ) -> pd.DataFrame:
-    """Paired dots per file (linked) comparing two methods on a metric.
+    """Paired dots per file comparing two methods on a metric.
 
     Returns the underlying paired data used for plotting.
     """

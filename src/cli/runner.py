@@ -3,7 +3,7 @@ from __future__ import annotations
 """Shared logic for running the merge-resolution pipeline.
 
 This module is the single source of truth for processing a scenario and
-writing its output files. It is imported by both `run_single` and `run_batch`.
+writing its output files. It is used by the `run_all` entrypoint.
 """
 from pathlib import Path
 import src.startup  # noqa: F401  # Ensure startup side-effects apply when runner is imported

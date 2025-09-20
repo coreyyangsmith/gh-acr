@@ -1,24 +1,25 @@
-import pandas as pd
+"""Utility to drop rows with `eval_method == 'prep'` from a results CSV."""
 
-def main():
-    # Define file paths
-    input_file = "data/2025_08_28_results_all.csv"  # Update this path as needed
-    output_file = "data/output_filtered.csv"  # Update this path as needed
-    
-    # Read the CSV file
+import pandas as pd
+from pathlib import Path
+import tyro
+
+
+def main(input_file: Path, output_file: Path) -> None:
     df = pd.read_csv(input_file)
-    
-    # Filter out rows where method equals "prep"
     filtered_df = df[df['eval_method'] != 'prep']
-    
-    # Export to new file
+    output_file.parent.mkdir(parents=True, exist_ok=True)
     filtered_df.to_csv(output_file, index=False)
-    
-    print(f"Filtered data saved to {output_file}")
-    print(f"Removed {len(df) - len(filtered_df)} rows with method='prep'")
-    print(f"Remaining rows: {len(filtered_df)}")
+    print({
+        "input": str(input_file),
+        "output": str(output_file),
+        "removed": int(len(df) - len(filtered_df)),
+        "remaining": int(len(filtered_df)),
+    })
+
 
 if __name__ == "__main__":
-    main()
+    args = tyro.cli(tuple[Path, Path])
+    main(*args)
 
 

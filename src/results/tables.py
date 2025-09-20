@@ -1,3 +1,17 @@
+"""Tabular summaries and pairwise comparison utilities for evaluation results.
+
+This module provides helpers to aggregate per-method metrics into compact tables
+and to compute pairwise win matrices between methods for a chosen primary
+metric.
+
+Key helpers:
+- `method_summary`: Aggregate metrics, confidence intervals, and efficiency
+  measures per `eval_method`.
+- `by_difficulty_leaderboard`: Build per-difficulty leaderboards.
+- `pairwise_win_matrix`: Head-to-head win rates on a metric (ties split 50/50).
+- `pairwise_cost_win_matrix`: Convenience wrapper where lower cost is better.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -70,6 +84,10 @@ def method_summary(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def by_difficulty_leaderboard(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    """Return per-difficulty leaderboards using `method_summary`.
+
+    If the input lacks a `difficulty` column, returns an empty mapping.
+    """
     if "difficulty" not in df.columns:
         return {}
     out: dict[str, pd.DataFrame] = {}

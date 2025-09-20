@@ -12,15 +12,18 @@ DEFAULT_RESULTS_GLOB = "data/*_results_all.csv"
 
 @dataclass
 class ResultsData:
+    """Container for a loaded results dataframe and its source path."""
     dataframe: pd.DataFrame
     path: Path
 
 
 def load_results(path: str | Path | None = None) -> ResultsData:
-    """Load consolidated results CSV.
+    """Load a consolidated results CSV and normalize common columns.
 
-    If path is None, pick the most recent file matching DEFAULT_RESULTS_GLOB.
-    Ensures expected dtypes and derived columns exist.
+    - If `path` is None, uses the most recent file matching `DEFAULT_RESULTS_GLOB`.
+    - Ensures boolean-typed `exact_match` when present.
+    - Derives `tokens_in`/`tokens_out` if common alternate names exist.
+    - Adds lightweight row-level metrics like `tokens_per_sec` and `quality_per_dollar`.
     """
     path_obj: Path
     if path is None:
@@ -70,6 +73,7 @@ def load_results(path: str | Path | None = None) -> ResultsData:
 
 
 def _safe_ratio(numer: Iterable, denom: Iterable) -> pd.Series:
+    """Element-wise safe division that returns NA on invalid/zero denominators."""
     import numpy as np
 
     numer_s = pd.Series(numer)

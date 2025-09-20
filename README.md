@@ -42,41 +42,17 @@ python -m src.dataset.get_subset data/git_good_bench_merge_commits.csv --percent
 
 # Inference
 Go to `src/dataset/loader.py` and set the appropriate file path
-## Single scenario
-- Parameters
-  - `scenario_id` (positional): dataset index (e.g., `1505`) or slug from CSV `id`.
-  - `--mode` (`api`|`clone`): how to read repo data. Default: `api`.
-  - `--eval-method` (`base_a`|`base_b`|`agent`|`multi`): resolver. Default: `agent`.
-  - `--model-name` (optional): LLM backend name (e.g., `openai/gpt-4o-mini`).
+## Running the pipeline
+- Use the consolidated entrypoint:
 
-Examples
 ```bash
-python -m src.cli.run_single 1505 --mode clone --eval-method base_a
-python -m src.cli.run_single some_repo__some_pr --mode api --eval-method agent --model-name openai/gpt-4o-mini
-```
-
-## Batch (multiple scenarios)
-- Parameters
-  - `--max-scenarios N`: process first N scenarios (mutually exclusive with difficulty sampling).
-  - `--n-easy N --n-medium M --n-hard K`: sample per difficulty buckets.
-  - `--mode` (`api`|`clone`): default `api`.
-  - `--eval-method` (`base_a`|`base_b`|`agent`|`multi`).
-  - `--model-name` (optional): LLM backend.
-
-Examples
-```bash
-python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method base_a
-python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method base_b
-python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method agent
-python -m src.cli.run_batch --max-scenarios 10 --mode clone --eval-method multi
-
-python -m src.cli.run_batch --n-easy 10 --n-medium 10 --n-hard 10 --mode clone --eval-method agent
+python -m src.cli.run_all --mode clone --methods base_a base_b agent
 ```
 
 ## Run all methods over the dataset
 - Command runs each of: `base_a`, `base_b`, `agent`, `multi` for the same subset.
 - Parameters
-  - `--mode` (`api`|`clone`): default `clone`.
+  - `--mode` (`clone`): default `clone`.
   - `--methods ...`: optional subset list of methods to run (space-separated).
   - `--max-scenarios N`: optional cap on total scenarios.
   - `--n-easy N --n-medium M --n-hard K`: instead of `max-scenarios`, sample by difficulty.
@@ -106,7 +82,7 @@ python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --m
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
 python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --model-name openai/gpt-5
 
-
+python -m src.cli.run_all --mode clone --methods base_a base_b agent2 agent3 agent4 new_bypass new_bypass2 new_bypass3 new_bypass4 new_bypass5 --model-name openai/gpt-5-nano
 
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.2-1B
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.1-8B --results_filename 2025-09-10-llama-hard
@@ -140,6 +116,8 @@ python -m src.results.compare_methods --results_csv data/results/qwen_results_al
 python -m src.results.compare_methods --results_csv data/results/gemma_easy_processed.csv
 python -m src.results.compare_methods --results_csv data/results/llama_easy_processed.csv
 python -m src.results.compare_methods --results_csv data/results/qwen_results_all.csv
+python -m src.results.compare_methods --results_csv data/qwen_results_all.csv
+qwen_results_all
 
 ```
 python src/dataset/add_difficulty.py data/results/qwen_easy.csv --difficulty easy --output data/results/qwen_easy_processed.csv

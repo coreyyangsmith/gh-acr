@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 r"""Utility to extract GitGoodBench scenarios that have an explicit merge commit hash.
 
 This script/CLI is intentionally separate from the main pipeline so that the
@@ -7,14 +8,14 @@ filtered subset can be inspected or reused independently.
 
 Usage (PowerShell examples):
     # Default input (dataset default) → output in data/git_good_bench_merge_commits.csv
-    python -m src.dataset.process_ggb
+    python -m src.dataset.processing_scripts.extract_merge_scenario_from_ggb
 
     # Pass full paths
-    python -m src.dataset.process_ggb --input-csv C:\data\git_good_bench.csv --output-csv C:\out\filtered.csv
+    python -m src.dataset.processing_scripts.extract_merge_scenario_from_ggb --input-csv C:\data\git_good_bench.csv --output-csv C:\out\filtered.csv
 
     # Pass just names (placed under the data/ directory automatically)
     # Extension is optional; ".csv" will be added if missing
-    python -m src.dataset.process_ggb --input-csv git_good_bench --output-csv git_good_bench_merge_commits
+    python -m src.dataset.processing_scripts.extract_merge_scenario_from_ggb --input-csv git_good_bench --output-csv git_good_bench_merge_commits
 """
 
 from pathlib import Path

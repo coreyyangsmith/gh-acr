@@ -1,3 +1,11 @@
+"""Utilities for computing per-instance and aggregate cost/token summaries.
+
+This module is both importable and runnable as a small CLI. When executed, it
+reads a results CSV (or the latest default), normalizes cost/token columns,
+aggregates per instance, and writes two CSV outputs: `costs_per_instance.csv`
+and `costs_totals.csv`.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,7 +20,7 @@ from .data_loader import load_results
 
 @dataclass
 class Flags:
-    """Compute input, output, and total costs per instance and overall totals.
+    """Configuration for cost aggregation CLI.
 
     - results_csv: Path to results CSV; if None, picks latest matching data/*_results_all.csv
     - output_dir: Where to write outputs; defaults to the input CSV's parent directory
@@ -25,6 +33,7 @@ class Flags:
 
 
 def _resolve_results_path(path: Optional[Path]) -> Path:
+    """Resolve an optional path to a concrete results CSV path."""
     if path is None:
         return load_results(None).path
     if path.suffix == "":
@@ -35,6 +44,7 @@ def _resolve_results_path(path: Optional[Path]) -> Path:
 
 
 def _ensure_cost_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Ensure cost columns exist and are numeric; derive `total_cost` if needed."""
     # Normalize cost columns and coerce to numeric
     cols = {"cost_in", "cost_out", "total_cost"}
     missing = cols.difference(df.columns)
@@ -63,6 +73,7 @@ def _ensure_cost_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def main(flags: Flags) -> None:
+    """Run the cost aggregation using provided `flags` and write CSV outputs."""
     resolved_csv = _resolve_results_path(flags.results_csv)
     data = load_results(resolved_csv)
     df = _ensure_cost_columns(data.dataframe.copy())

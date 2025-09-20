@@ -1,3 +1,11 @@
+"""Count tokens across prompt .txt files under `src/prompts` and export JSON.
+
+This script groups files by their top-level folder within `src/prompts`, counts
+tokens per file using `tiktoken` when available (falling back to a simple word
+count), and writes a JSON summary. The output path can be overridden with the
+`OUTPUT_JSON` environment variable.
+"""
+
 import os
 import json
 import logging
@@ -13,19 +21,22 @@ except Exception:  # pragma: no cover
 
 
 def get_repo_root() -> str:
+    """Return repository root assuming this file lives at src/results/."""
     # This file lives at src/results/token_counter.py → repo root is two levels up
     return os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 
 def get_prompts_root(repo_root: str) -> str:
+    """Return absolute path to the `src/prompts` directory."""
     return os.path.join(repo_root, "src", "prompts")
 
 
 def find_txt_files_grouped(prompts_root: str) -> Dict[str, List[Dict[str, str]]]:
-    """Return mapping of top-level folder → list of entries {path, key} for .txt files.
+    """Return mapping: top-level folder → list of {path, key} entries for .txt files.
 
-    key is the relative path within the top-level folder (or just the filename if at root).
-    Files directly under prompts_root are grouped under "_root".
+    The `key` is the path relative to the top-level folder (or the filename if
+    at the root). Files directly under `prompts_root` are grouped under
+    "_root".
     """
     grouped: Dict[str, List[Dict[str, str]]] = {}
     for dirpath, _, filenames in os.walk(prompts_root):
@@ -49,6 +60,7 @@ def find_txt_files_grouped(prompts_root: str) -> Dict[str, List[Dict[str, str]]]
 
 
 def load_text(path: str) -> str:
+    """Read a UTF-8 text file and return its contents."""
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
@@ -76,6 +88,7 @@ def get_encoder() -> Optional[Any]:  # type: ignore[override]
 
 
 def count_tokens(text: str, encoder: Optional[Any]) -> int:
+    """Count tokens via `tiktoken` if available; otherwise approximate via words."""
     if encoder is None:
         # Fallback: word count approximation
         return len(text.split())
@@ -86,6 +99,7 @@ def count_tokens(text: str, encoder: Optional[Any]) -> int:
 
 
 def main() -> None:
+    """Run the token counting pipeline and write the JSON report."""
     repo_root = get_repo_root()
     prompts_root = get_prompts_root(repo_root)
     output_path = os.getenv("OUTPUT_JSON", os.path.join(repo_root, "results", "review_prompt_token_counts.json"))

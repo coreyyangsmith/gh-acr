@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""CLI to identify missing and fully processed instances by `id` in results."""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -12,7 +14,7 @@ from .data_loader import load_results
 
 @dataclass
 class Flags:
-    """CLI flags for finding missing/processed instances by ID.
+    """Parameters controlling input, expectations, and outputs.
 
     - results_csv: Path to results CSV; if None, picks latest matching data/*_results_all.csv
     - results_per_instance: Expected number of rows per unique id (including prep rows for counting)
@@ -27,6 +29,7 @@ class Flags:
 
 
 def _resolve_results_path(path: Optional[Path]) -> Path:
+    """Resolve optional path to an existing CSV, allowing extension-less input."""
     if path is None:
         return load_results(None).path
     # Allow passing a path without extension; assume .csv
@@ -38,6 +41,7 @@ def _resolve_results_path(path: Optional[Path]) -> Path:
 
 
 def main(flags: Flags) -> None:
+    """Compute and export CSVs for missing and processed instance IDs."""
     if flags.results_per_instance <= 0:
         raise ValueError("results_per_instance must be > 0")
 

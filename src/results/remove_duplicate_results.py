@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""CLI to remove duplicate runs per (id, file_name, eval_method) in results."""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -13,7 +15,7 @@ from .data_loader import load_results
 
 @dataclass
 class Flags:
-    """CLI to remove duplicate runs per (id, file_name, eval_method).
+    """Options for deduplicating results.
 
     Keeps the row with the highest similarity per group. If all rows in a group
     have missing similarity, the first occurrence is kept.
@@ -39,7 +41,7 @@ def _resolve_results_path(path: Optional[Path]) -> Path:
 
 
 def _coerce_similarity(series: pd.Series) -> pd.Series:
-    # Convert to numeric, NaNs for non-convertible. Use -inf for ranking so idxmax selects first when all are NA.
+    """Convert to numeric; non-convertible become NaN (safe for ranking)."""
     numeric = pd.to_numeric(series, errors="coerce")
     return numeric
 

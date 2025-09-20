@@ -7,10 +7,10 @@ returns individual DataFrames for programmatic use.
 
 Usage (PowerShell examples):
     # Use default dataset location
-    python -m src.dataset.split_utils
+    python -m src.dataset.processing_scripts.split_dataset_by_difficulty
 
     # Provide an explicit CSV path and write split files next to it
-    python -m src.dataset.split_utils C:\data\git_good_bench.csv
+    python -m src.dataset.processing_scripts.split_dataset_by_difficulty C:\data\git_good_bench.csv
 """
 
 from pathlib import Path
@@ -24,9 +24,21 @@ __all__ = ["split_by_difficulty"]
 
 
 def split_by_difficulty(csv_path: str | Path | None = None, /, *, write_files: bool = False):  # noqa: D401
-    """Return (easy_df, medium_df, hard_df).
+    """Return a tuple of dataframes filtered by difficulty: ``(easy, medium, hard)``.
 
-    If *write_files* is True, CSVs are written as <name>_easy.csv etc.
+    Parameters
+    ----------
+    csv_path
+        Optional path to the dataset CSV. If ``None``, the default dataset path
+        detected by the loader is used.
+    write_files
+        If True, write separate CSVs next to the input named
+        ``<name>_easy.csv``, ``<name>_medium.csv``, ``<name>_hard.csv``.
+
+    Returns
+    -------
+    tuple[pandas.DataFrame, pandas.DataFrame, pandas.DataFrame]
+        The easy, medium, and hard dataframes with fresh random indices.
     """
 
     df = load_benchmark(csv_path)

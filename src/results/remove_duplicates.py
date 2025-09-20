@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""CLI to drop duplicates using a unique merge_commit_hash parsed from `scenario`."""
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional, Any
@@ -10,6 +12,7 @@ import tyro
 
 
 def _extract_merge_commit_hash(scenario_str: Any) -> Optional[str]:
+    """Best-effort parser to extract `merge_commit_hash` from a scenario value."""
     if scenario_str is None or (isinstance(scenario_str, float) and pd.isna(scenario_str)):
         return None
     if isinstance(scenario_str, dict):
@@ -29,7 +32,7 @@ def _extract_merge_commit_hash(scenario_str: Any) -> Optional[str]:
 
 @dataclass
 class Flags:
-    """CLI to remove duplicates by unique merge_commit_hash parsed from 'scenario'.
+    """Arguments for deduplicating by `merge_commit_hash`.
 
     - input_csv: Path to input CSV file
     - output_csv: Optional output path; defaults to <input_dir>/uniques.csv

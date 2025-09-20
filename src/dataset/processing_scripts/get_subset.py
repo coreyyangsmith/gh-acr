@@ -22,7 +22,10 @@ from .loader import load_benchmark
 def _normalize_percent_tag(percent: float) -> str:
     """Return a filesystem-friendly tag for a percentage value.
 
-    Examples: 10.0 -> "10", 12.5 -> "12_5"
+    Examples
+    --------
+    - 10.0 → ``"10"``
+    - 12.5 → ``"12_5"``
     """
 
     return str(int(percent)) if float(percent).is_integer() else str(percent).replace(".", "_")
@@ -40,7 +43,30 @@ def get_subset(
 
     The subset is written to ``output_csv`` if provided; otherwise a filename is
     generated next to the input, e.g., ``<name>_subset_10_seed42.csv``.
-    Returns the output path.
+
+    Parameters
+    ----------
+    csv_path
+        Path to the source dataset CSV.
+    percent
+        Percentage of rows to sample (0, 100].
+    seed
+        Random seed for deterministic sampling.
+    output_csv
+        Optional destination CSV path; if omitted, an auto-derived filename is
+        used next to the input.
+
+    Returns
+    -------
+    pathlib.Path
+        Path to the written subset CSV.
+
+    Raises
+    ------
+    ValueError
+        If ``percent`` is outside the (0, 100] range.
+    FileNotFoundError
+        If the input CSV cannot be found.
     """
 
     if not (0 < percent <= 100):
@@ -100,7 +126,7 @@ def cli(
     seed: int = 0,
     output_csv: Optional[str] = None,
 ) -> None:
-    """CLI wrapper. Required: --percent. Optional: --seed, --output-csv."""
+    """CLI wrapper. Required: ``--percent``. Optional: ``--seed``, ``--output-csv``."""
     out_path = get_subset(csv_path, percent=percent, seed=seed, output_csv=output_csv)
     # Friendly print with relative fallback
     try:

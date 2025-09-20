@@ -28,5 +28,3 @@ Diffs B:
 {b_diff}
 
 Output (STRICTLY one of: Mix) and nothing else.
-
-

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Tradeoff plots: Pareto frontiers, quality-time, per-success costs, and more."""
+
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -10,6 +12,7 @@ import seaborn as sns
 
 
 def pareto_scatter(df: pd.DataFrame, *, x: str = "total_cost", y: str = "similarity", hue: str = "eval_method", size: str = "processing_time_s", save_path: Optional[Path] = None, show: bool = True) -> None:
+    """Scatterplot of quality vs cost with a simple efficiency frontier per method."""
     plt.figure(figsize=(10, 7))
     sns.scatterplot(data=df, x=x, y=y, hue=hue, size=size, sizes=(20, 200), alpha=0.7)
     plt.title("Pareto Scatter: Quality vs Cost")
@@ -40,6 +43,7 @@ def pareto_scatter(df: pd.DataFrame, *, x: str = "total_cost", y: str = "similar
 
 
 def quality_vs_time(df: pd.DataFrame, *, x: str = "processing_time_s", y: str = "similarity", hue: str = "eval_method", size: str = "total_cost", save_path: Optional[Path] = None, show: bool = True) -> None:
+    """Scatterplot of quality vs time with bubble size proportional to cost."""
     plt.figure(figsize=(10, 7))
     sns.scatterplot(data=df, x=x, y=y, hue=hue, size=size, sizes=(20, 200), alpha=0.7)
     plt.title("Quality vs Time")
@@ -55,6 +59,7 @@ def quality_vs_time(df: pd.DataFrame, *, x: str = "processing_time_s", y: str = 
 
 
 def cost_time_per_success_bars(df: pd.DataFrame, *, save_prefix: Optional[Path] = None, show: bool = True, n_boot: int = 2000) -> None:
+    """Bar charts of cost/time per success by method with bootstrap 95% CIs."""
     def _cost_time_ps(g: pd.DataFrame) -> Tuple[float, float]:
         successes = int(g["exact_match"].astype(bool).sum()) if "exact_match" in g.columns else 0
         if successes <= 0:
@@ -130,6 +135,7 @@ def cost_time_per_success_bars(df: pd.DataFrame, *, save_prefix: Optional[Path] 
 
 
 def slope_chart_by_difficulty(df: pd.DataFrame, *, metric: str = "exact_match", save_path: Optional[Path] = None, show: bool = True) -> None:
+    """Line chart of performance across difficulties for each method."""
     if "difficulty" not in df.columns:
         return
     plt.figure(figsize=(10, 7))
@@ -156,6 +162,7 @@ def slope_chart_by_difficulty(df: pd.DataFrame, *, metric: str = "exact_match", 
 
 
 def tokens_to_quality_curve(df: pd.DataFrame, *, bins: int = 10, save_path: Optional[Path] = None, show: bool = True) -> None:
+    """Avg similarity per quantile bin of input tokens, per method."""
     if "tokens_total_input" not in df.columns:
         return
     df = df.copy()
