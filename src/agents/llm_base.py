@@ -216,7 +216,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
         tokenizer = AutoTokenizer.from_pretrained(
             model_id,
             local_files_only=True,
-            use_fast=True,
+            use_fast=False,
             cache_dir=DEFAULT_HF_CACHE_DIR,
             token=hf_token,  # new arg
             revision=HF_REVISION,
@@ -234,26 +234,25 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
                 token=hf_token,
                 revision=HF_REVISION,
                 trust_remote_code=True,
-                device_map="auto",            # let Accelerate place modules
-                torch_dtype=dtype,            # real torch.dtype
-                low_cpu_mem_usage=True,       # Accelerate path likes this True
+                device_map=_get_device_map_from_env(),
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
                 use_safetensors=True,
             )
         else:
-            # Normal load (no meta), then .to("cuda:0") if available
+            # Use device_map placement and avoid manual .to(...)
             model = AutoModelForCausalLM.from_pretrained(
                 model_id,
                 cache_dir=DEFAULT_HF_CACHE_DIR,
                 token=hf_token,
                 revision=HF_REVISION,
                 trust_remote_code=True,
-                local_files_only=bool(local_ok),  # only lock to local if weights exist
+                local_files_only=bool(local_ok),
+                device_map=_get_device_map_from_env(),
                 torch_dtype=dtype,
-                low_cpu_mem_usage=False,          # ensure real weights materialize now
+                low_cpu_mem_usage=True,
                 use_safetensors=True,
             )
-            if torch is not None and torch.cuda.is_available():
-                model.to("cuda:0")
         logger.info("[local] Model devices: %s", ", ".join(_collect_model_devices(model)))
         logger.info("[local] Loaded model+tokenizer from cache (local_files_only=True): %s", model_id)
     except Exception:
@@ -263,7 +262,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
         logger.info("[local] Cache miss; downloading model to cache: %s -> %s", model_id, DEFAULT_HF_CACHE_DIR)
         tokenizer = AutoTokenizer.from_pretrained(
             model_id,
-            use_fast=True,
+            use_fast=False,
             cache_dir=DEFAULT_HF_CACHE_DIR,
             token=hf_token,
             revision=HF_REVISION,
@@ -281,26 +280,25 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
                 token=hf_token,
                 revision=HF_REVISION,
                 trust_remote_code=True,
-                device_map="auto",            # let Accelerate place modules
-                torch_dtype=dtype,            # real torch.dtype
-                low_cpu_mem_usage=True,       # Accelerate path likes this True
+                device_map=_get_device_map_from_env(),
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
                 use_safetensors=True,
             )
         else:
-            # Normal load (no meta), then .to("cuda:0") if available
+            # Use device_map placement and avoid manual .to(...)
             model = AutoModelForCausalLM.from_pretrained(
                 model_id,
                 cache_dir=DEFAULT_HF_CACHE_DIR,
                 token=hf_token,
                 revision=HF_REVISION,
                 trust_remote_code=True,
-                local_files_only=bool(local_ok),  # only lock to local if weights exist
+                local_files_only=bool(local_ok),
+                device_map=_get_device_map_from_env(),
                 torch_dtype=dtype,
-                low_cpu_mem_usage=False,          # ensure real weights materialize now
+                low_cpu_mem_usage=True,
                 use_safetensors=True,
             )
-            if torch is not None and torch.cuda.is_available():
-                model.to("cuda:0")
         logger.info("[local] Model devices (download): %s", ", ".join(_collect_model_devices(model)))
         logger.info("[local] Downloaded model+tokenizer and cached: %s", model_id)
     # --- Safety against position-id overflow ---
@@ -308,17 +306,14 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
     reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "256"))
     reserve_new = max(1, min(reserve_new, npos - 32))
 
-    if tokenizer.pad_token_id is None:
-        tokenizer.pad_token_id = tokenizer.eos_token_id
-    model.config.pad_token_id = tokenizer.pad_token_id
-
-    tokenizer.truncation_side = os.getenv("LOCAL_TRUNCATION_SIDE", "left")
-    tokenizer.model_max_length = npos - reserve_new
+    pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    model.config.pad_token_id = pad_id
 
     generator = pipeline(
         task="text-generation",
         model=model,
         tokenizer=tokenizer,
+        batch_size=1,
         truncation=True,
         max_new_tokens=reserve_new,
         do_sample=True,
@@ -573,6 +568,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             tok = AutoTokenizer.from_pretrained(
                 requested,
                 local_files_only=True,
+                use_fast=False,
                 cache_dir=DEFAULT_HF_CACHE_DIR,
                 token=hf_token,
                 revision=HF_REVISION,
@@ -591,13 +587,13 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                     token=hf_token,
                     revision=HF_REVISION,
                     trust_remote_code=True,
-                    device_map="auto",            # let Accelerate place modules
-                    torch_dtype=dtype,            # real torch.dtype
-                    low_cpu_mem_usage=True,       # Accelerate path likes this True
+                    device_map=_get_device_map_from_env(),
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
                     use_safetensors=True,
                 )
             else:
-                # Normal load (no meta), then .to("cuda:0") if available
+                # Use device_map placement and avoid manual .to(...)
                 model = AutoModelForCausalLM.from_pretrained(
                     requested,
                     cache_dir=DEFAULT_HF_CACHE_DIR,
@@ -605,12 +601,11 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                     revision=HF_REVISION,
                     trust_remote_code=True,
                     local_files_only=bool(local_ok),  # only lock to local if weights exist
+                    device_map=_get_device_map_from_env(),
                     torch_dtype=dtype,
-                    low_cpu_mem_usage=False,          # ensure real weights materialize now
+                    low_cpu_mem_usage=True,
                     use_safetensors=True,
                 )
-                if torch is not None and torch.cuda.is_available():
-                    model.to("cuda:0")
             logger.info("[local] Model devices (cached): %s", ", ".join(_collect_model_devices(model)))
             logger.info("[local] Loaded model from cache for %s (device_map=auto)", requested)
         except Exception:
@@ -631,6 +626,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 except Exception:
                     tok = AutoTokenizer.from_pretrained(
                         requested,
+                        use_fast=False,
                         cache_dir=DEFAULT_HF_CACHE_DIR,
                         token=hf_token,
                         revision=HF_REVISION,
@@ -640,6 +636,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             else:
                 tok = AutoTokenizer.from_pretrained(
                     requested,
+                    use_fast=False,
                     cache_dir=DEFAULT_HF_CACHE_DIR,
                     token=hf_token,
                     revision=HF_REVISION,
@@ -658,13 +655,13 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                     token=hf_token,
                     revision=HF_REVISION,
                     trust_remote_code=True,
-                    device_map="auto",            # let Accelerate place modules
-                    torch_dtype=dtype,            # real torch.dtype
-                    low_cpu_mem_usage=True,       # Accelerate path likes this True
+                    device_map=_get_device_map_from_env(),
+                    torch_dtype=dtype,
+                    low_cpu_mem_usage=True,
                     use_safetensors=True,
                 )
             else:
-                # Normal load (no meta), then .to("cuda:0") if available
+                # Use device_map placement and avoid manual .to(...)
                 model = AutoModelForCausalLM.from_pretrained(
                     requested,
                     cache_dir=DEFAULT_HF_CACHE_DIR,
@@ -672,12 +669,11 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                     revision=HF_REVISION,
                     trust_remote_code=True,
                     local_files_only=bool(local_ok),  # only lock to local if weights exist
+                    device_map=_get_device_map_from_env(),
                     torch_dtype=dtype,
-                    low_cpu_mem_usage=False,          # ensure real weights materialize now
+                    low_cpu_mem_usage=True,
                     use_safetensors=True,
                 )
-                if torch is not None and torch.cuda.is_available():
-                    model.to("cuda:0")
             logger.info("[local] Model devices (downloaded): %s", ", ".join(_collect_model_devices(model)))
             logger.info("[local] Downloaded model %s to %s (device_map=auto)", requested, DEFAULT_HF_CACHE_DIR)
         # --- Safety against position-id overflow (same as tiny helper) ---
@@ -778,15 +774,18 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
 
                         # Generation
                         pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
-                        local_tok = self._tok.__class__.from_pretrained(self._tok.name_or_path, use_fast=True, trust_remote_code=True)
+                        local_tok = self._tok.__class__.from_pretrained(self._tok.name_or_path, use_fast=False, trust_remote_code=True)
                         generator = pipeline(
                             "text-generation",
                             model=self._model,
                             tokenizer=local_tok,
+                            batch_size=1,
                             truncation=True,
                         )
                         outputs = generator(
                             chat_text,
+                            truncation=True,
+                            padding=True,
                             do_sample=True,
                             temperature=self._temperature,
                             top_p=self._top_p,
@@ -895,10 +894,13 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                             "text-generation",
                             model=self._model,
                             tokenizer=self._tok,
+                            batch_size=1,
                             truncation=True,
                         )
                         outputs = generator(
                             chat_text,
+                            truncation=True,
+                            padding=True,
                             do_sample=True,
                             temperature=self._temperature,
                             top_p=self._top_p,
@@ -942,6 +944,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 "text-generation",
                 model=model,
                 tokenizer=tok,
+                batch_size=1,
                 truncation=True,
                 max_new_tokens=reserve_new,
                 do_sample=True,
