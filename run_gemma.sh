@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=gh-acr
+#SBATCH --job-name=gemma-gh-acr
 #SBATCH --output=logs/gemma-gh-acr-%j.out
 #SBATCH --error=logs/gemma-gh-acr-%j.err
 #SBATCH --time=72:00:00

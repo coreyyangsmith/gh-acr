@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=gh-acr
+#SBATCH --job-name=qwen8-gh-acr
 #SBATCH --output=logs/qwen-gh-acr-%j.out
 #SBATCH --error=logs/qwen-gh-acr-%j.err
 #SBATCH --time=72:00:00
