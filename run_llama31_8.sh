@@ -138,5 +138,5 @@ echo "Step 1: Running Job..." | tee "logs/job_${SLURM_JOB_ID}.out"
 srun --export=ALL python -m src.cli.run_all \
   --methods base_a base_b agent bypass7 \
   --mode clone \
-  --model-name local:meta-llama/Llama-3.1-8 \
+  --model-name local:meta-llama/Llama-3.1-8B-Instruct \
   --results-filename 2025_09_20_results_llama31_8_all.csv
