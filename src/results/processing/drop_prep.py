@@ -1,4 +1,16 @@
-"""Utility to drop rows with `eval_method == 'prep'` from a results CSV."""
+"""Drop rows where `eval_method == 'prep'` from a results CSV.
+
+How to run (from repo root, PowerShell single-line commands):
+
+- Module form (recommended):
+  python -m src.results.processing.drop_prep data\input.csv data\output_no_prep.csv
+
+- Direct script:
+  python src\results\processing\drop_prep.py data\input.csv data\output_no_prep.csv
+
+Example:
+  python -m src.results.processing.drop_prep data\2025_09_20_results_gemma_all.csv data\2025_09_20_results_gemma_all_no_prep.csv
+"""
 
 import pandas as pd
 from pathlib import Path

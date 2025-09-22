@@ -9,10 +9,10 @@ strings before comparison for robustness.
 
 Usage (PowerShell examples):
     # All params are flags (no positionals)
-    python -m src.dataset.processing_scripts.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --output-csv data/source_filtered.csv --ids-column id --source-id-column id
+    python -m src.dataset.processing.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --output-csv data/source_filtered.csv --ids-column id --source-id-column id
 
     # Case-insensitive match on stringified IDs; preserve leading index column
-    python -m src.dataset.processing_scripts.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --case-insensitive true --preserve-index-col true
+    python -m src.dataset.processing.extract_samples_from_subset --ids-csv data/ids.csv --source-csv data/source.csv --case-insensitive true --preserve-index-col true
 """
 
 from pathlib import Path

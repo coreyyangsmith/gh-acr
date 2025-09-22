@@ -18,11 +18,11 @@ report aggregate statistics:
 * How many cases match neither (failures)?
 
 Usage (PowerShell example):
-    python -m src.dataset.process_ground_truths --base-dir data/output
+    python -m src.dataset.processing.process_ground_truths --base-dir data/output
 
 You may point to a custom directory containing the same folder layout::
 
-    python -m src.dataset.process_ground_truths --base-dir path/to/outputs
+    python -m src.dataset.processing.process_ground_truths --base-dir path/to/outputs
 """
 
 from pathlib import Path

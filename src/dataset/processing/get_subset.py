@@ -4,10 +4,10 @@ r"""Randomly sample a percentage of a GitGoodBench CSV into a new file.
 
 Usage (PowerShell examples):
     # Required: --percent; optional: --seed and --output-csv
-    python -m src.dataset.get_subset C:\data\git_good_bench_merge_commits.csv --percent 10 --seed 42
+    python -m src.dataset.processing.get_subset C:\data\git_good_bench_merge_commits.csv --percent 10 --seed 42
     
     # Write next to input with an auto-generated filename suffix
-    python -m src.dataset.get_subset data/git_good_bench_merge_commits.csv --percent 5
+    python -m src.dataset.processing.get_subset data/git_good_bench_merge_commits.csv --percent 5
 """
 
 from pathlib import Path

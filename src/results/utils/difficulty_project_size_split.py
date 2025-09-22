@@ -18,7 +18,7 @@ import tyro
 # Helpers
 # =========================
 
-SIZE_LABELS = ["Tiny", "Small", "Medium", "Large", "Huge"]
+SIZE_LABELS = ["Small", "Medium", "Large", "Huge"]
 
 
 def _size_from_loc(loc: float) -> str:
@@ -30,7 +30,7 @@ def _size_from_loc(loc: float) -> str:
     if not np.isfinite(v) or v < 0:
         return "Unknown"
     if v < 1_000:
-        return "Tiny"
+        return "Small"
     if v < 10_000:
         return "Small"
     if v < 100_000:
@@ -46,7 +46,7 @@ def _normalize_project_size_column(df: pd.DataFrame, *, project_size_col: Option
     col = project_size_col if project_size_col else ("project_size" if "project_size" in df.columns else None)
     if col is not None and col in df.columns:
         series = df[col].astype(str).str.strip()
-        mapping = {"tiny": "Tiny", "small": "Small", "medium": "Medium", "large": "Large", "huge": "Huge"}
+        mapping = {"tiny": "Small", "small": "Small", "medium": "Medium", "large": "Large", "huge": "Huge"}
         normalized = series.str.lower().map(lambda s: mapping.get(s, "Unknown"))
         return normalized
 

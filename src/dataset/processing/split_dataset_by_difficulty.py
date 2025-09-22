@@ -7,10 +7,10 @@ returns individual DataFrames for programmatic use.
 
 Usage (PowerShell examples):
     # Use default dataset location
-    python -m src.dataset.processing_scripts.split_dataset_by_difficulty
+    python -m src.dataset.processing.split_dataset_by_difficulty
 
     # Provide an explicit CSV path and write split files next to it
-    python -m src.dataset.processing_scripts.split_dataset_by_difficulty C:\data\git_good_bench.csv
+    python -m src.dataset.processing.split_dataset_by_difficulty C:\data\git_good_bench.csv
 """
 
 from pathlib import Path

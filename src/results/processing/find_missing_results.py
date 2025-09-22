@@ -1,6 +1,18 @@
 from __future__ import annotations
 
-"""CLI to identify missing and fully processed instances by `id` in results."""
+"""CLI to identify missing and fully processed instances by `id` in results.
+
+How to run (from repo root, PowerShell single-line commands):
+
+- Module form (recommended):
+  python -m src.results.processing.find_missing_results --results-per-instance 6 --results-csv data\results.csv
+
+- Direct script:
+  python src\results\processing\find_missing_results.py --results-per-instance 6 --results-csv data\results.csv
+
+Example:
+  python -m src.results.processing.find_missing_results --results-per-instance 6 --results-csv data\2025_09_20_results_gemma_all.csv --remove-prep true
+"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -9,7 +21,7 @@ from typing import Optional
 import pandas as pd
 import tyro
 
-from .data_loader import load_results
+from ..data_loader import load_results
 
 
 @dataclass

@@ -2,10 +2,10 @@
 
 Usage (PowerShell examples):
     # Modify the file in-place, creating the column if missing
-    python -m src.dataset.processing_scripts.add_difficulty_column_to_dataset data/git_good_bench.csv --difficulty easy
+    python -m src.dataset.processing.add_difficulty_column_to_dataset data/git_good_bench.csv --difficulty easy
 
     # Write to a new file next to the input
-    python -m src.dataset.processing_scripts.add_difficulty_column_to_dataset data/git_good_bench.csv -d hard -o data/git_good_bench_hard.csv
+    python -m src.dataset.processing.add_difficulty_column_to_dataset data/git_good_bench.csv -d hard -o data/git_good_bench_hard.csv
 
 Notes
 -----
