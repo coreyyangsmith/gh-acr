@@ -29,7 +29,8 @@ class Flags:
     """Parameters controlling input, expectations, and outputs.
 
     - results_csv: Path to results CSV; if None, picks latest matching data/*_results_all.csv
-    - results_per_instance: Expected number of rows per unique id (including prep rows for counting)
+    - results_per_instance: Expected number of rows per unique (id, file_name) pair
+      (i.e., per-file per-id across methods). Prep rows are not counted.
     - remove_prep: If True, exclude rows with eval_method == "prep" from processed_instances output
     - output_dir: Where to write outputs; defaults to the input CSV's parent directory
     """
@@ -62,16 +63,50 @@ def main(flags: Flags) -> None:
     df = data.dataframe
 
     # Validate required columns
-    required_cols = {"id", "eval_method"}
+    required_cols = {"id", "eval_method", "file_name"}
     missing = required_cols.difference(df.columns)
     if missing:
         raise ValueError(f"Results file missing required columns: {sorted(missing)}")
 
-    # Count rows per unique id (include all rows, including prep)
-    counts = df.groupby("id").size().reset_index(name="count")
+    # Consider only concrete per-file rows when counting progress (exclude prep, blank file names)
+    is_prep = df["eval_method"].astype(str).str.lower() == "prep"
+    has_file_name = (~df["file_name"].isna()) & (df["file_name"].astype(str).str.len() > 0)
+    file_rows = df[~is_prep & has_file_name].copy()
 
-    ids_missing = set(counts.loc[counts["count"] < flags.results_per_instance, "id"].tolist())
-    ids_processed = set(counts.loc[counts["count"] == flags.results_per_instance, "id"].tolist())
+    # Base set of IDs present in the results file
+    id_base = pd.DataFrame({"id": pd.unique(df["id"])})
+
+    if file_rows.empty:
+        # No concrete file rows at all → everything present is missing
+        files_and_counts = id_base.copy()
+        files_and_counts["unique_files"] = 0
+        files_and_counts["observed_rows"] = 0
+    else:
+        grouped = (
+            file_rows.groupby("id").agg(
+                unique_files=("file_name", "nunique"),
+                observed_rows=("file_name", "size"),
+            )
+        ).reset_index()
+        files_and_counts = id_base.merge(grouped, on="id", how="left").fillna({"unique_files": 0, "observed_rows": 0})
+
+    # Expected rows per id are (unique files for id) * (results_per_instance)
+    files_and_counts["expected_rows"] = files_and_counts["unique_files"].astype(int) * int(flags.results_per_instance)
+
+    # Determine status per id
+    ids_processed = set(
+        files_and_counts.loc[
+            (files_and_counts["expected_rows"] > 0) & (files_and_counts["observed_rows"] == files_and_counts["expected_rows"]),
+            "id",
+        ].tolist()
+    )
+    # Missing if no files yet or fewer rows than expected
+    ids_missing = set(
+        files_and_counts.loc[
+            (files_and_counts["expected_rows"] == 0) | (files_and_counts["observed_rows"] < files_and_counts["expected_rows"]),
+            "id",
+        ].tolist()
+    )
 
     # Prepare outputs
     # missed_instances: include all rows for missing IDs (including prep)
@@ -94,12 +129,13 @@ def main(flags: Flags) -> None:
     processed_df.to_csv(processed_path, index=False)
 
     # Print concise summary
-    unique_ids_total = counts.shape[0]
+    unique_ids_total = int(id_base.shape[0])
+    overfilled = int((files_and_counts["observed_rows"] > files_and_counts["expected_rows"]).sum())
     print(
         {
             "input": str(resolved_csv),
             "output_dir": str(output_dir),
-            "expected_per_id": int(flags.results_per_instance),
+            "expected_per_file": int(flags.results_per_instance),
             "unique_ids_total": int(unique_ids_total),
             "unique_ids_missing": int(len(ids_missing)),
             "unique_ids_processed": int(len(ids_processed)),
@@ -107,9 +143,7 @@ def main(flags: Flags) -> None:
             "rows_written_processed": int(len(processed_df)),
             "remove_prep_in_processed": bool(flags.remove_prep),
             # Note: IDs with count > expected are not exported per spec
-            "unique_ids_overfilled": int(
-                counts.loc[counts["count"] > flags.results_per_instance].shape[0]
-            ),
+            "unique_ids_overfilled": overfilled,
         }
     )
 

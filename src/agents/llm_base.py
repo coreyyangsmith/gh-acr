@@ -136,10 +136,10 @@ def _get_device_map_from_env() -> Any:  # type: ignore[override]
     """
     v = os.getenv("HF_DEVICE_MAP", "").strip().lower()
     if not v:
+        # Default to automatic device placement/sharding across available GPUs
         return "auto"
     if v == "auto":
-        if torch is not None and hasattr(torch, "cuda") and torch.cuda.is_available():
-            return {"": 0}
+        # Respect explicit request for auto-sharding; do NOT force cuda:0
         return "auto"
     if v == "cpu":
         return {"": "cpu"}
@@ -191,6 +191,92 @@ def _hf_device_index() -> int:
     except Exception:  # pragma: no cover
         pass
     return -1
+
+
+def _format_bytes(num: int) -> str:
+    try:
+        size = float(num)
+        for unit in ("B", "KiB", "MiB", "GiB", "TiB", "PiB"):
+            if size < 1024.0:
+                return f"{size:.2f}{unit}"
+            size /= 1024.0
+        return f"{size:.2f}EiB"
+    except Exception:
+        return str(num)
+
+
+def _log_gpu_overview(context: str, model: Any | None = None) -> None:
+    """Log a concise overview of CUDA devices and memory, plus model device map."""
+    try:
+        cuda_visible = os.getenv("CUDA_VISIBLE_DEVICES", "") or "<unset>"
+        alloc_conf = os.getenv("PYTORCH_CUDA_ALLOC_CONF", "") or "<unset>"
+        hf_dev_map_env = os.getenv("HF_DEVICE_MAP", "") or "<unset>"
+
+        if torch is None:
+            logger.info("%s CUDA overview: torch not available. CUDA_VISIBLE_DEVICES=%s", context, cuda_visible)
+            return
+        if not (hasattr(torch, "cuda") and torch.cuda.is_available()):
+            logger.info("%s CUDA overview: CUDA not available. CUDA_VISIBLE_DEVICES=%s", context, cuda_visible)
+            return
+
+        num = int(torch.cuda.device_count())
+        cuda_ver = getattr(torch.version, "cuda", None)
+        header = (
+            f"{context} CUDA overview: torch={getattr(torch, '__version__', '?')}, "
+            f"cuda={cuda_ver}, devices={num}, CUDA_VISIBLE_DEVICES={cuda_visible}, "
+            f"HF_DEVICE_MAP={hf_dev_map_env}, PYTORCH_CUDA_ALLOC_CONF={alloc_conf}"
+        )
+        lines: list[str] = [header]
+
+        # If Accelerate placed modules, show a sample of the device map
+        try:
+            dm = getattr(model, "hf_device_map", None)
+            if isinstance(dm, dict) and dm:
+                sample = {k: str(v) for k, v in list(dm.items())[:8]}
+                extra = "" if len(dm) <= 8 else f" ... +{len(dm) - 8} more"
+                lines.append(f"{context} hf_device_map: {sample}{extra}")
+        except Exception:
+            pass
+
+        for idx in range(num):
+            name = f"cuda:{idx}"
+            total_prop = 0
+            try:
+                props = torch.cuda.get_device_properties(idx)
+                name = props.name
+                total_prop = int(getattr(props, "total_memory", 0))
+            except Exception:
+                pass
+            free_b = None
+            total_b = None
+            try:
+                free_b, total_b = torch.cuda.mem_get_info(idx)
+            except Exception:
+                pass
+            reserved_b = None
+            allocated_b = None
+            try:
+                reserved_b = torch.cuda.memory_reserved(idx)
+                allocated_b = torch.cuda.memory_allocated(idx)
+            except Exception:
+                pass
+
+            parts = [f"cuda:{idx} {name}"]
+            parts.append(f"total={_format_bytes((total_b or total_prop) or 0)}")
+            if free_b is not None:
+                parts.append(f"free={_format_bytes(int(free_b))}")
+            if reserved_b is not None:
+                parts.append(f"reserved={_format_bytes(int(reserved_b))}")
+            if allocated_b is not None:
+                parts.append(f"allocated={_format_bytes(int(allocated_b))}")
+            lines.append(f"{context} " + ", ".join(parts))
+
+        logger.info("\n".join(lines))
+    except Exception as e:  # pragma: no cover
+        try:
+            logger.info("%s CUDA overview logging failed: %s", context, e)
+        except Exception:
+            pass
 
 
 def build_local_text_generator(model_id: str | None = None, *, local_only: bool | None = None):
@@ -308,6 +394,8 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
 
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     model.config.pad_token_id = pad_id
+
+    _log_gpu_overview("[local.build_local_text_generator]", model)
 
     generator = pipeline(
         task="text-generation",
@@ -775,6 +863,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                         # Generation
                         pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
                         local_tok = self._tok.__class__.from_pretrained(self._tok.name_or_path, use_fast=False, trust_remote_code=True)
+                        _log_gpu_overview("[local.Qwen3ChatWrapper.invoke]", self._model)
                         generator = pipeline(
                             "text-generation",
                             model=self._model,
@@ -890,6 +979,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
 
                         # Generation
                         pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
+                        _log_gpu_overview("[local.GPTOSSChatWrapper.invoke]", self._model)
                         generator = pipeline(
                             "text-generation",
                             model=self._model,
@@ -939,8 +1029,9 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 reserve_new,
                 os.getenv("GPT_OSS_REASONING_LEVEL", "medium").strip().lower(),
             )
-        else:
-            hf_pipe = pipeline(
+            else:
+                _log_gpu_overview("[local.HuggingFacePipeline]", model)
+                hf_pipe = pipeline(
                 "text-generation",
                 model=model,
                 tokenizer=tok,
