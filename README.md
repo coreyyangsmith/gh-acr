@@ -57,6 +57,7 @@ python -m src.cli.run_all --mode clone --methods base_a base_b agent
   - `--max-scenarios N`: optional cap on total scenarios.
   - `--n-easy N --n-medium M --n-hard K`: instead of `max-scenarios`, sample by difficulty.
   - `--model-name`: optional LLM backend override.
+    - Supports `openai/<model>`, `local:<hf_repo_or_path>`, and `groq:<model>`.
 
 Examples
 ```bash
@@ -88,6 +89,25 @@ python -m src.cli.run_all --mode clone --methods agent multi --model-name local:
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:meta-llama/Llama-3.1-8B --results_filename 2025-09-10-llama-hard
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:Qwen/Qwen3-8B --results_filename 2025-09-10-qwen-hard
 python -m src.cli.run_all --mode clone --methods agent multi --model-name local:google/codegemma-7b-it --results_filename 2025-09-10-gemma-hard
+
+
+
+
+
+# Groq usage
+- Install the Groq LangChain client (already in `src/requirements.txt`).
+- Set your API key in environment:
+```bash
+$env:GROQ_API_KEY="<your_key>"
+```
+- Run with a Groq model by prefixing the model name with `groq:`. Examples:
+```bash
+python -m src.cli.run_all --mode clone --methods agent bypass7 --model-name groq:llama-3.1-8b-instant
+python -m src.cli.run_all --mode clone --methods multi --model-name groq:mixtral-8x7b-32768
+```
+Notes:
+- Outputs will be nested under `data/groq_<model>/...` to ensure Windows-safe paths.
+- Costs are estimated via `MODEL_COSTS` if entries for `groq/<model>` are provided; otherwise cost shows as $0.00.
 
 # gpt-oss-20b (local via Transformers)
 # Pre-download (optional, offline):

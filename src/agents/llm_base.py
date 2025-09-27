@@ -8,11 +8,12 @@
   prompts.  `None` indicates that the requested backend is not usable (e.g.
   missing credentials), so callers should fall back to a non-LLM strategy.
 
-The function supports three URI-like schemes:
+The function supports these URI-like schemes:
 
 1. `openai/<model>` – via `langchain_openai.ChatOpenAI`
 2. `hf_hub:<repo_id>` – HuggingFace Inference API (community)
 3. `local:<path>` – locally loaded transformers model (CPU / GPU)
+4. `groq:<model>` – via Groq API using `langchain_groq.ChatGroq`
 """
 from __future__ import annotations
 
@@ -628,8 +629,31 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             else:
                 raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
         enc = _tiktoken_encoder(backend_name)
+    # Groq API ---------------------------------------------------------------
+    elif model_name.startswith("groq:"):
+        logger.info("[groq] Using Groq backend: model=%s", model_name)
+        backend_name = model_name.split(":", 1)[1]
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            msg = f"GROQ_API_KEY missing – cannot load Groq backend for model: {backend_name}"
+            logger.error(msg)
+            raise RuntimeError(msg)
+        try:
+            from langchain_groq import ChatGroq  # type: ignore
+        except ImportError as exc:  # pragma: no cover
+            logger.error("langchain-groq not installed: %s", exc)
+            raise RuntimeError("Please install 'langchain-groq' to use groq: models")
+
+        model_cfg = MODEL_COSTS.get(model_name, {}) or MODEL_COSTS.get(f"groq/{backend_name}", {})
+        max_out = int(model_cfg.get("output_limit", 0))
+        if max_out > 0:
+            raw_llm = ChatGroq(groq_api_key=api_key, model=backend_name, temperature=0, max_tokens=max_out)  # type: ignore[call-arg]
+        else:
+            raw_llm = ChatGroq(groq_api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
+        enc = None  # use word-count fallback for token estimates unless configured
     # Local transformers model ----------------------------------------------
     elif model_name.startswith("local:"):
+        logger.info("[local] Using local Transformers backend: model=%s", model_name)
         model_path = model_name.split(":", 1)[1]
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
@@ -1029,9 +1053,9 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 reserve_new,
                 os.getenv("GPT_OSS_REASONING_LEVEL", "medium").strip().lower(),
             )
-            else:
-                _log_gpu_overview("[local.HuggingFacePipeline]", model)
-                hf_pipe = pipeline(
+        else:
+            _log_gpu_overview("[local.HuggingFacePipeline]", model)
+            hf_pipe = pipeline(
                 "text-generation",
                 model=model,
                 tokenizer=tok,

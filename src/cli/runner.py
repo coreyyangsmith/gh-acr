@@ -176,7 +176,10 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         raw_model_dir = "nan"
     else:
         raw_model_dir = (model_name or os.getenv("OPENAI_MODEL", "")).strip() or "nan"
-    safe_model_dir = raw_model_dir.replace("/", "_").replace("\\", "_").strip() or "nan"
+    # Also replace ':' so Windows paths are safe (e.g., 'groq:llama' → 'groq_llama')
+    safe_model_dir = (
+        raw_model_dir.replace("/", "_").replace("\\", "_").replace(":", "_").strip() or "nan"
+    )
     scenario_dir = output_root / safe_model_dir / str(df_index)
     files = sample_row["scenario_json"]["files_in_merge_conflict"]
 
@@ -460,9 +463,20 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     token_map: Dict[str, Dict[str, int]] = result.get("token_counts", {})  # per-file token stats
     model_name = model_name or os.getenv("OPENAI_MODEL", "gpt-4.1-nano-2025-04-14")
-    model_cfg = MODEL_COSTS.get(model_name, {})
-    if not model_cfg and not model_name.startswith("openai/"):
-        model_cfg = MODEL_COSTS.get(f"openai/{model_name}", {})
+    # Normalize for cost lookup: support openai/, groq: and local:
+    def _price_key(name: str) -> str:
+        try:
+            if name.startswith("openai/"):
+                return name
+            if name.startswith("groq:"):
+                return "groq/" + name.split(":", 1)[1]
+            if name.startswith("local:"):
+                return name
+            return f"openai/{name}"
+        except Exception:
+            return name
+
+    model_cfg = MODEL_COSTS.get(_price_key(model_name), {})
     input_cost_rate = float(model_cfg.get("input_cost_per_1k", 0.0))
     output_cost_rate = float(model_cfg.get("output_cost_per_1k", 0.0))
 
@@ -487,10 +501,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     # Compute cost using the model that actually ran for this scenario
     # Normalize model_name to the key used in MODEL_COSTS
-    if model_name and not model_name.startswith("openai/"):
-        price_key = f"openai/{model_name}"
-    else:
-        price_key = model_name
+    price_key = _price_key(model_name) if model_name else ""
     model_cfg = MODEL_COSTS.get(price_key or "", {}) or MODEL_COSTS.get(model_name or "", {})
     input_cost_rate = float(model_cfg.get("input_cost_per_1k", 0.0))
     output_cost_rate = float(model_cfg.get("output_cost_per_1k", 0.0))

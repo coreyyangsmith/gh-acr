@@ -63,6 +63,15 @@ MODEL_COSTS = {
         "output_cost_per_1k": 0,
         "tokenizer": "llama"
     },
+    "groq:llama-3.1-8b-instant": {
+        "input_limit": 128_000,
+        "output_limit": 128_000,
+        "sliding_window": True,
+        "total_limit": 128_000,
+        "input_cost_per_1k": 0.00005,
+        "output_cost_per_1k": 0.00008,
+        "tokenizer": "llama"
+    },    
     "local:meta-llama/Llama-3.1-8B": {
         "input_limit": 128_000,
         "output_limit": 2048,
