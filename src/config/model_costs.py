@@ -72,6 +72,15 @@ MODEL_COSTS = {
         "output_cost_per_1k": 0.00008,
         "tokenizer": "llama"
     },    
+    "groq:qwen/qwen3-32b": {
+        "input_limit": 90_111,
+        "output_limit": 40_960,
+        "sliding_window": True,
+        "total_limit": 131_072,
+        "input_cost_per_1k": 0.00029,
+        "output_cost_per_1k": 0.00059,
+        "tokenizer": "qwen"
+    },        
     "local:meta-llama/Llama-3.1-8B": {
         "input_limit": 128_000,
         "output_limit": 2048,

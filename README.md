@@ -102,8 +102,8 @@ $env:GROQ_API_KEY="<your_key>"
 ```
 - Run with a Groq model by prefixing the model name with `groq:`. Examples:
 ```bash
-python -m src.cli.run_all --mode clone --methods agent bypass7 --model-name groq:llama-3.1-8b-instant
-python -m src.cli.run_all --mode clone --methods multi --model-name groq:mixtral-8x7b-32768
+python -m src.cli.run_all --mode clone --methods agent bypass7 --model-name groq:llama-3.1-8b-instant --results_filename 2025-09-27-llama
+python -m src.cli.run_all --mode clone --methods agent bypass7 --model-name groq:qwen/qwen3-32b --results_filename 2025-09-27-qwen32
 ```
 Notes:
 - Outputs will be nested under `data/groq_<model>/...` to ensure Windows-safe paths.
