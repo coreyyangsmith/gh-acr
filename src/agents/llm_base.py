@@ -590,6 +590,131 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
             pass
 
 
+class _TruncatingLLMWrapper:
+    """Lightweight wrapper that truncates over-long prompts before invocation.
+
+    Truncation respects per-model limits from MODEL_COSTS and the expected
+    output ratio from rate_limits.get_limits_for_model. If the input exceeds
+    the allowed prompt window, it is clipped to the limit instead of letting
+    the downstream backend error. Default truncation side is left (keep tail).
+    """
+
+    def __init__(self, inner: Any, *, encoder: Optional[Any], model_name: str):
+        self._inner = inner
+        self._encoder = encoder
+        self._model_name = model_name
+        try:
+            self._expected_output_ratio = float(get_limits_for_model(model_name).get("expected_output_ratio", 0.25))
+        except Exception:
+            self._expected_output_ratio = 0.25
+
+    def _model_cfg(self) -> dict[str, Any]:
+        try:
+            # Prefer exact key; fall back to scheme-specific alias if present
+            cfg = MODEL_COSTS.get(self._model_name, {})
+            if cfg:
+                return dict(cfg)
+            # openai/<name> → fallback handled above by callers usually
+            if self._model_name.startswith("openai/"):
+                return dict(MODEL_COSTS.get(self._model_name, {}) or {})
+            # groq:<name> → some tables also use groq/<name>
+            if self._model_name.startswith("groq:"):
+                alias = "groq/" + self._model_name.split(":", 1)[1]
+                return dict(MODEL_COSTS.get(alias, {}) or {})
+            return {}
+        except Exception:
+            return {}
+
+    def _allowed_prompt_tokens(self, prompt_tokens: int) -> int:
+        cfg = self._model_cfg()
+        try:
+            input_limit = int(cfg.get("input_limit", 0))
+        except Exception:
+            input_limit = 0
+        try:
+            output_limit = int(cfg.get("output_limit", 0))
+        except Exception:
+            output_limit = 0
+        try:
+            total_limit = int(cfg.get("total_limit", 0))
+        except Exception:
+            total_limit = 0
+        sliding_window = bool(cfg.get("sliding_window", False))
+
+        # Estimate space needed for output
+        try:
+            expected_output_tokens = int(self._expected_output_ratio * output_limit) if output_limit else int(0.25 * max(1, prompt_tokens))
+            if output_limit:
+                expected_output_tokens = min(expected_output_tokens, output_limit)
+        except Exception:
+            expected_output_tokens = max(1, prompt_tokens // 4)
+
+        if sliding_window and total_limit:
+            return max(1, total_limit - expected_output_tokens)
+        if input_limit:
+            return max(1, input_limit)
+        # No configured limits → do not truncate
+        return 0
+
+    def _truncate_text(self, text: str) -> str:
+        try:
+            if not text:
+                return text
+            enc = self._encoder
+            prompt_tokens = count_tokens(enc, text)
+            allowed = self._allowed_prompt_tokens(prompt_tokens)
+            if allowed <= 0 or prompt_tokens <= allowed:
+                return text
+            side = os.getenv("TRUNCATION_SIDE", "left").strip().lower()
+            # Use encoder when possible
+            if hasattr(enc, "encode") and hasattr(enc, "decode"):
+                try:
+                    ids = enc.encode(text)  # type: ignore[attr-defined]
+                    if side == "right":
+                        keep = ids[:allowed]
+                    else:
+                        keep = ids[-allowed:]
+                    return enc.decode(keep)  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+            # Fallback: word-based approximation
+            words = text.split()
+            if side == "right":
+                return " ".join(words[:allowed])
+            return " ".join(words[-allowed:])
+        except Exception:
+            return text
+
+    # LangChain runnables typically support with_config; forward to inner
+    def with_config(self, config: dict[str, Any] | None = None):  # type: ignore[override]
+        try:
+            if hasattr(self._inner, "with_config"):
+                self._inner = self._inner.with_config(config)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        return self
+
+    # Synchronous invoke
+    def invoke(self, prompt_input: Any, config: Any | None = None):  # type: ignore[override]
+        try:
+            if isinstance(prompt_input, str):
+                prompt_input = self._truncate_text(prompt_input)
+        except Exception:
+            pass
+        return self._inner.invoke(prompt_input, config=config)
+
+    # Async invoke (best-effort if backend supports it)
+    async def ainvoke(self, prompt_input: Any, config: Any | None = None):  # type: ignore[override]
+        try:
+            if isinstance(prompt_input, str):
+                prompt_input = self._truncate_text(prompt_input)
+        except Exception:
+            pass
+        if hasattr(self._inner, "ainvoke"):
+            return await self._inner.ainvoke(prompt_input, config=config)  # type: ignore[attr-defined]
+        # Fallback to sync path if async not available
+        return self._inner.invoke(prompt_input, config=config)
+
 @lru_cache(maxsize=None)
 def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa: D401
     """Return *(encoder, llm)* for *model_name*.
@@ -1086,6 +1211,12 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         msg = f"Failed to initialize LLM backend for model_name={model_name}"
         logger.error(msg)
         raise RuntimeError(msg)
+
+    # Always wrap with truncation so over-long prompts are clipped to limits
+    try:
+        raw_llm = _TruncatingLLMWrapper(raw_llm, encoder=enc, model_name=model_name)
+    except Exception:
+        pass
 
     # Attach a LangChain callback so that rate limiting and cost logging happen
     # while preserving LangChain/OpenInference spans for the terminal LLM call.
