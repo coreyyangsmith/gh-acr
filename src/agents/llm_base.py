@@ -738,22 +738,23 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             from langchain_openai import ChatOpenAI  # type: ignore
         except ImportError:
             from langchain_community.chat_models import ChatOpenAI  # type: ignore
-        # Respect per-request output token limits using max_tokens (Chat Completions)
+
         model_cfg = MODEL_COSTS.get(model_name, {}) or MODEL_COSTS.get(f"openai/{backend_name}", {})
         max_out = int(model_cfg.get("output_limit", 0))
-        # Some GPT-5 variants do not accept a temperature parameter; omit when backend_name startswith "gpt-5"
         is_gpt5 = backend_name.startswith("gpt-5")
+
+        # Some GPT-5 variants do not accept a temperature param.
+        common_kwargs = dict(api_key=api_key, model=backend_name)
+        if not is_gpt5:
+            common_kwargs["temperature"] = 0  # type: ignore[assignment]
+
         if max_out > 0:
-            if is_gpt5:
-                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, max_tokens=max_out)  # type: ignore[call-arg]
-            else:
-                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0, max_tokens=max_out)  # type: ignore[call-arg]
+            raw_llm = ChatOpenAI(max_tokens=max_out, **common_kwargs)  # type: ignore[call-arg]
         else:
-            if is_gpt5:
-                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name)  # type: ignore[call-arg]
-            else:
-                raw_llm = ChatOpenAI(api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
+            raw_llm = ChatOpenAI(**common_kwargs)  # type: ignore[call-arg]
+
         enc = _tiktoken_encoder(backend_name)
+
     # Groq API ---------------------------------------------------------------
     elif model_name.startswith("groq:"):
         logger.info("[groq] Using Groq backend: model=%s", model_name)
@@ -771,11 +772,10 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
 
         model_cfg = MODEL_COSTS.get(model_name, {}) or MODEL_COSTS.get(f"groq/{backend_name}", {})
         max_out = int(model_cfg.get("output_limit", 0))
-        if max_out > 0:
-            raw_llm = ChatGroq(groq_api_key=api_key, model=backend_name, temperature=0, max_tokens=max_out)  # type: ignore[call-arg]
-        else:
-            raw_llm = ChatGroq(groq_api_key=api_key, model=backend_name, temperature=0)  # type: ignore[call-arg]
+        common_kwargs = dict(groq_api_key=api_key, model=backend_name, temperature=0)
+        raw_llm = ChatGroq(max_tokens=max_out, **common_kwargs) if max_out > 0 else ChatGroq(**common_kwargs)  # type: ignore[call-arg]
         enc = None  # use word-count fallback for token estimates unless configured
+
     # Local transformers model ----------------------------------------------
     elif model_name.startswith("local:"):
         logger.info("[local] Using local Transformers backend: model=%s", model_name)
@@ -786,11 +786,13 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         except ImportError as exc:  # pragma: no cover
             logger.error("Transformers pipeline unavailable: %s", exc)
             raise RuntimeError(f"Transformers pipeline unavailable: {exc}")
+
         requested = (model_path or "").strip()
         if not requested:
             msg = "local: backend requires a model id or path, e.g. local:gpt2"
             logger.error(msg)
             raise ValueError(msg)
+
         # Load user-specified local path or HF repo id (offline-first)
         os.makedirs(DEFAULT_HF_CACHE_DIR, exist_ok=True)
         logger.info(
@@ -800,120 +802,51 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             HF_LOCAL_ONLY,
         )
         hf_token = _get_hf_token()
-        try:
-            # Prefer explicit GPT-2 tokenizer for distilgpt2
-            tok = AutoTokenizer.from_pretrained(
+        use_accel = _should_use_accelerate()
+        dtype = _pick_torch_dtype()
+        local_ok = _weights_exist_locally(requested)
+
+        def _load_tok(local_only: bool):
+            return AutoTokenizer.from_pretrained(
                 requested,
-                local_files_only=True,
-                use_fast=False,
+                use_fast=True,
                 cache_dir=DEFAULT_HF_CACHE_DIR,
                 token=hf_token,
                 revision=HF_REVISION,
                 trust_remote_code=HF_TRUST_REMOTE_CODE,
+                local_files_only=local_only,
             )
-            logger.info("[local] Loaded tokenizer from cache for %s via AutoTokenizer", requested)
-            use_accel = _should_use_accelerate()
-            dtype = _pick_torch_dtype()
-            local_ok = _weights_exist_locally(requested)
 
-            if use_accel:
-                # Use Accelerate only if explicitly requested
-                model = AutoModelForCausalLM.from_pretrained(
-                    requested,
-                    cache_dir=DEFAULT_HF_CACHE_DIR,
-                    token=hf_token,
-                    revision=HF_REVISION,
-                    trust_remote_code=True,
-                    device_map=_get_device_map_from_env(),
-                    torch_dtype=dtype,
-                    low_cpu_mem_usage=True,
-                    use_safetensors=True,
-                )
-            else:
-                # Use device_map placement and avoid manual .to(...)
-                model = AutoModelForCausalLM.from_pretrained(
-                    requested,
-                    cache_dir=DEFAULT_HF_CACHE_DIR,
-                    token=hf_token,
-                    revision=HF_REVISION,
-                    trust_remote_code=True,
-                    local_files_only=bool(local_ok),  # only lock to local if weights exist
-                    device_map=_get_device_map_from_env(),
-                    torch_dtype=dtype,
-                    low_cpu_mem_usage=True,
-                    use_safetensors=True,
-                )
+        def _load_model(local_only: bool):
+            return AutoModelForCausalLM.from_pretrained(
+                requested,
+                cache_dir=DEFAULT_HF_CACHE_DIR,
+                token=hf_token,
+                revision=HF_REVISION,
+                trust_remote_code=True,
+                local_files_only=local_only,
+                device_map=_get_device_map_from_env(),
+                torch_dtype=dtype,
+                low_cpu_mem_usage=True,
+                use_safetensors=True,
+            )
+
+        # Try cache-only first; if that fails and downloads are allowed, retry without local_files_only
+        try:
+            tok = _load_tok(local_only=True)
+            model = _load_model(local_only=bool(local_ok))
+            logger.info("[local] Loaded tokenizer/model from cache for %s (device_map=auto)", requested)
             logger.info("[local] Model devices (cached): %s", ", ".join(_collect_model_devices(model)))
-            logger.info("[local] Loaded model from cache for %s (device_map=auto)", requested)
         except Exception:
             if HF_LOCAL_ONLY:
                 logger.error("[local] Cache-only load failed for %s and HF_LOCAL_ONLY=1; re-raising", requested)
                 raise
-            if "distilgpt2" in requested:
-                try:
-                    from transformers import GPT2Tokenizer  # type: ignore
-                    tok = GPT2Tokenizer.from_pretrained(
-                        requested,
-                        cache_dir=DEFAULT_HF_CACHE_DIR,
-                        token=hf_token,
-                        revision=HF_REVISION,
-                        trust_remote_code=HF_TRUST_REMOTE_CODE,
-                    )
-                    logger.info("[local] Downloaded GPT2Tokenizer for %s to %s", requested, DEFAULT_HF_CACHE_DIR)
-                except Exception:
-                    tok = AutoTokenizer.from_pretrained(
-                        requested,
-                        use_fast=False,
-                        cache_dir=DEFAULT_HF_CACHE_DIR,
-                        token=hf_token,
-                        revision=HF_REVISION,
-                        trust_remote_code=HF_TRUST_REMOTE_CODE,
-                    )
-                    logger.info("[local] Downloaded AutoTokenizer for %s to %s", requested, DEFAULT_HF_CACHE_DIR)
-            else:
-                tok = AutoTokenizer.from_pretrained(
-                    requested,
-                    use_fast=False,
-                    cache_dir=DEFAULT_HF_CACHE_DIR,
-                    token=hf_token,
-                    revision=HF_REVISION,
-                    trust_remote_code=HF_TRUST_REMOTE_CODE,
-                )
-                logger.info("[local] Downloaded AutoTokenizer for %s to %s", requested, DEFAULT_HF_CACHE_DIR)
-            use_accel = _should_use_accelerate()
-            dtype = _pick_torch_dtype()
-            local_ok = _weights_exist_locally(requested)
-
-            if use_accel:
-                # Use Accelerate only if explicitly requested
-                model = AutoModelForCausalLM.from_pretrained(
-                    requested,
-                    cache_dir=DEFAULT_HF_CACHE_DIR,
-                    token=hf_token,
-                    revision=HF_REVISION,
-                    trust_remote_code=True,
-                    device_map=_get_device_map_from_env(),
-                    torch_dtype=dtype,
-                    low_cpu_mem_usage=True,
-                    use_safetensors=True,
-                )
-            else:
-                # Use device_map placement and avoid manual .to(...)
-                model = AutoModelForCausalLM.from_pretrained(
-                    requested,
-                    cache_dir=DEFAULT_HF_CACHE_DIR,
-                    token=hf_token,
-                    revision=HF_REVISION,
-                    trust_remote_code=True,
-                    local_files_only=bool(local_ok),  # only lock to local if weights exist
-                    device_map=_get_device_map_from_env(),
-                    torch_dtype=dtype,
-                    low_cpu_mem_usage=True,
-                    use_safetensors=True,
-                )
+            tok = _load_tok(local_only=False)
+            model = _load_model(local_only=False)
+            logger.info("[local] Downloaded tokenizer/model for %s (device_map=auto)", requested)
             logger.info("[local] Model devices (downloaded): %s", ", ".join(_collect_model_devices(model)))
-            logger.info("[local] Downloaded model %s to %s (device_map=auto)", requested, DEFAULT_HF_CACHE_DIR)
-        # --- Safety against position-id overflow (same as tiny helper) ---
+
+        # --- Safety against position-id overflow ---
         npos = int(getattr(model.config, "n_positions", getattr(model.config, "max_position_embeddings", 1024)))
         reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "256"))
         reserve_new = max(1, min(reserve_new, npos - 32))
@@ -925,29 +858,24 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
         tok.truncation_side = os.getenv("LOCAL_TRUNCATION_SIDE", "left")
         tok.model_max_length = npos - reserve_new
 
-        # If this is a Qwen3 model, wrap with chat template and recommended settings
         requested_lower = requested.lower()
         is_qwen3 = "qwen3" in requested_lower or "/qwen3-" in requested_lower
         is_gptoss = ("gpt-oss" in requested_lower) or ("/gpt-oss-" in requested_lower) or ("openai/gpt-oss" in requested_lower)
+
         if is_qwen3:
-            # Create a lightweight wrapper that formats a single-string prompt
-            # into Qwen3's chat template and applies recommended decoding params.
+            # ---- Qwen3 chat wrapper (unchanged behavior; simplified loading above) ----
             class _FakeGen:
                 def __init__(self, text: str):
                     self.text = text
-
             class _FakeResponse:
                 def __init__(self, text: str):
                     self.generations = [[_FakeGen(text)]]
-
             class Qwen3ChatWrapper:
                 def __init__(self, model_obj, tokenizer_obj):
                     self._model = model_obj
                     self._tok = tokenizer_obj
                     self._callbacks: list[Any] = []
-                    # Thinking switch (default on per Qwen3 best-practice)
                     self._enable_thinking = os.getenv("QWEN3_ENABLE_THINKING", "1").strip().lower() in ("1", "true", "yes", "on")
-                    # Sampling presets
                     if self._enable_thinking:
                         self._temperature = float(os.getenv("QWEN3_TEMPERATURE", "0.6"))
                         self._top_p = float(os.getenv("QWEN3_TOP_P", "0.95"))
@@ -956,15 +884,12 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                         self._temperature = float(os.getenv("QWEN3_TEMPERATURE", "0.7"))
                         self._top_p = float(os.getenv("QWEN3_TOP_P", "0.8"))
                         self._top_k = int(os.getenv("QWEN3_TOP_K", "20"))
-                    # Default to a larger output window for Qwen3
                     default_qwen_max = max(reserve_new, 2048)
                     self._max_new = int(os.getenv("QWEN3_MAX_NEW_TOKENS", str(default_qwen_max)))
-                    # Optional YaRN scaling via tokenizer config override (Transformers >= 4.51)
                     try:
                         if os.getenv("QWEN3_ENABLE_YARN", "0").strip().lower() in ("1", "true", "yes", "on"):
                             factor = float(os.getenv("QWEN3_YARN_FACTOR", "4.0"))
                             orig = int(os.getenv("QWEN3_YARN_ORIG_CTX", str(getattr(self._model.config, "max_position_embeddings", 32768))))
-                            # Some tokenizers support dynamic json override; best-effort here
                             if hasattr(self._model, "config") and hasattr(self._model.config, "rope_scaling"):
                                 self._model.config.rope_scaling = {
                                     "rope_type": "yarn",
@@ -984,7 +909,6 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
 
                 def invoke(self, prompt_text: str, config: RunnableConfig | None = None):  # type: ignore[override]
                     try:
-                        # Resolve callbacks from config as well
                         callbacks = list(self._callbacks)
                         try:
                             if config and isinstance(config, dict):
@@ -992,16 +916,14 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                         except Exception:
                             pass
 
-                        # Prepare chat-formatted input
                         messages = [{"role": "user", "content": str(prompt_text)}]
                         chat_text = self._tok.apply_chat_template(
                             messages,
                             tokenize=False,
                             add_generation_prompt=True,
-                            enable_thinking=False, #Hardcode to False for Qwen3, for now
+                            enable_thinking=False,  # keep off for now
                         )
 
-                        # Notify start
                         run_id = id(self) ^ hash(chat_text)
                         for cb in callbacks:
                             try:
@@ -1009,17 +931,9 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                             except Exception:
                                 pass
 
-                        # Generation
                         pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
-                        local_tok = self._tok.__class__.from_pretrained(self._tok.name_or_path, use_fast=False, trust_remote_code=True)
                         _log_gpu_overview("[local.Qwen3ChatWrapper.invoke]", self._model)
-                        generator = pipeline(
-                            "text-generation",
-                            model=self._model,
-                            tokenizer=local_tok,
-                            batch_size=1,
-                            truncation=True,
-                        )
+                        generator = pipeline("text-generation", model=self._model, tokenizer=self._tok, batch_size=1, truncation=True)
                         outputs = generator(
                             chat_text,
                             truncation=True,
@@ -1034,13 +948,8 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                             num_return_sequences=1,
                         )
                         full_text = outputs[0].get("generated_text", "")
-                        # Strip prompt prefix if present
-                        if full_text.startswith(chat_text):
-                            answer_text = full_text[len(chat_text):].lstrip()
-                        else:
-                            answer_text = full_text
+                        answer_text = full_text[len(chat_text):].lstrip() if full_text.startswith(chat_text) else full_text
 
-                        # Notify end (best-effort for token accounting)
                         fake_resp = _FakeResponse(answer_text)
                         for cb in callbacks:
                             try:
@@ -1061,34 +970,25 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             enc = tok
             logger.info(
                 "[local] Initialized Qwen3 chat wrapper for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, thinking=%s)",
-                requested,
-                npos,
-                tok.model_max_length,
-                reserve_new,
-                True,
+                requested, npos, tok.model_max_length, reserve_new, True,
             )
+
         elif is_gptoss:
-            # Create a lightweight wrapper that formats input via the model's chat template
-            # using the Harmony response format and allows setting reasoning level.
+            # ---- GPT-OSS chat wrapper (unchanged behavior; simplified loading above) ----
             class _FakeGen:
                 def __init__(self, text: str):
                     self.text = text
-
             class _FakeResponse:
                 def __init__(self, text: str):
                     self.generations = [[_FakeGen(text)]]
-
             class GPTOSSChatWrapper:
                 def __init__(self, model_obj, tokenizer_obj):
                     self._model = model_obj
                     self._tok = tokenizer_obj
                     self._callbacks: list[Any] = []
-                    # Reasoning level can be low|medium|high (default: medium)
                     self._reasoning_level = os.getenv("GPT_OSS_REASONING_LEVEL", "medium").strip().lower()
-                    # Default to a larger output window for chat-style models
                     default_max = max(reserve_new, 2048)
                     self._max_new = int(os.getenv("GPT_OSS_MAX_NEW_TOKENS", str(default_max)))
-                    # Sampling presets (tune as needed)
                     self._temperature = float(os.getenv("GPT_OSS_TEMPERATURE", "0.7"))
                     self._top_p = float(os.getenv("GPT_OSS_TOP_P", "0.9"))
 
@@ -1109,16 +1009,10 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                         except Exception:
                             pass
 
-                        # Prepare Harmony-formatted chat via tokenizer template
                         sys_msg = {"role": "system", "content": f"Reasoning: {self._reasoning_level}"}
                         messages = [sys_msg, {"role": "user", "content": str(prompt_text)}]
-                        chat_text = self._tok.apply_chat_template(
-                            messages,
-                            tokenize=False,
-                            add_generation_prompt=True,
-                        )
+                        chat_text = self._tok.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
-                        # Notify start
                         run_id = id(self) ^ hash(chat_text)
                         for cb in callbacks:
                             try:
@@ -1126,16 +1020,9 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                             except Exception:
                                 pass
 
-                        # Generation
                         pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
                         _log_gpu_overview("[local.GPTOSSChatWrapper.invoke]", self._model)
-                        generator = pipeline(
-                            "text-generation",
-                            model=self._model,
-                            tokenizer=self._tok,
-                            batch_size=1,
-                            truncation=True,
-                        )
+                        generator = pipeline("text-generation", model=self._model, tokenizer=self._tok, batch_size=1, truncation=True)
                         outputs = generator(
                             chat_text,
                             truncation=True,
@@ -1151,7 +1038,6 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                         full_text = outputs[0].get("generated_text", "")
                         answer_text = full_text[len(chat_text):].lstrip() if full_text.startswith(chat_text) else full_text
 
-                        # Notify end (best-effort)
                         fake_resp = _FakeResponse(answer_text)
                         for cb in callbacks:
                             try:
@@ -1172,12 +1058,10 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             enc = tok
             logger.info(
                 "[local] Initialized GPT-OSS chat wrapper for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, reasoning=%s)",
-                requested,
-                npos,
-                tok.model_max_length,
-                reserve_new,
+                requested, npos, tok.model_max_length, reserve_new,
                 os.getenv("GPT_OSS_REASONING_LEVEL", "medium").strip().lower(),
             )
+
         else:
             _log_gpu_overview("[local.HuggingFacePipeline]", model)
             hf_pipe = pipeline(
@@ -1193,15 +1077,11 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
             )
             logger.info(
                 "[local] Initialized HuggingFacePipeline for %s (npos=%d, model_max_length=%d, max_new_tokens=%d, truncation=%s)",
-                requested,
-                npos,
-                tok.model_max_length,
-                reserve_new,
-                True,
+                requested, npos, tok.model_max_length, reserve_new, True,
             )
             raw_llm = HuggingFacePipeline(pipeline=hf_pipe)  # type: ignore[call-arg]
             enc = tok
-    
+
     else:
         msg = f"Unknown model_name scheme {model_name}"
         logger.error(msg)
@@ -1218,17 +1098,14 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
     except Exception:
         pass
 
-    # Attach a LangChain callback so that rate limiting and cost logging happen
-    # while preserving LangChain/OpenInference spans for the terminal LLM call.
+    # Attach a LangChain callback for rate limiting and cost logging
     handler = RateLimitAndCostHandler(encoder=enc, model_name=model_name)
     try:
-        # Newer LC runnables support .with_config and callbacks on invoke
         raw_llm = raw_llm.with_config({"callbacks": [handler]})  # type: ignore[attr-defined]
     except Exception:
-        # Fallback: rely on per-call callbacks by callers; we still return handler via config
         pass
 
-    # Attach Langfuse callback handler only if startup marked it ready
+    # Optional: Langfuse callback handler
     if os.getenv("LANGFUSE_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on") and os.getenv("LANGFUSE_READY", "0").strip() in ("1", "true", "TRUE"):
         try:
             if LangfuseCallback is not None:
@@ -1236,6 +1113,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 raw_llm = raw_llm.with_config({"callbacks": [handler]})  # type: ignore[attr-defined]
         except Exception:
             pass
+
     return enc, raw_llm
 
 

@@ -100,6 +100,10 @@ FileContents = Dict[str, str]
 # ---------------------------------------------------------------------------
 # Public LangGraph node
 # ---------------------------------------------------------------------------
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Merge conflicted files via a single-turn LLM prompt (or fallback)."""
@@ -108,6 +112,7 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
     parent_b: FileContents = state["parent_b_contents"]
 
     model_name: str = state.get("model_name") or _DEFAULT_MODEL
+    logger.info("Starting conflict resolution with model: %s", model_name)
 
     encoder, llm_backend = get_backend(model_name)
 
@@ -118,14 +123,17 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
 
     # No credentials or failed initialisation → naive fallback.
     if runnable is None:
+        logger.warning("No LLM backend available, using naive fallback (parent_a)")
         state["resolved_contents"] = parent_a
         state["status"] = "resolved_agent_stub"
         return state
 
     file_paths = list(parent_a.keys() | parent_b.keys())
+    logger.info("Processing %d files for conflict resolution", len(file_paths))
     resolved: FileContents = {}
 
     for path in file_paths:
+        logger.debug("Processing file: %s", path)
         original_text = state["ancestor_contents"].get(path, "")
         diff_a_text = state["diffs_a"].get(path, "")
         diff_b_text = state["diffs_b"].get(path, "")
@@ -136,6 +144,7 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
             "diff_a": count_tokens(encoder, diff_a_text),
             "diff_b": count_tokens(encoder, diff_b_text),
         }
+        logger.debug("Token usage for %s: %s", path, pre_token_usage)
 
         # Build prompt via simple string formatting to avoid templating engines
         prompt_text = (
@@ -145,15 +154,19 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
             .replace("{diff_a}", diff_a_text)
             .replace("{diff_b}", diff_b_text)
         )
+        
+        logger.debug("Invoking LLM for file: %s", path)
         result = runnable.invoke(prompt_text)  # type: ignore[attr-defined]
 
         merged_content = result.content if hasattr(result, "content") else str(result)
         merged_clean = merged_content.strip("\n")
         resolved[path] = merged_clean
+        logger.debug("Successfully resolved file: %s (output length: %d chars)", path, len(merged_clean))
 
         token_usage = {**pre_token_usage, "output": count_tokens(encoder, merged_clean)}
         state.setdefault("token_counts", {})[path] = token_usage
 
+    logger.info("Conflict resolution completed for %d files", len(resolved))
     state["resolved_contents"] = resolved
     state["status"] = "resolved_agent"
     return state
