@@ -138,12 +138,11 @@ async def _run_all(
                         logger.exception("[run_all] Error processing scenario %s (%s)", row.get("id", row.name), method)
                         return []
 
-                tasks = [process_row(row) for _, row in batch_df.iterrows()]
-
-                # Stream append as scenarios finish
+                # Process scenarios sequentially (no concurrency)
                 completed = 0
-                for fut in asyncio.as_completed(tasks):
-                    per_file_results = await fut
+                tasks_count = len(batch_df)
+                for _, row in batch_df.iterrows():
+                    per_file_results = await process_row(row)
                     if per_file_results:
                         df = pd.DataFrame(per_file_results)
                         # Enforce unified column order/schema
@@ -151,7 +150,7 @@ async def _run_all(
                         header = not results_path.exists() or results_path.stat().st_size == 0
                         df.to_csv(results_path, mode="a", header=header, index=False)
                         completed += 1
-                        logger.info("Appended %s rows for scenario (%s/%s) → %s", len(per_file_results), completed, len(tasks), results_path)
+                        logger.info("Appended %s rows for scenario (%s/%s) → %s", len(per_file_results), completed, tasks_count, results_path)
                 if completed == 0:
                     logger.warning("Method %s: no results to append in this batch.", method)
         finally:
