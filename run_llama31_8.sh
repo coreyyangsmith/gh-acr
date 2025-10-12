@@ -4,9 +4,9 @@
 #SBATCH --error=logs/llama318-gh-acr-%j.err
 #SBATCH --time=72:00:00
 #SBATCH --ntasks=1
-#SBATCH --gpus-per-node=h100:1
+#SBATCH --gpus-per-node=h100:2
 #SBATCH --cpus-per-task=12
-#SBATCH --mem=80G
+#SBATCH --mem=120G
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=corey.yangsmith@ucalgary.ca
 
@@ -139,4 +139,4 @@ srun --export=ALL python -m src.cli.run_all \
   --methods agent bypass7 \
   --mode clone \
   --model-name local:meta-llama/Llama-3.1-8B-Instruct \
-  --results-filename 2025_10_11_llama.csv
+  --results-filename 2025_10_11_results_llama31_8.csv

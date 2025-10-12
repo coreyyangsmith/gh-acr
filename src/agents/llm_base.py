@@ -21,6 +21,8 @@ from typing import Any, Tuple, Optional
 import os
 import logging
 from contextlib import nullcontext
+import threading
+import asyncio
 
 # Optional Langfuse callback integration (best-effort)
 try:  # pragma: no cover
@@ -145,6 +147,12 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 raw_llm = raw_llm.with_config({"callbacks": [handler]})  # type: ignore[attr-defined]
         except Exception:
             pass
+
+    # OUTERMOST: thread-safe wrapper to prevent tokenizer concurrency crashes
+    try:
+        raw_llm = _ThreadSafeLLMWrapper(raw_llm)
+    except Exception:
+        pass
 
     return enc, raw_llm
 ## Convenience helpers moved to src/agents/token_utils.py
