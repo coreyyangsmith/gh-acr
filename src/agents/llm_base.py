@@ -22,6 +22,8 @@ from typing import Any, Tuple, Optional
 import os
 import logging
 from contextlib import nullcontext
+import threading
+import asyncio
 
 # Optional Langfuse callback integration (best-effort)
 try:  # pragma: no cover
@@ -323,7 +325,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
                 trust_remote_code=True,
                 device_map=_get_device_map_from_env(),
                 torch_dtype=dtype,
-                low_cpu_mem_usage=True,
+                low_cpu_mem_usage=False,
                 use_safetensors=True,
             )
         else:
@@ -337,7 +339,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
                 local_files_only=bool(local_ok),
                 device_map=_get_device_map_from_env(),
                 torch_dtype=dtype,
-                low_cpu_mem_usage=True,
+                low_cpu_mem_usage=False,
                 use_safetensors=True,
             )
         logger.info("[local] Model devices: %s", ", ".join(_collect_model_devices(model)))
@@ -369,7 +371,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
                 trust_remote_code=True,
                 device_map=_get_device_map_from_env(),
                 torch_dtype=dtype,
-                low_cpu_mem_usage=True,
+                low_cpu_mem_usage=False,
                 use_safetensors=True,
             )
         else:
@@ -383,7 +385,7 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
                 local_files_only=bool(local_ok),
                 device_map=_get_device_map_from_env(),
                 torch_dtype=dtype,
-                low_cpu_mem_usage=True,
+                low_cpu_mem_usage=False,
                 use_safetensors=True,
             )
         logger.info("[local] Model devices (download): %s", ", ".join(_collect_model_devices(model)))
@@ -715,6 +717,40 @@ class _TruncatingLLMWrapper:
         # Fallback to sync path if async not available
         return self._inner.invoke(prompt_input, config=config)
 
+
+class _ThreadSafeLLMWrapper:
+    """Serialize access to a shared LLM/pipeline.
+
+    Prevents concurrent calls into a single fast tokenizer instance, which
+    otherwise triggers: `RuntimeError: Already borrowed`.
+    """
+
+    def __init__(self, inner: Any):
+        self._inner = inner
+        self._lock = threading.Lock()
+
+    def with_config(self, config: dict[str, Any] | None = None):
+        try:
+            if hasattr(self._inner, "with_config"):
+                self._inner = self._inner.with_config(config)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+        return self
+
+    def invoke(self, prompt_input: Any, config: Any | None = None):
+        with self._lock:
+            return self._inner.invoke(prompt_input, config=config)
+
+    async def ainvoke(self, prompt_input: Any, config: Any | None = None):
+        # Run the locked sync call in a thread to avoid blocking the event loop.
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: self.invoke(prompt_input, config=config))
+
+    def __getattr__(self, name: str):
+        # Delegate any other attribute lookups to the inner object
+        return getattr(self._inner, name)
+
+
 @lru_cache(maxsize=None)
 def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa: D401
     """Return *(encoder, llm)* for *model_name*.
@@ -827,7 +863,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 local_files_only=local_only,
                 device_map=_get_device_map_from_env(),
                 torch_dtype=dtype,
-                low_cpu_mem_usage=True,
+                low_cpu_mem_usage=False,
                 use_safetensors=True,
             )
 
@@ -1113,6 +1149,12 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:  # noqa
                 raw_llm = raw_llm.with_config({"callbacks": [handler]})  # type: ignore[attr-defined]
         except Exception:
             pass
+
+    # OUTERMOST: thread-safe wrapper to prevent tokenizer concurrency crashes
+    try:
+        raw_llm = _ThreadSafeLLMWrapper(raw_llm)
+    except Exception:
+        pass
 
     return enc, raw_llm
 
