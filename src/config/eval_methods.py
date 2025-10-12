@@ -17,7 +17,6 @@ EvalMethod = Literal[
     "bypass",
     "bypass7",
     "bypass_only",
-    "dynamic",
 ]
 
 
@@ -29,7 +28,6 @@ ALL_EVAL_METHODS: Final[list[EvalMethod]] = [
     "bypass",
     "bypass7",
     "bypass_only",
-    "dynamic",
 ]
 
 
@@ -41,5 +39,4 @@ DEFAULT_METHOD_ORDER: Final[list[EvalMethod]] = [
     "bypass",
     "bypass7",
     "bypass_only",
-    "dynamic",
 ]

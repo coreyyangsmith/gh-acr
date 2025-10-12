@@ -35,7 +35,6 @@ from ..agents.agent import resolve_conflict_agent_node
 from ..agents.bypass import resolve_conflict_bypass_multi_agent_node
 from ..agents.bypass_only import resolve_conflict_bypass_only_multi_agent_node
 from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
-from ..agents.dynamic import resolve_conflict_dynamic_agent_node
 
 # Evaluation
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
