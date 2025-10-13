@@ -69,11 +69,39 @@ class TruncatingLLMWrapper:
         except Exception:
             expected_output_tokens = max(1, prompt_tokens // 4)
 
+        # Compute allowed prompt tokens from config if available
         if sliding_window and total_limit:
-            return max(1, total_limit - expected_output_tokens)
-        if input_limit:
-            return max(1, input_limit)
-        return 0
+            allowed = max(1, total_limit - expected_output_tokens)
+        elif input_limit:
+            allowed = max(1, input_limit)
+        else:
+            allowed = 0
+
+        # Fallback: if no config limits are known (unknown model key), derive
+        # a safe allowance from the encoder's declared model_max_length and an
+        # estimated new-token reserve. This ensures we still truncate even when
+        # MODEL_COSTS lacks an entry for the provided model name.
+        if allowed <= 0:
+            try:
+                enc_max = int(getattr(self._encoder, "model_max_length", 0))
+            except Exception:
+                enc_max = 0
+            if enc_max and enc_max > 0:
+                try:
+                    reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "256"))
+                except Exception:
+                    reserve_new = 256
+                reserve_new = max(1, min(reserve_new, max(1, enc_max - 32)))
+                allowed = max(1, enc_max - reserve_new)
+
+        try:
+            buffer_tokens = int(os.getenv("TOKENIZER_BUFFER_TOKENS", os.getenv("LOCAL_TOKENIZER_BUFFER_TOKENS", "512")))
+        except Exception:
+            buffer_tokens = 0
+
+        if allowed > 0 and buffer_tokens > 0:
+            allowed = max(1, allowed - buffer_tokens)
+        return allowed
 
     def _truncate_text(self, text: str) -> str:
         try:

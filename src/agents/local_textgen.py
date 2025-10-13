@@ -134,6 +134,21 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
     pad_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
     model.config.pad_token_id = pad_id
 
+    # Align tokenizer truncation strategy and apply a small safety buffer
+    try:
+        tokenizer.truncation_side = os.getenv("LOCAL_TRUNCATION_SIDE", "left")
+    except Exception:
+        pass
+    try:
+        buffer_tokens = int(os.getenv("LOCAL_TOKENIZER_BUFFER_TOKENS", os.getenv("TOKENIZER_BUFFER_TOKENS", "512")))
+    except Exception:
+        buffer_tokens = 0
+    try:
+        safe_ctx = max(32, npos - reserve_new - max(0, buffer_tokens))
+        tokenizer.model_max_length = safe_ctx
+    except Exception:
+        pass
+
     log_gpu_overview("[local.build_local_text_generator]", model)
 
     generator = pipeline(
@@ -160,6 +175,21 @@ def build_local_text_generator(model_id: str | None = None, *, local_only: bool 
 
 def generate_local_text(prompt: str, *, max_new_tokens: int = 64, model_id: str | None = None) -> str:
     generator, tokenizer = build_local_text_generator(model_id)
+    # Pre-truncate prompt with a small buffer to reduce risk of overflow
+    try:
+        buffer_tokens = int(os.getenv("LOCAL_TOKENIZER_BUFFER_TOKENS", os.getenv("TOKENIZER_BUFFER_TOKENS", "512")))
+    except Exception:
+        buffer_tokens = 0
+    try:
+        if buffer_tokens > 0 and hasattr(tokenizer, "encode") and hasattr(tokenizer, "decode"):
+            max_len = max(32, int(getattr(tokenizer, "model_max_length", 0)) - max_new_tokens)
+            if max_len > 0:
+                max_len = max(1, max_len - buffer_tokens)
+                ids = tokenizer.encode(prompt)
+                if len(ids) > max_len:
+                    prompt = tokenizer.decode(ids[-max_len:])
+    except Exception:
+        pass
     pad_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.pad_token_id
     outputs = generator(
         prompt,

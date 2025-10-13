@@ -2,7 +2,7 @@
 #SBATCH --job-name=llama318-gh-acr-test
 #SBATCH --output=logs/llama318-gh-acr-test-%j.out
 #SBATCH --error=logs/llama318-gh-acr-test-%j.err
-#SBATCH --time=00:10:00
+#SBATCH --time=72:00:00
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-node=h100:1
 #SBATCH --cpus-per-task=12

@@ -18,6 +18,7 @@ import os
 import time
 import shutil
 import stat
+import uuid
 
 from git import Repo, GitCommandError
 from langgraph.graph import END, StateGraph
@@ -56,6 +57,61 @@ FileContents = Dict[str, str]
 # Helper utilities
 # ---------------------------------------------------------------------------
 
+
+def _checkout_root() -> Path:
+    """Return the directory under which repositories are cloned.
+
+    Preference order:
+    - GHACR_CLONE_DIR: treated as the full path to the repos root
+    - SLURM_TMPDIR/TMPDIR: append "repos" within the job-local scratch
+    - CWD/repos: default
+    """
+
+    ghacr = os.getenv("GHACR_CLONE_DIR")
+    if ghacr:
+        return Path(ghacr)
+    slurm = os.getenv("SLURM_TMPDIR")
+    if slurm:
+        return Path(slurm) / "repos"
+    tmpdir = os.getenv("TMPDIR")
+    if tmpdir:
+        return Path(tmpdir) / "repos"
+    return Path.cwd() / "repos"
+
+
+def _robust_rmtree(path: Path, *, retries: int = 6, base_sleep: float = 0.25) -> bool:
+    """Best-effort recursive removal that tolerates RO bits and NFS quirks.
+
+    Falls back to renaming the directory aside when deletion fails, which
+    unblocks subsequent clones even if stale .nfs* files linger.
+    """
+
+    def _onerror(func, p, exc_info):
+        try:
+            os.chmod(p, stat.S_IRWXU)
+        except Exception:
+            pass
+        try:
+            func(p)
+        except Exception:
+            pass
+
+    for i in range(max(1, retries)):
+        try:
+            shutil.rmtree(path, onerror=_onerror)
+            return True
+        except FileNotFoundError:
+            return True
+        except Exception:
+            time.sleep(base_sleep * (2 ** i))
+
+    # Fallback: rename aside (helps with EBUSY/.nfs* on shared filesystems)
+    try:
+        new_name = f"{path}.stale.{uuid.uuid4().hex}"
+        os.rename(path, new_name)
+        return True
+    except Exception:
+        return not Path(path).exists()
 
 def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
     """Clone *or* reuse the repository referenced by *sample*.
@@ -129,7 +185,7 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                     "Existing directory at %s is not a valid git repo; deleting and recloning",
                     dest,
                 )
-            removed = _force_remove_dir(dest)
+            removed = _robust_rmtree(dest)
             if not removed and dest.exists():
                 logger.error(
                     "Failed to remove invalid repo directory after retries: %s", dest
@@ -163,7 +219,7 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                         "Destination exists but not a valid repo; removing and retrying: %s",
                         dest,
                     )
-                    removed = _force_remove_dir(dest)
+                    removed = _robust_rmtree(dest)
                     if not removed and dest.exists():
                         logger.error(
                             "Failed to remove directory before retry after multiple attempts: %s",
@@ -286,7 +342,7 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     files = scenario["files_in_merge_conflict"]
     parents = scenario["parents"]
 
-    repo = _clone_repo(sample, checkout_dir=Path.cwd() / "repos")
+    repo = _clone_repo(sample, checkout_dir=_checkout_root())
 
     # Ensure all necessary commits are available locally
     for sha in [scenario["merge_commit_hash"], *parents]:

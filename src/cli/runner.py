@@ -92,7 +92,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     if write_prep and (process_mode or "").strip().lower() == "clone":
         try:
             from src.dataset.loader import load_benchmark  # local import to avoid cyclic deps
-            from src.merge_pipeline.pipeline_clone import _clone_repo  # type: ignore
+            from src.merge_pipeline.pipeline_clone import _clone_repo, _checkout_root  # type: ignore
 
             # Locate scenario row similar to pipeline's load_sample_node
             df = load_benchmark()
@@ -112,7 +112,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             if row_series is not None:
                 sample = row_series.to_dict()
                 prep_start = time.perf_counter()
-                _clone_repo(sample, checkout_dir=Path.cwd() / "repos")
+                _clone_repo(sample, checkout_dir=_checkout_root())
                 prep_elapsed = time.perf_counter() - prep_start
                 df_index = row_series.name
                 repo_slug = str(sample.get("name", ""))

@@ -156,7 +156,12 @@ async def _run_all(
         finally:
             # Cleanup batch repos (clone mode only)
             if mode == "clone":
-                repos_root = Path.cwd() / "repos"
+                try:
+                    # Prefer the same root used for cloning
+                    from src.merge_pipeline.pipeline_clone import _checkout_root, _robust_rmtree  # type: ignore
+                    repos_root = _checkout_root()
+                except Exception:
+                    repos_root = Path.cwd() / "repos"
                 for _, row in batch_df.iterrows():
                     name = str(row.get("name", "")).replace("/", "___")
                     if not name:
@@ -164,7 +169,7 @@ async def _run_all(
                     repo_dir = repos_root / name
                     if repo_dir.exists():
                         try:
-                            shutil.rmtree(repo_dir, ignore_errors=True)
+                            _robust_rmtree(repo_dir)
                             logger.info("Cleaned cloned repo: %s", repo_dir)
                         except Exception:
                             logger.exception("Failed to remove repo directory: %s", repo_dir)
