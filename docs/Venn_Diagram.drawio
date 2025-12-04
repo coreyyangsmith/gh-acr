@@ -1,0 +1,34 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36" version="28.2.7">
+  <diagram name="Page-1" id="zk72QVP40tTyQCGQ26VH">
+    <mxGraphModel dx="865" dy="1185" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-2" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="20" y="260" width="480" height="480" as="geometry" />
+        </mxCell>
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-3" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="130" y="320" width="360" height="360" as="geometry" />
+        </mxCell>
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-4" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="230" y="375" width="250" height="250" as="geometry" />
+        </mxCell>
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-5" value="" style="ellipse;whiteSpace=wrap;html=1;aspect=fixed;" vertex="1" parent="1">
+          <mxGeometry x="300" y="415" width="170" height="170" as="geometry" />
+        </mxCell>
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-6" value="&lt;b&gt;Machine Learning Challenges&lt;/b&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="50" y="485" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-7" value="&lt;b&gt;Large Language Model Challenges&lt;/b&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" vertex="1" parent="1">
+          <mxGeometry x="160" y="485" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-8" value="&lt;span&gt;Multi-Agent Challenges&lt;/span&gt;" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="355" y="485" width="60" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="hXd-P-dXOqiRUhS8Noh8-9" value="Single Agent Challenges" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;fontStyle=1" vertex="1" parent="1">
+          <mxGeometry x="250" y="490" width="30" height="20" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

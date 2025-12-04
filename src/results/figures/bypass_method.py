@@ -7,7 +7,16 @@ bar counts of `bypass_method` categories (A, B, MIX) considering only rows with
 `eval_method == 'bypass7'`.
 
 CLI:
+    # Single plot (all models combined)
     python -m src.results.figures.bypass_method --input-csv data.csv --name run1
+
+    # Single plot filtered to a specific model
+    python -m src.results.figures.bypass_method --input-csv data.csv --name run1 \
+        --model-name "llama-3.1-8b"
+
+    # Multiple plots: one per model_name
+    python -m src.results.figures.bypass_method --input-csv data.csv --name run1 \
+        --split-by-model True
 
 Saves: results/figures/{name}_bypass_method.png
 """
@@ -72,6 +81,7 @@ def render_bypass_method_split(
     *,
     output_dir: Path = Path("results/figures"),
     show: bool = True,
+    model_name: Optional[str] = None,
 ) -> Path:
     """Render a 1×4 grid of A/B/MIX counts for `eval_method == 'bypass7'`.
 
@@ -93,6 +103,18 @@ def render_bypass_method_split(
 
     # Filter to bypass7 rows
     work = work.loc[work["eval_method_norm"] == "bypass7"].copy()
+
+    # Optional filter by model_name
+    model_slug_for_title = None
+    model_slug_for_file = None
+    if model_name is not None:
+        if "model_name" not in work.columns:
+            raise ValueError("Column 'model_name' not found in input CSV but 'model_name' filter was provided.")
+        work["model_name_norm"] = work["model_name"].astype(str).str.strip().str.lower()
+        target_model_norm = str(model_name).strip().lower()
+        work = work.loc[work["model_name_norm"] == target_model_norm].copy()
+        model_slug_for_title = str(model_name).strip()
+        model_slug_for_file = _slugify(model_name)
 
     diff_keys: list[tuple[str, Optional[str]]] = [
         ("All", None),
@@ -175,8 +197,10 @@ def render_bypass_method_split(
         ax.set_ylim(0, max_count * 1.15 + 0.5)
 
     slug = _slugify(name)
-    save_path = output_dir / f"{slug}_bypass_method.png"
-    fig.suptitle(f"{name} — bypass_method split for eval_method=bypass7", y=0.995)
+    suffix = f"_{model_slug_for_file}" if model_slug_for_file else ""
+    save_path = output_dir / f"{slug}{suffix}_bypass_method.png"
+    title_suffix = f" — model={model_slug_for_title}" if model_slug_for_title else ""
+    fig.suptitle(f"{name}{title_suffix} — bypass_method split for eval_method=bypass7", y=0.995)
     fig.tight_layout(rect=[0, 0, 1, 0.98])
     fig.savefig(save_path, dpi=150)
     if show:
@@ -191,10 +215,50 @@ class Flags:
     name: str
     output_dir: Path = Path("results/figures")
     show: bool = True
+    split_by_model: bool = True
+    model_name: Optional[str] = None
 
 
 def main(flags: Flags) -> None:
-    render_bypass_method_split(flags.input_csv, flags.name, output_dir=flags.output_dir, show=flags.show)
+    if flags.split_by_model:
+        df = pd.read_csv(flags.input_csv)
+        if "model_name" not in df.columns:
+            raise ValueError("Column 'model_name' not found in input CSV but '--split-by-model' was provided.")
+
+        work = df.copy()
+        work["eval_method_norm"] = work["eval_method"].astype(str).str.strip().str.lower()
+        work = work.loc[work["eval_method_norm"] == "bypass7"].copy()
+
+        # Use stripped originals for user-friendly titles; iterate in sorted order for determinism
+        if work.empty:
+            # No bypass7 rows; still run once to produce an empty plot labeled "All"
+            render_bypass_method_split(
+                flags.input_csv,
+                flags.name,
+                output_dir=flags.output_dir,
+                show=flags.show,
+            )
+            return
+
+        model_values = (
+            work["model_name"].astype(str).str.strip().replace({"": np.nan}).dropna().unique().tolist()
+        )
+        for model in sorted(model_values):
+            render_bypass_method_split(
+                flags.input_csv,
+                flags.name,
+                output_dir=flags.output_dir,
+                show=flags.show,
+                model_name=model,
+            )
+    else:
+        render_bypass_method_split(
+            flags.input_csv,
+            flags.name,
+            output_dir=flags.output_dir,
+            show=flags.show,
+            model_name=flags.model_name,
+        )
 
 
 if __name__ == "__main__":

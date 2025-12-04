@@ -159,3 +159,9 @@ Extract Subset
 ```
 python -m src.dataset.extract_samples_from_subset --ids-csv data/2025_08_11_results_all.csv --source-csv data/git_good_bench_merge_commits_easy_subset_10_seed42.csv --output-csv data/source_filtered.csv --ids-column id --source-id-column ,
 ```
+
+
+# Results Processing
+
+Dataset --> EM Dataset (Combine Files to one instance)
+python -m src.results.processing.create_em_dataset --input data/2025_10_18_Final_Results.csv --output results/em_datasets
