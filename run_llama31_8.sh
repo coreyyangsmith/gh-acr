@@ -184,6 +184,10 @@ echo "Configuring LLM and truncation settings..."
 # Enable debug diagnostics
 export GHACR_DEBUG=1
 
+# Batch size: 1 = fully process each scenario (all methods) before cleanup
+# This ensures repo is cloned once, used for all methods, then cleaned up
+export BATCH_SIZE=1
+
 # Truncation configuration - CRITICAL for proper context window handling
 # Use 2048 output tokens (sufficient for merge conflict resolution)
 export LOCAL_MAX_NEW_TOKENS=2048
@@ -207,6 +211,7 @@ export TOKENIZERS_PARALLELISM=false
 export LOG_LEVEL=INFO
 
 echo "LLM Configuration:"
+echo "  BATCH_SIZE=$BATCH_SIZE"
 echo "  LOCAL_MAX_NEW_TOKENS=$LOCAL_MAX_NEW_TOKENS"
 echo "  LLAMA_MAX_NEW_TOKENS=$LLAMA_MAX_NEW_TOKENS"
 echo "  LOCAL_TRUNCATION_SIDE=$LOCAL_TRUNCATION_SIDE"
