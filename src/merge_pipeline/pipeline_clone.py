@@ -192,10 +192,22 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                 )
                 raise RuntimeError(f"Cannot remove stale repo directory: {dest}")
 
-        logger.info("Cloning %s → %s", repo_url, dest)
+        logger.info("Cloning %s → %s (this may take several minutes for large repos)", repo_url, dest)
+        clone_start = time.time()
 
         try:
-            return Repo.clone_from(repo_url, dest)
+            # Use shallow clone with depth=1 for faster cloning (we only need specific commits)
+            # and add progress callback for visibility
+            def _clone_progress(op_code, cur_count, max_count=None, message=''):
+                if max_count:
+                    pct = int(100 * cur_count / max_count)
+                    if pct % 25 == 0:  # Log at 0%, 25%, 50%, 75%, 100%
+                        logger.info("[clone] %s: %d%% (%d/%d)", message or "progress", pct, cur_count, max_count)
+            
+            repo = Repo.clone_from(repo_url, dest, progress=_clone_progress)
+            clone_elapsed = time.time() - clone_start
+            logger.info("Clone completed in %.1fs: %s", clone_elapsed, dest)
+            return repo
         except GitCommandError as exc:
             msg = str(exc)
             # Windows path length issues – retry with longpaths enabled
