@@ -10,9 +10,45 @@ import src.startup  # noqa: F401  # Ensure startup side-effects apply when runne
 from typing import Dict, Any
 import os
 import time
+import traceback
 from src.config.model_costs import MODEL_COSTS
 from src.utils.rate_limiter import LimiterRegistry
 from src.utils.logger import setup_logger
+
+
+def _log_pipeline_diagnostics(logger, context: str, state: Dict[str, Any]) -> None:
+    """Log pipeline state diagnostics for debugging."""
+    try:
+        scenario_id = state.get("scenario_id", "unknown")
+        status = state.get("status", "unknown")
+        
+        # Count files and content sizes
+        diffs_a = state.get("diffs_a", {}) or {}
+        diffs_b = state.get("diffs_b", {}) or {}
+        resolved = state.get("resolved_contents", {}) or {}
+        
+        total_diff_a_chars = sum(len(v) for v in diffs_a.values())
+        total_diff_b_chars = sum(len(v) for v in diffs_b.values())
+        total_resolved_chars = sum(len(v) for v in resolved.values())
+        
+        logger.info(
+            "[%s] scenario=%s, status=%s, files=%d, diff_a_chars=%d, diff_b_chars=%d, resolved_chars=%d",
+            context, scenario_id, status, len(diffs_a), total_diff_a_chars, total_diff_b_chars, total_resolved_chars
+        )
+        
+        # Log memory usage
+        try:
+            import psutil
+            process = psutil.Process()
+            mem_info = process.memory_info()
+            logger.info(
+                "[%s] Memory: rss=%.1fMB, vms=%.1fMB",
+                context, mem_info.rss / 1024 / 1024, mem_info.vms / 1024 / 1024
+            )
+        except Exception:
+            pass
+    except Exception as e:
+        logger.warning("[%s] Diagnostics failed: %s", context, e)
 
 # Unified results schema (column order) for all methods
 RESULTS_SCHEMA_COLUMNS = [
@@ -150,7 +186,10 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     start_ts = time.perf_counter()
 
+    logger.info("=" * 60)
     logger.info("Starting scenario %s with method=%s", scenario_id, eval_method)
+    logger.info("=" * 60)
+    
     invoke_cfg: Dict[str, Any] = {
         "configurable": {"thread_id": f"scn-{scenario_id}"},
         "metadata": {
@@ -161,9 +200,24 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     if langfuse_handler is not None:
         invoke_cfg["callbacks"] = [langfuse_handler]
 
-    result = await app.ainvoke(init_state, config=invoke_cfg)
+    # Log initial state diagnostics
+    _log_pipeline_diagnostics(logger, "PRE-INVOKE", init_state)
+    
+    try:
+        result = await app.ainvoke(init_state, config=invoke_cfg)
+    except Exception as e:
+        elapsed_sec = time.perf_counter() - start_ts
+        logger.error(
+            "Pipeline failed for scenario=%s, method=%s after %.3fs: %s",
+            scenario_id, eval_method, elapsed_sec, e
+        )
+        logger.error("Traceback:\n%s", traceback.format_exc())
+        raise
 
     elapsed_sec = time.perf_counter() - start_ts
+    
+    # Log final state diagnostics
+    _log_pipeline_diagnostics(logger, "POST-INVOKE", result)
 
     # ---------------------------------------------------------------------------
     # Write full report to files

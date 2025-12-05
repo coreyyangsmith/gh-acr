@@ -4,7 +4,7 @@
 #SBATCH --error=logs/llama318-gh-acr-%j.err
 #SBATCH --time=72:00:00
 #SBATCH --ntasks=1
-#SBATCH --gpus-per-node=h100:1
+#SBATCH --gpus-per-node=h100:2
 #SBATCH --cpus-per-task=12
 #SBATCH --mem=120G
 #SBATCH --mail-type=ALL
@@ -12,6 +12,25 @@
 
 set -euo pipefail
 mkdir -p logs
+
+############################
+# DEBUG: Log job start info
+############################
+echo "=================================================================="
+echo "JOB STARTED: $(date)"
+echo "=================================================================="
+echo "SLURM_JOB_ID: $SLURM_JOB_ID"
+echo "SLURM_JOB_NAME: $SLURM_JOB_NAME"
+echo "SLURM_NODELIST: $SLURM_NODELIST"
+echo "SLURM_NTASKS: $SLURM_NTASKS"
+echo "SLURM_CPUS_PER_TASK: $SLURM_CPUS_PER_TASK"
+echo "SLURM_MEM_PER_NODE: ${SLURM_MEM_PER_NODE:-not set}"
+echo "SLURM_GPUS_PER_NODE: ${SLURM_GPUS_PER_NODE:-not set}"
+echo "SLURM_TMPDIR: $SLURM_TMPDIR"
+echo "SLURM_SUBMIT_DIR: $SLURM_SUBMIT_DIR"
+echo "HOSTNAME: $(hostname)"
+echo "PWD: $(pwd)"
+echo "=================================================================="
 
 ############################
 # 0) Modules / toolchains  #
@@ -158,12 +177,84 @@ print("pandas:", pd.__version__)
 PY
 
 ################################
-# 8) Run your actual workload
+# 8) Configure LLM/Truncation Settings
 ################################
-echo "Step 1: Running Job..." | tee "logs/job_${SLURM_JOB_ID}.out"
+echo "Configuring LLM and truncation settings..."
+
+# Enable debug diagnostics
+export GHACR_DEBUG=1
+
+# Truncation configuration - CRITICAL for proper context window handling
+# Use 2048 output tokens (sufficient for merge conflict resolution)
+export LOCAL_MAX_NEW_TOKENS=2048
+export LLAMA_MAX_NEW_TOKENS=2048
+
+# Truncation side: "left" keeps the end of the prompt (usually the code/diff)
+export LOCAL_TRUNCATION_SIDE=left
+
+# Buffer tokens to prevent edge-case overflows
+export LOCAL_TOKENIZER_BUFFER_TOKENS=512
+export TOKENIZER_BUFFER_TOKENS=512
+
+# LLM generation parameters
+export LLAMA_TEMPERATURE=0.7
+export LLAMA_TOP_P=0.9
+
+# Disable tokenizers parallelism to prevent "Already borrowed" errors
+export TOKENIZERS_PARALLELISM=false
+
+# Log level for detailed debugging
+export LOG_LEVEL=INFO
+
+echo "LLM Configuration:"
+echo "  LOCAL_MAX_NEW_TOKENS=$LOCAL_MAX_NEW_TOKENS"
+echo "  LLAMA_MAX_NEW_TOKENS=$LLAMA_MAX_NEW_TOKENS"
+echo "  LOCAL_TRUNCATION_SIDE=$LOCAL_TRUNCATION_SIDE"
+echo "  LOCAL_TOKENIZER_BUFFER_TOKENS=$LOCAL_TOKENIZER_BUFFER_TOKENS"
+echo "  LLAMA_TEMPERATURE=$LLAMA_TEMPERATURE"
+echo "  LLAMA_TOP_P=$LLAMA_TOP_P"
+echo "  TOKENIZERS_PARALLELISM=$TOKENIZERS_PARALLELISM"
+echo "  GHACR_DEBUG=$GHACR_DEBUG"
+
+################################
+# 9) GPU diagnostics before run
+################################
+echo ""
+echo "=== GPU Status Before Run ==="
+nvidia-smi || echo "nvidia-smi not available"
+echo ""
+
+################################
+# 10) Run your actual workload
+################################
+echo "=================================================================="
+echo "Starting pipeline run: $(date)"
+echo "=================================================================="
 cd "$SLURM_SUBMIT_DIR"
+
+# Run with explicit error handling and timing
+START_TIME=$(date +%s)
+
 srun --export=ALL python -m src.cli.run_all \
   --methods agent bypass7 \
   --mode clone \
   --model-name local:meta-llama/Llama-3.1-8B-Instruct \
   --results-filename 2025_10_13_results_llama31_8.csv
+
+EXIT_CODE=$?
+END_TIME=$(date +%s)
+ELAPSED=$((END_TIME - START_TIME))
+
+echo ""
+echo "=================================================================="
+echo "JOB COMPLETED: $(date)"
+echo "Exit code: $EXIT_CODE"
+echo "Total runtime: ${ELAPSED}s ($(($ELAPSED / 60))m $(($ELAPSED % 60))s)"
+echo "=================================================================="
+
+# Final GPU status
+echo ""
+echo "=== GPU Status After Run ==="
+nvidia-smi || echo "nvidia-smi not available"
+
+exit $EXIT_CODE

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import os
 from typing import Any, Optional
 
 from .token_utils import count_tokens
 from ..config.model_costs import MODEL_COSTS
 from ..config.rate_limits import get_limits_for_model
+
+
+logger = logging.getLogger(__name__)
 
 
 class TruncatingLLMWrapper:
@@ -77,30 +81,34 @@ class TruncatingLLMWrapper:
         else:
             allowed = 0
 
-        # Fallback: if no config limits are known (unknown model key), derive
-        # a safe allowance from the encoder's declared model_max_length and an
-        # estimated new-token reserve. This ensures we still truncate even when
-        # MODEL_COSTS lacks an entry for the provided model name.
+        # Fallback: if no config limits are known (unknown model key), use
+        # the encoder's declared model_max_length directly. For local models,
+        # local_backend.py already sets tok.model_max_length to a safe value
+        # (npos - reserve_new - buffer_tokens), so we should NOT subtract again.
         if allowed <= 0:
             try:
                 enc_max = int(getattr(self._encoder, "model_max_length", 0))
             except Exception:
                 enc_max = 0
             if enc_max and enc_max > 0:
-                try:
-                    reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "256"))
-                except Exception:
-                    reserve_new = 256
-                reserve_new = max(1, min(reserve_new, max(1, enc_max - 32)))
-                allowed = max(1, enc_max - reserve_new)
+                # Use encoder's model_max_length directly - it's already adjusted
+                # by local_backend.py for local models. Only apply a small safety
+                # margin to avoid edge-case overflows.
+                allowed = max(1, enc_max - 64)  # Small safety margin only
+                logger.debug(
+                    "[TruncatingLLMWrapper] Using encoder.model_max_length=%d, allowed=%d for model=%s",
+                    enc_max, allowed, self._model_name
+                )
 
-        try:
-            buffer_tokens = int(os.getenv("TOKENIZER_BUFFER_TOKENS", os.getenv("LOCAL_TOKENIZER_BUFFER_TOKENS", "512")))
-        except Exception:
-            buffer_tokens = 0
-
-        if allowed > 0 and buffer_tokens > 0:
-            allowed = max(1, allowed - buffer_tokens)
+        # NOTE: Do NOT subtract buffer_tokens here for fallback case - local_backend
+        # already accounts for it. Only subtract for config-based limits where we
+        # want an additional safety margin.
+        if allowed <= 0:
+            logger.warning(
+                "[TruncatingLLMWrapper] Could not determine allowed prompt tokens for model=%s. "
+                "No truncation will be applied, which may cause errors.",
+                self._model_name
+            )
         return allowed
 
     def _truncate_text(self, text: str) -> str:
@@ -112,17 +120,31 @@ class TruncatingLLMWrapper:
             allowed = self._allowed_prompt_tokens(prompt_tokens)
             if allowed <= 0 or prompt_tokens <= allowed:
                 return text
-            side = os.getenv("TRUNCATION_SIDE", "left").strip().lower()
+            # Use LOCAL_TRUNCATION_SIDE as the canonical env var, with TRUNCATION_SIDE as fallback
+            side = os.getenv("LOCAL_TRUNCATION_SIDE", os.getenv("TRUNCATION_SIDE", "left")).strip().lower()
+            
+            logger.warning(
+                "[TruncatingLLMWrapper] Truncating prompt: tokens=%d -> allowed=%d, side=%s, model=%s",
+                prompt_tokens, allowed, side, self._model_name
+            )
+            
             if hasattr(enc, "encode") and hasattr(enc, "decode"):
                 try:
                     ids = enc.encode(text)  # type: ignore[attr-defined]
                     keep = ids[:allowed] if side == "right" else ids[-allowed:]
-                    return enc.decode(keep)  # type: ignore[attr-defined]
-                except Exception:
-                    pass
+                    truncated = enc.decode(keep)  # type: ignore[attr-defined]
+                    logger.info(
+                        "[TruncatingLLMWrapper] Truncation complete: original_chars=%d, truncated_chars=%d",
+                        len(text), len(truncated)
+                    )
+                    return truncated
+                except Exception as e:
+                    logger.warning("[TruncatingLLMWrapper] Encoder truncation failed: %s, falling back to word-based", e)
             words = text.split()
-            return " ".join(words[:allowed]) if side == "right" else " ".join(words[-allowed:])
-        except Exception:
+            truncated_words = words[:allowed] if side == "right" else words[-allowed:]
+            return " ".join(truncated_words)
+        except Exception as e:
+            logger.error("[TruncatingLLMWrapper] Truncation failed entirely: %s", e)
             return text
 
     def with_config(self, config: dict[str, Any] | None = None):  # type: ignore[override]

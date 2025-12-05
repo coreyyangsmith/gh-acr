@@ -1,123 +1,78 @@
 """Bypass-only multi-agent merge resolver package.
 
-Same flow as other bypass variants.
+This package provides a lightweight bypass workflow that only summarizes and
+analyzes conflicts, then selects the best parent without performing an actual
+merge. It's useful when you want quick parent selection without LLM-based merging.
+
+Flow (LangGraph nodes)
+----------------------
+1. **summarizer_agent_node**: Generates summaries of A/B diffs
+2. **conflict_analyzer_node**: Makes global judgement (All A / All B)
+3. **bypass**: Selects the parent contents based on the decision
+4. **finalize**: Computes final diffs
+
+Unlike the full bypass workflow, this variant:
+- Does NOT create a merge plan
+- Does NOT run resolution or review loops
+- Forces a strict A/B decision (no Mix)
+
+Entry Point
+-----------
+The main entry point `resolve_conflict_bypass_only_multi_agent_node` composes
+the above nodes into an internal LangGraph executed synchronously.
+
+Implementation Note
+-------------------
+This package uses the consolidated implementation from `agents.multi_agent`.
 """
+
 from __future__ import annotations
 
 from typing import Any, Dict
 
-from langgraph.graph import END, StateGraph
-import difflib
-
-from .summarizer_agent import summarizer_agent_node
-from .conflict_analyzer import conflict_analyzer_node
+from ..multi_agent import create_resolver
 
 __all__ = ["resolve_conflict_bypass_only_multi_agent_node"]
 
 
-def _route_after_review(state: Dict[str, Any]) -> str:
-    max_iters = 2
-    iter_no = int(state.get("_review_iter", 0))
-    results = state.get("review_results", {}) or {}
-    if results and all((v or {}).get("outcome") == "ACCEPT" for v in results.values()):
-        return "finish"
-    if iter_no >= max_iters:
-        return "finish"
-    return "retry"
+# Create the resolver using the consolidated implementation
+_resolver = create_resolver("bypass_only")
 
 
-def _prepare_feedback_for_retry(state: Dict[str, Any]) -> Dict[str, Any]:
-    iter_no = int(state.get("_review_iter", 0))
-    review_results = state.get("review_results", {}) or {}
-    raw_reviews = state.get("reviews", {}) or {}
+def resolve_conflict_bypass_only_multi_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:
+    """Bypass-only resolver that selects a parent without merging.
 
-    history: Dict[str, list[str]] = state.setdefault("review_feedback_history", {})  # type: ignore[assignment]
+    This is a simplified workflow that:
+    1. Summarizes the diffs from both parents
+    2. Analyzes to pick either A or B (strict, no Mix)
+    3. Selects the parent contents directly
+    4. Finalizes with computed diffs
 
-    for path, data in review_results.items():
-        if not isinstance(data, dict):
-            continue
-        if str(data.get("outcome", "")).upper() == "ACCEPT":
-            continue
-        rationale = str(data.get("rationale", "")).strip()
-        full_text = str(raw_reviews.get(path, "")).strip()
-        entry_parts = []
-        if rationale:
-            entry_parts.append(f"Rationale: {rationale}")
-        if full_text and full_text != rationale:
-            entry_parts.append(f"Raw: {full_text}")
-        if not entry_parts:
-            entry_parts.append("(no review comments provided)")
-        entry = f"Iteration {iter_no}:\n" + "\n".join(entry_parts)
-        history.setdefault(path, []).append(entry)
+    Parameters
+    ----------
+    state
+        The pipeline state dict containing:
+        - ancestor_contents: Dict[str, str]
+        - parent_a_contents: Dict[str, str]
+        - parent_b_contents: Dict[str, str]
+        - diffs_a: Dict[str, str]
+        - diffs_b: Dict[str, str]
+        - sample_row: Dict with scenario metadata
+        - model_name: Optional[str]
 
-    feedback_map: Dict[str, str] = {}
-    for path, entries in history.items():
-        feedback_map[path] = "\n\n---\n\n".join(entries)
-
-    state["review_feedback"] = feedback_map
-    state["_review_iter"] = iter_no + 1
-    state["review_feedback_history"] = history
-    return state
-
-
-def resolve_conflict_bypass_only_multi_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
-    sg = StateGraph(dict)
-
-    sg.add_node("summarise", summarizer_agent_node)
-    sg.add_node("analyze", conflict_analyzer_node)
-
-    def _bypass_select(s: Dict[str, Any]) -> Dict[str, Any]:
-        decision = str(s.get("bypass_decision", "MIX")).upper()
-        if decision == "ALL_A":
-            s["resolved_contents"] = s.get("parent_a_contents", {}) or {}
-        elif decision == "ALL_B":
-            s["resolved_contents"] = s.get("parent_b_contents", {}) or {}
-        s["status"] = "bypassed" if decision in ("ALL_A", "ALL_B") else s.get("status", "")
-        return s
-
-    sg.add_node("bypass", _bypass_select)
-
-    def _finalize_node(s: Dict[str, Any]) -> Dict[str, Any]:
-        resolved = s.get("resolved_contents", {}) or {}
-        final_diffs = dict(s.get("final_diffs", {}) or {})
-        ancestor_contents = s.get("ancestor_contents", {}) or {}
-        for path, merged_text in resolved.items():
-            if path not in final_diffs:
-                a_lines = ancestor_contents.get(path, "").splitlines(keepends=True)
-                m_lines = str(merged_text).splitlines(keepends=True)
-                final_diffs[path] = "".join(
-                    difflib.unified_diff(a_lines, m_lines, fromfile=f"a/{path}", tofile=f"b/{path}")
-                )
-        s["final_diffs"] = final_diffs
-        s["status"] = "review_finalized"
-        return s
-
-    sg.add_node("finalize", _finalize_node)
-
-    def _route_after_analyze(s: Dict[str, Any]) -> str:
-        decision = str(s.get("bypass_decision", "MIX")).upper()
-        if decision == "ALL_A":
-            return "all_a"
-        if decision == "ALL_B":
-            return "all_b"
-        return "mix"
-
-    # No feedback loop either in bypass_only
-
-    sg.set_entry_point("summarise")
-    sg.add_edge("summarise", "analyze")
-    sg.add_conditional_edges(
-        "analyze",
-        _route_after_analyze,
-        {"all_a": "bypass", "all_b": "bypass", "mix": "bypass"},
-    )
-    sg.add_edge("bypass", "finalize")
-    # No plan/patch/review edges
-    sg.add_edge("finalize", END)
-
-    sub_app = sg.compile()
-    if "_review_iter" not in state:
-        state["_review_iter"] = 0
-    return sub_app.invoke(state)
+    Returns
+    -------
+    Dict[str, Any]
+        Updated state with:
+        - resolved_contents: Dict[str, str] (from selected parent)
+        - final_diffs: Dict[str, str]
+        - bypass_decision: "ALL_A" | "ALL_B"
+        - bypass_method: "A" | "B"
+        - bypass_only_defaulted: True if analyzer failed to decide
+    """
+    return _resolver(state)
 
 
+# Re-export individual nodes for backwards compatibility
+from .summarizer_agent import summarizer_agent_node
+from .conflict_analyzer import conflict_analyzer_node
