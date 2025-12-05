@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=llama318-batch8
-#SBATCH --output=logs/llama318-batch8-%j.out
-#SBATCH --error=logs/llama318-batch8-%j.err
+#SBATCH --job-name=llama318-batch2
+#SBATCH --output=logs/llama318-batch2-%j.out
+#SBATCH --error=logs/llama318-batch2-%j.err
 #SBATCH --time=72:00:00
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-node=h100:2
@@ -16,9 +16,9 @@ mkdir -p logs
 ############################
 # BATCH CONFIGURATION
 ############################
-BATCH_NUM=8
-START_INDEX=1750
-# END_INDEX not set - will process to end of dataset
+BATCH_NUM=2
+START_INDEX=250
+END_INDEX=500
 
 ############################
 # DEBUG: Log job start info
@@ -26,7 +26,7 @@ START_INDEX=1750
 echo "=================================================================="
 echo "JOB STARTED: $(date)"
 echo "=================================================================="
-echo "BATCH: $BATCH_NUM (rows $START_INDEX to END)"
+echo "BATCH: $BATCH_NUM (rows $START_INDEX to $END_INDEX)"
 echo "SLURM_JOB_ID: $SLURM_JOB_ID"
 echo "SLURM_JOB_NAME: $SLURM_JOB_NAME"
 echo "SLURM_NODELIST: $SLURM_NODELIST"
@@ -242,7 +242,7 @@ echo ""
 ################################
 echo "=================================================================="
 echo "Starting pipeline run: $(date)"
-echo "BATCH $BATCH_NUM: Processing rows $START_INDEX to END"
+echo "BATCH $BATCH_NUM: Processing rows $START_INDEX to $END_INDEX"
 echo "=================================================================="
 cd "$SLURM_SUBMIT_DIR"
 
@@ -254,7 +254,8 @@ srun --export=ALL python -m src.cli.run_all \
   --mode clone \
   --model-name local:meta-llama/Llama-3.1-8B-Instruct \
   --results-filename 2025_10_13_results_llama31_8_batch${BATCH_NUM}.csv \
-  --start-index $START_INDEX
+  --start-index $START_INDEX \
+  --end-index $END_INDEX
 
 EXIT_CODE=$?
 END_TIME=$(date +%s)
@@ -263,7 +264,7 @@ ELAPSED=$((END_TIME - START_TIME))
 echo ""
 echo "=================================================================="
 echo "JOB COMPLETED: $(date)"
-echo "BATCH $BATCH_NUM: Processed rows $START_INDEX to END"
+echo "BATCH $BATCH_NUM: Processed rows $START_INDEX to $END_INDEX"
 echo "Exit code: $EXIT_CODE"
 echo "Total runtime: ${ELAPSED}s ($(($ELAPSED / 60))m $(($ELAPSED % 60))s)"
 echo "=================================================================="
@@ -274,3 +275,4 @@ echo "=== GPU Status After Run ==="
 nvidia-smi || echo "nvidia-smi not available"
 
 exit $EXIT_CODE
+

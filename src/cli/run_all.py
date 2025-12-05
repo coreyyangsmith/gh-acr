@@ -33,6 +33,8 @@ def main(
     n_easy: int | None = None,
     n_medium: int | None = None,
     n_hard: int | None = None,
+    start_index: int | None = None,
+    end_index: int | None = None,
 ):
     """Run the full benchmark across all evaluation methods.
 
@@ -48,6 +50,11 @@ def main(
         Optional model override for LLM-based methods.
     n_easy / n_medium / n_hard
         If provided, sample exactly this many scenarios per difficulty.
+    start_index
+        Starting row index (0-based, inclusive). Use for batch processing.
+    end_index
+        Ending row index (0-based, exclusive). Use for batch processing.
+        If None, processes to end of dataset.
     """
 
     asyncio.run(
@@ -60,6 +67,8 @@ def main(
             n_easy=n_easy,
             n_medium=n_medium,
             n_hard=n_hard,
+            start_index=start_index,
+            end_index=end_index,
         )
     )
 
@@ -74,6 +83,8 @@ async def _run_all(
     n_easy: int | None,
     n_medium: int | None,
     n_hard: int | None,
+    start_index: int | None,
+    end_index: int | None,
 ):
     # Configure root logger so all modules propagate here
     logger = setup_logger()
@@ -89,11 +100,20 @@ async def _run_all(
     logger.info("  model_name: %s", model_name)
     logger.info("  results_filename: %s", results_filename)
     logger.info("  n_easy: %s, n_medium: %s, n_hard: %s", n_easy, n_medium, n_hard)
+    logger.info("  start_index: %s, end_index: %s", start_index, end_index)
     logger.info("=" * 70)
 
     # Load and optionally sample benchmark scenarios
     logger.info("Loading benchmark dataset…")
     benchmark_df = load_benchmark()
+    
+    # Apply start/end index slicing first (for batch processing)
+    if start_index is not None or end_index is not None:
+        start_idx = start_index if start_index is not None else 0
+        end_idx = end_index if end_index is not None else len(benchmark_df)
+        logger.info("Batch processing: slicing dataset from index %d to %d", start_idx, end_idx)
+        benchmark_df = benchmark_df.iloc[start_idx:end_idx].reset_index(drop=True)
+    
     if any(v is not None for v in (n_easy, n_medium, n_hard)):
         subsets = []
         if n_easy is not None:
