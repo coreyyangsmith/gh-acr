@@ -17,8 +17,8 @@ mkdir -p logs
 # BATCH CONFIGURATION
 ############################
 BATCH_NUM=8
-START_INDEX=1750
-# END_INDEX not set - will process to end of dataset
+START_INDEX=700
+END_INDEX=END
 
 ############################
 # DEBUG: Log job start info
@@ -26,7 +26,7 @@ START_INDEX=1750
 echo "=================================================================="
 echo "JOB STARTED: $(date)"
 echo "=================================================================="
-echo "BATCH: $BATCH_NUM (rows $START_INDEX to END)"
+echo "BATCH: $BATCH_NUM (rows $START_INDEX to $END_INDEX)"
 echo "SLURM_JOB_ID: $SLURM_JOB_ID"
 echo "SLURM_JOB_NAME: $SLURM_JOB_NAME"
 echo "SLURM_NODELIST: $SLURM_NODELIST"
@@ -242,7 +242,7 @@ echo ""
 ################################
 echo "=================================================================="
 echo "Starting pipeline run: $(date)"
-echo "BATCH $BATCH_NUM: Processing rows $START_INDEX to END"
+echo "BATCH $BATCH_NUM: Processing rows $START_INDEX to $END_INDEX"
 echo "=================================================================="
 cd "$SLURM_SUBMIT_DIR"
 
@@ -253,8 +253,9 @@ srun --export=ALL python -m src.cli.run_all \
   --methods agent bypass7 \
   --mode clone \
   --model-name local:meta-llama/Llama-3.1-8B-Instruct \
-  --results-filename 2025_10_13_results_llama31_8_batch${BATCH_NUM}.csv \
-  --start-index $START_INDEX
+  --results-filename 2025_12_08_results_llama31_8_batch${BATCH_NUM}.csv \
+  --start-index $START_INDEX \
+  --end-index $END_INDEX
 
 EXIT_CODE=$?
 END_TIME=$(date +%s)

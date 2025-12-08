@@ -68,7 +68,7 @@ and suitable for development; production runs may use 10-50.
 # -----------------------------------------------------------------------------
 
 # Default dataset path - can be overridden via DATASET_CSV environment variable
-_default_data_path = Path(__file__).resolve().parents[2] / "data" / "2025_10_13_llama_remaining.csv"
+_default_data_path = Path(__file__).resolve().parents[2] / "data" / "2025-12-08_llama_batch_remaining.csv"
 _env_data_path = os.getenv("DATASET_CSV")
 DATA_PATH: Path = Path(_env_data_path) if _env_data_path else _default_data_path
 """Default path to the benchmark dataset CSV.

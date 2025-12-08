@@ -123,15 +123,22 @@ class TruncatingLLMWrapper:
             # Use LOCAL_TRUNCATION_SIDE as the canonical env var, with TRUNCATION_SIDE as fallback
             side = os.getenv("LOCAL_TRUNCATION_SIDE", os.getenv("TRUNCATION_SIDE", "left")).strip().lower()
             
+            # Add a small buffer to account for token counting discrepancies that can
+            # occur during encode/decode cycles and message formatting overhead.
+            # Without this buffer, truncation to exactly `allowed` tokens can still
+            # result in slightly more tokens (e.g., 128024 vs 128000) after decode.
+            truncation_buffer = 64
+            target_tokens = max(1, allowed - truncation_buffer)
+            
             logger.warning(
-                "[TruncatingLLMWrapper] Truncating prompt: tokens=%d -> allowed=%d, side=%s, model=%s",
-                prompt_tokens, allowed, side, self._model_name
+                "[TruncatingLLMWrapper] Truncating prompt: tokens=%d -> allowed=%d (target=%d with buffer=%d), side=%s, model=%s",
+                prompt_tokens, allowed, target_tokens, truncation_buffer, side, self._model_name
             )
             
             if hasattr(enc, "encode") and hasattr(enc, "decode"):
                 try:
                     ids = enc.encode(text)  # type: ignore[attr-defined]
-                    keep = ids[:allowed] if side == "right" else ids[-allowed:]
+                    keep = ids[:target_tokens] if side == "right" else ids[-target_tokens:]
                     truncated = enc.decode(keep)  # type: ignore[attr-defined]
                     logger.info(
                         "[TruncatingLLMWrapper] Truncation complete: original_chars=%d, truncated_chars=%d",
@@ -141,7 +148,7 @@ class TruncatingLLMWrapper:
                 except Exception as e:
                     logger.warning("[TruncatingLLMWrapper] Encoder truncation failed: %s, falling back to word-based", e)
             words = text.split()
-            truncated_words = words[:allowed] if side == "right" else words[-allowed:]
+            truncated_words = words[:target_tokens] if side == "right" else words[-target_tokens:]
             return " ".join(truncated_words)
         except Exception as e:
             logger.error("[TruncatingLLMWrapper] Truncation failed entirely: %s", e)

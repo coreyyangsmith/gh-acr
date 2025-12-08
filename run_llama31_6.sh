@@ -17,8 +17,8 @@ mkdir -p logs
 # BATCH CONFIGURATION
 ############################
 BATCH_NUM=6
-START_INDEX=1250
-END_INDEX=1500
+START_INDEX=500
+END_INDEX=600
 
 ############################
 # DEBUG: Log job start info
@@ -253,7 +253,7 @@ srun --export=ALL python -m src.cli.run_all \
   --methods agent bypass7 \
   --mode clone \
   --model-name local:meta-llama/Llama-3.1-8B-Instruct \
-  --results-filename 2025_10_13_results_llama31_8_batch${BATCH_NUM}.csv \
+  --results-filename 2025_12_08_results_llama31_8_batch${BATCH_NUM}.csv \
   --start-index $START_INDEX \
   --end-index $END_INDEX
 
