@@ -94,7 +94,7 @@ class TruncatingLLMWrapper:
                 # Use encoder's model_max_length directly - it's already adjusted
                 # by local_backend.py for local models. Only apply a small safety
                 # margin to avoid edge-case overflows.
-                allowed = max(1, enc_max - 64)  # Small safety margin only
+                allowed = max(1, enc_max - 256)  # Small safety margin only
                 logger.debug(
                     "[TruncatingLLMWrapper] Using encoder.model_max_length=%d, allowed=%d for model=%s",
                     enc_max, allowed, self._model_name
