@@ -2,7 +2,7 @@
 #SBATCH --job-name=llama318-batch2
 #SBATCH --output=logs/llama318-batch2-%j.out
 #SBATCH --error=logs/llama318-batch2-%j.err
-#SBATCH --time=72:00:00
+#SBATCH --time=48:00:00
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-node=h100:2
 #SBATCH --cpus-per-task=12
@@ -17,8 +17,8 @@ mkdir -p logs
 # BATCH CONFIGURATION
 ############################
 BATCH_NUM=2
-START_INDEX=100
-END_INDEX=200
+START_INDEX=75
+END_INDEX=146
 
 ############################
 # DEBUG: Log job start info
@@ -253,7 +253,7 @@ srun --export=ALL python -m src.cli.run_all \
   --methods agent bypass7 \
   --mode clone \
   --model-name local:meta-llama/Llama-3.1-8B-Instruct \
-  --results-filename 2025_12_08_results_llama31_8_batch${BATCH_NUM}.csv \
+  --results-filename 2026_01_08_results_llama31_8_batch${BATCH_NUM}.csv \
   --start-index $START_INDEX \
   --end-index $END_INDEX
 
