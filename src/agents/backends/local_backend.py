@@ -85,7 +85,9 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
     tok, model = _prepare_tokenizer_and_model(requested)
 
     npos = int(getattr(model.config, "n_positions", getattr(model.config, "max_position_embeddings", 1024)))
-    reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "256"))
+    # Default to 2048 tokens for code generation (merge conflicts need longer outputs)
+    # 256 is too small for most merge conflict resolution tasks
+    reserve_new = int(os.getenv("LOCAL_MAX_NEW_TOKENS", "2048"))
     reserve_new = max(1, min(reserve_new, npos - 32))
 
     if tok.pad_token_id is None:
@@ -340,7 +342,8 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
                 self._temperature = float(os.getenv("LLAMA_TEMPERATURE", "0.7"))
                 self._top_p = float(os.getenv("LLAMA_TOP_P", "0.9"))
                 # Align generation cap with earlier reserve to ensure input+output <= npos
-                self._max_new = int(os.getenv("LLAMA_MAX_NEW_TOKENS", str(reserve_new)))
+                # Use higher default for code generation tasks
+                self._max_new = int(os.getenv("LLAMA_MAX_NEW_TOKENS", os.getenv("LOCAL_MAX_NEW_TOKENS", str(reserve_new))))
 
             def with_config(self, config: dict[str, Any] | None = None):  # type: ignore[override]
                 try:
@@ -351,6 +354,9 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
                 return self
 
             def invoke(self, prompt_text: str, config: Any | None = None):  # type: ignore[override]
+                import time as _time
+                invoke_start = _time.perf_counter()
+                
                 try:
                     callbacks = list(self._callbacks)
                     try:
@@ -375,8 +381,17 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
 
                     pad_id = self._tok.eos_token_id if self._tok.eos_token_id is not None else self._tok.pad_token_id
                     log_gpu_overview("[local.LlamaChatWrapper.invoke]", self._model)
+                    
+                    # Log prompt size for debugging on Compute Canada
+                    prompt_char_len = len(prompt_text)
+                    chat_char_len = len(chat_text)
+                    logger.info(
+                        "[local.llama] Preparing inference: prompt_chars=%d, chat_chars=%d, max_new_tokens=%d, model_max_length=%d",
+                        prompt_char_len, chat_char_len, self._max_new, getattr(self._tok, "model_max_length", 0)
+                    )
 
                     # Tokenization-time truncation (Option A)
+                    tokenize_start = _time.perf_counter()
                     try:
                         orig_tokens = len(self._tok.encode(chat_text))
                     except Exception:
@@ -394,6 +409,13 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
                             return_tensors="pt",
                         )
                         post_tokens = int(getattr(getattr(inputs, "input_ids", []), "shape", [0, 0])[-1]) if hasattr(inputs, "input_ids") else 0
+                        tokenize_elapsed = _time.perf_counter() - tokenize_start
+                        
+                        logger.info(
+                            "[local.llama] Tokenization complete: orig_tokens=%d, post_tokens=%d, model_max=%d, time=%.3fs",
+                            orig_tokens, post_tokens, model_max, tokenize_elapsed
+                        )
+                        
                         if orig_tokens and model_max and orig_tokens > model_max:
                             logger.warning(
                                 "[local.llama] Input truncated at tokenization: orig=%d, max=%d, after=%d, truncation_side=%s, max_new=%d",
@@ -403,6 +425,7 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
                         logger.error("[local.llama] Tokenization failed prior to generate: %s", e)
                         raise
 
+                    generate_start = _time.perf_counter()
                     try:
                         # Ensure all runtime inputs are on the same device as the model
                         try:
@@ -411,6 +434,7 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
                             # Fallback if parameters() access fails
                             model_device = getattr(self._model, "device", None)
                         if model_device is not None:
+                            logger.debug("[local.llama] Moving inputs to device: %s", model_device)
                             try:
                                 # BatchEncoding supports .to(device)
                                 inputs = inputs.to(model_device)
@@ -420,6 +444,11 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
                                 except Exception:
                                     pass
 
+                        logger.info(
+                            "[local.llama] Starting generate: input_tokens=%d, max_new_tokens=%d, temperature=%.2f, top_p=%.2f",
+                            post_tokens, self._max_new, self._temperature, self._top_p
+                        )
+                        
                         outputs = self._model.generate(
                             **inputs,
                             do_sample=True,
@@ -429,22 +458,42 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
                             eos_token_id=self._tok.eos_token_id,
                             pad_token_id=pad_id,
                         )
+                        generate_elapsed = _time.perf_counter() - generate_start
+                        
                     except Exception as e:
+                        generate_elapsed = _time.perf_counter() - generate_start
                         logger.error(
-                            "[local.llama] generate() failed: input_tokens=%s, model_max_length=%s, max_new=%s, error=%s",
-                            getattr(getattr(inputs, "input_ids", []), "shape", None), getattr(self._tok, "model_max_length", None), self._max_new, e,
+                            "[local.llama] generate() failed after %.3fs: input_tokens=%s, model_max_length=%s, max_new=%s, error=%s",
+                            generate_elapsed, getattr(getattr(inputs, "input_ids", []), "shape", None), 
+                            getattr(self._tok, "model_max_length", None), self._max_new, e,
                         )
+                        # Log GPU state on error
+                        log_gpu_overview("[local.llama] POST-ERROR GPU state", self._model)
                         raise
 
+                    decode_start = _time.perf_counter()
                     try:
                         input_len = int(getattr(getattr(inputs, "input_ids", []), "shape", [0, 0])[-1]) if hasattr(inputs, "input_ids") else 0
                         seq = outputs[0]
+                        output_len = len(seq) - input_len
                         answer_ids = seq[input_len:]
                         answer_text = self._tok.decode(answer_ids, skip_special_tokens=False)
                     except Exception:
                         # Fallback: decode full and strip the prompt text
                         full_text = self._tok.decode(outputs[0], skip_special_tokens=False)
                         answer_text = full_text
+                        output_len = len(outputs[0]) if hasattr(outputs[0], "__len__") else 0
+                    
+                    decode_elapsed = _time.perf_counter() - decode_start
+                    total_elapsed = _time.perf_counter() - invoke_start
+                    
+                    logger.info(
+                        "[local.llama] Generation complete: output_tokens=%d, output_chars=%d, "
+                        "generate_time=%.3fs, decode_time=%.3fs, total_time=%.3fs, tokens/sec=%.1f",
+                        output_len, len(answer_text), generate_elapsed, decode_elapsed, total_elapsed,
+                        output_len / generate_elapsed if generate_elapsed > 0 else 0
+                    )
+                    
                     fake_resp = _FakeResponse(answer_text)
 
                     for cb in callbacks:
@@ -455,6 +504,8 @@ def create_local_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]
 
                     return AIMessage(content=answer_text)
                 except Exception as e:  # pragma: no cover
+                    total_elapsed = _time.perf_counter() - invoke_start
+                    logger.error("[local.llama] invoke() failed after %.3fs: %s", total_elapsed, e)
                     for cb in self._callbacks:
                         try:
                             cb.on_llm_error(e, run_id=id(self))

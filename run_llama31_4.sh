@@ -1,7 +1,7 @@
 #!/bin/bash
-#SBATCH --job-name=llama318-batch8
-#SBATCH --output=logs/llama318-batch8-%j.out
-#SBATCH --error=logs/llama318-batch8-%j.err
+#SBATCH --job-name=llama318-batch4
+#SBATCH --output=logs/llama318-batch4-%j.out
+#SBATCH --error=logs/llama318-batch4-%j.err
 #SBATCH --time=72:00:00
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-node=h100:2
@@ -16,9 +16,9 @@ mkdir -p logs
 ############################
 # BATCH CONFIGURATION
 ############################
-BATCH_NUM=8
-START_INDEX=700
-END_INDEX=END
+BATCH_NUM=4
+START_INDEX=300
+END_INDEX=400
 
 ############################
 # DEBUG: Log job start info
@@ -264,7 +264,7 @@ ELAPSED=$((END_TIME - START_TIME))
 echo ""
 echo "=================================================================="
 echo "JOB COMPLETED: $(date)"
-echo "BATCH $BATCH_NUM: Processed rows $START_INDEX to END"
+echo "BATCH $BATCH_NUM: Processed rows $START_INDEX to $END_INDEX"
 echo "Exit code: $EXIT_CODE"
 echo "Total runtime: ${ELAPSED}s ($(($ELAPSED / 60))m $(($ELAPSED % 60))s)"
 echo "=================================================================="
@@ -275,3 +275,4 @@ echo "=== GPU Status After Run ==="
 nvidia-smi || echo "nvidia-smi not available"
 
 exit $EXIT_CODE
+

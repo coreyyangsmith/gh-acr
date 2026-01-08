@@ -46,28 +46,27 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
         if output_limit:
             expected_output_tokens = min(expected_output_tokens, output_limit)
 
+        # NOTE: We only LOG if prompts exceed limits here, but do NOT truncate.
+        # Truncation is handled by TruncatingLLMWrapper BEFORE this callback fires.
+        # Double-truncation caused issues on Compute Canada.
         if sliding_window and total_limit:
             allowed_prompt = max(1, total_limit - expected_output_tokens)
             if prompt_tokens > allowed_prompt:
-                if hasattr(self.encoder, "encode") and hasattr(self.encoder, "decode"):
-                    encoded = self.encoder.encode(prompt_text)
-                    prompt_text = self.encoder.decode(encoded[: allowed_prompt])
-                    prompt_tokens = count_tokens(self.encoder, prompt_text)
-                else:
-                    words = prompt_text.split()
-                    prompt_text = " ".join(words[: allowed_prompt])
-                    prompt_tokens = len(prompt_text.split())
+                logger.warning(
+                    "[RateLimitAndCostHandler] Prompt exceeds sliding window limit: "
+                    "tokens=%d, allowed=%d, total_limit=%d, model=%s. "
+                    "TruncatingLLMWrapper should have already handled this.",
+                    prompt_tokens, allowed_prompt, total_limit, self.model_name
+                )
             expected_total_tokens = min(total_limit, prompt_tokens + expected_output_tokens)
         else:
             if input_limit and prompt_tokens > input_limit:
-                if hasattr(self.encoder, "encode") and hasattr(self.encoder, "decode"):
-                    encoded = self.encoder.encode(prompt_text)
-                    prompt_text = self.encoder.decode(encoded[: max(0, input_limit - 1)])
-                    prompt_tokens = count_tokens(self.encoder, prompt_text)
-                else:
-                    words = prompt_text.split()
-                    prompt_text = " ".join(words[: max(1, input_limit - 1)])
-                    prompt_tokens = len(prompt_text.split())
+                logger.warning(
+                    "[RateLimitAndCostHandler] Prompt exceeds input limit: "
+                    "tokens=%d, limit=%d, model=%s. "
+                    "TruncatingLLMWrapper should have already handled this.",
+                    prompt_tokens, input_limit, self.model_name
+                )
             expected_total_tokens = prompt_tokens + expected_output_tokens
 
         self._limiter.acquire(expected_tokens=int(expected_total_tokens))
