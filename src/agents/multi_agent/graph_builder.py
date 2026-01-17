@@ -98,12 +98,43 @@ def _prepare_feedback_for_retry(state: Dict[str, Any]) -> Dict[str, Any]:
 
 def _create_bypass_select_node() -> Callable[[Dict[str, Any]], Dict[str, Any]]:
     """Create a node that selects parent contents based on bypass decision."""
+    from ...utils.logger import logger
+    
     def _bypass_select(state: Dict[str, Any]) -> Dict[str, Any]:
         decision = str(state.get("bypass_decision", "MIX")).upper()
+        scenario_id = state.get("scenario_id", "unknown")
+        
         if decision == "ALL_A":
-            state["resolved_contents"] = state.get("parent_a_contents", {}) or {}
+            parent_a = state.get("parent_a_contents", {}) or {}
+            state["resolved_contents"] = parent_a
+            # Log diagnostic info for ALL_A bypass
+            logger.info(
+                "[bypass_select] scenario=%s decision=ALL_A, parent_a_contents has %d files",
+                scenario_id, len(parent_a)
+            )
+            for fpath, content in parent_a.items():
+                content_len = len(content) if content else 0
+                if content_len == 0:
+                    logger.warning("[bypass_select] scenario=%s EMPTY parent_a_contents for file: %s", scenario_id, fpath)
+                else:
+                    logger.debug("[bypass_select] scenario=%s parent_a_contents[%s] = %d chars", scenario_id, fpath, content_len)
         elif decision == "ALL_B":
-            state["resolved_contents"] = state.get("parent_b_contents", {}) or {}
+            parent_b = state.get("parent_b_contents", {}) or {}
+            state["resolved_contents"] = parent_b
+            # Log diagnostic info for ALL_B bypass
+            logger.info(
+                "[bypass_select] scenario=%s decision=ALL_B, parent_b_contents has %d files",
+                scenario_id, len(parent_b)
+            )
+            for fpath, content in parent_b.items():
+                content_len = len(content) if content else 0
+                if content_len == 0:
+                    logger.warning("[bypass_select] scenario=%s EMPTY parent_b_contents for file: %s", scenario_id, fpath)
+                else:
+                    logger.debug("[bypass_select] scenario=%s parent_b_contents[%s] = %d chars", scenario_id, fpath, content_len)
+        else:
+            logger.info("[bypass_select] scenario=%s decision=%s (not ALL_A/ALL_B, will use resolution agent)", scenario_id, decision)
+        
         state["status"] = "bypassed" if decision in ("ALL_A", "ALL_B") else state.get("status", "")
         return state
     return _bypass_select
@@ -111,21 +142,46 @@ def _create_bypass_select_node() -> Callable[[Dict[str, Any]], Dict[str, Any]]:
 
 def _create_finalize_node() -> Callable[[Dict[str, Any]], Dict[str, Any]]:
     """Create a node that finalizes diffs for all resolved files."""
+    from ...utils.logger import logger
+    
     def _finalize_node(state: Dict[str, Any]) -> Dict[str, Any]:
         resolved = state.get("resolved_contents", {}) or {}
         final_diffs = dict(state.get("final_diffs", {}) or {})
         ancestor_contents = state.get("ancestor_contents", {}) or {}
+        scenario_id = state.get("scenario_id", "unknown")
+        bypass_decision = state.get("bypass_decision", "")
+        
+        logger.info(
+            "[finalize] scenario=%s bypass_decision=%s, resolved_contents has %d files, existing final_diffs=%d",
+            scenario_id, bypass_decision, len(resolved), len(final_diffs)
+        )
+        
+        # Check if resolved_contents matches expected files
+        expected_files = state.get("sample_row", {}).get("scenario_json", {}).get("files_in_merge_conflict", [])
+        if expected_files:
+            missing_in_resolved = set(expected_files) - set(resolved.keys())
+            if missing_in_resolved:
+                logger.warning(
+                    "[finalize] scenario=%s Missing files in resolved_contents: %s",
+                    scenario_id, list(missing_in_resolved)
+                )
 
         for path, merged_text in resolved.items():
+            merged_len = len(merged_text) if merged_text else 0
+            if merged_len == 0:
+                logger.warning("[finalize] scenario=%s EMPTY resolved_contents for file: %s", scenario_id, path)
+            
             if path not in final_diffs:
                 a_lines = ancestor_contents.get(path, "").splitlines(keepends=True)
                 m_lines = str(merged_text).splitlines(keepends=True)
                 final_diffs[path] = "".join(
                     difflib.unified_diff(a_lines, m_lines, fromfile=f"a/{path}", tofile=f"b/{path}")
                 )
+                logger.debug("[finalize] scenario=%s computed final_diff for %s (%d chars)", scenario_id, path, len(final_diffs[path]))
 
         state["final_diffs"] = final_diffs
         state["status"] = "review_finalized"
+        logger.info("[finalize] scenario=%s completed with %d final_diffs", scenario_id, len(final_diffs))
         return state
     return _finalize_node
 

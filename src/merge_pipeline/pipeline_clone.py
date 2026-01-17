@@ -281,10 +281,20 @@ def _read_files_at_commit(
     for path in paths:
         try:
             blob = tree / path
-            out[path] = blob.data_stream.read().decode("utf-8", errors="ignore")
+            content = blob.data_stream.read().decode("utf-8", errors="ignore")
+            out[path] = content
+            content_len = len(content) if content else 0
+            if content_len == 0:
+                logger.warning("[_read_files_at_commit] EMPTY content for %s at commit %s", path, commit_sha[:8])
+            else:
+                logger.debug("[_read_files_at_commit] Read %s at %s: %d chars", path, commit_sha[:8], content_len)
         except KeyError:
-            # File may have been deleted or renamed – ignore for this simple demo
-            logger.warning("%s missing at commit %s", path, commit_sha)
+            # File may have been deleted or renamed – this is a common cause of missing content
+            logger.warning("[_read_files_at_commit] File %s MISSING at commit %s (deleted/renamed?)", path, commit_sha[:8])
+            out[path] = ""  # Explicitly set empty string so the key exists
+        except Exception as e:
+            logger.error("[_read_files_at_commit] Failed to read %s at commit %s: %s", path, commit_sha[:8], e)
+            out[path] = ""  # Explicitly set empty string
     return out
 
 
@@ -374,6 +384,22 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     ancestor_contents = _read_files_at_commit(repo, merge_base_commit.hexsha, files)
     parent_a_contents = _read_files_at_commit(repo, parents[0], files)
     parent_b_contents = _read_files_at_commit(repo, parents[1], files)
+
+    # Log summary of loaded contents for debugging bypass issues
+    scenario_id = state.get("scenario_id", "unknown")
+    logger.info(
+        "[load_sample_node] scenario=%s loaded: ancestor=%d files, parent_a=%d files, parent_b=%d files",
+        scenario_id, len(ancestor_contents), len(parent_a_contents), len(parent_b_contents)
+    )
+    
+    # Warn about any empty or missing files (critical for bypass ALL_A/ALL_B cases)
+    for fpath in files:
+        a_len = len(parent_a_contents.get(fpath, ""))
+        b_len = len(parent_b_contents.get(fpath, ""))
+        if a_len == 0:
+            logger.warning("[load_sample_node] scenario=%s parent_a_contents[%s] is EMPTY", scenario_id, fpath)
+        if b_len == 0:
+            logger.warning("[load_sample_node] scenario=%s parent_b_contents[%s] is EMPTY", scenario_id, fpath)
 
     # Generate diffs
     diffs_a: Dict[str, str] = {}

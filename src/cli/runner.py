@@ -26,15 +26,45 @@ def _log_pipeline_diagnostics(logger, context: str, state: Dict[str, Any]) -> No
         diffs_a = state.get("diffs_a", {}) or {}
         diffs_b = state.get("diffs_b", {}) or {}
         resolved = state.get("resolved_contents", {}) or {}
+        parent_a = state.get("parent_a_contents", {}) or {}
+        parent_b = state.get("parent_b_contents", {}) or {}
+        ancestor = state.get("ancestor_contents", {}) or {}
+        resolution_history = state.get("resolution_history", {}) or {}
         
         total_diff_a_chars = sum(len(v) for v in diffs_a.values())
         total_diff_b_chars = sum(len(v) for v in diffs_b.values())
         total_resolved_chars = sum(len(v) for v in resolved.values())
+        total_parent_a_chars = sum(len(v) for v in parent_a.values())
+        total_parent_b_chars = sum(len(v) for v in parent_b.values())
         
         logger.info(
             "[%s] scenario=%s, status=%s, files=%d, diff_a_chars=%d, diff_b_chars=%d, resolved_chars=%d",
             context, scenario_id, status, len(diffs_a), total_diff_a_chars, total_diff_b_chars, total_resolved_chars
         )
+        
+        # Log bypass-specific info
+        bypass_decision = state.get("bypass_decision", "")
+        bypass_method = state.get("bypass_method", "")
+        if bypass_decision or bypass_method:
+            logger.info(
+                "[%s] bypass_decision=%s, bypass_method=%s, resolution_history_files=%d",
+                context, bypass_decision, bypass_method, len(resolution_history)
+            )
+        
+        # Log parent contents availability (important for ALL_A/ALL_B bypass)
+        logger.info(
+            "[%s] parent_a_files=%d (chars=%d), parent_b_files=%d (chars=%d), ancestor_files=%d",
+            context, len(parent_a), total_parent_a_chars, len(parent_b), total_parent_b_chars, len(ancestor)
+        )
+        
+        # Log per-file resolved content sizes (helps identify empty files)
+        if resolved:
+            for fpath, content in resolved.items():
+                content_len = len(content) if content else 0
+                if content_len == 0:
+                    logger.warning("[%s] EMPTY resolved_contents for file: %s", context, fpath)
+                else:
+                    logger.debug("[%s] resolved_contents[%s] = %d chars", context, fpath, content_len)
         
         # Log memory usage
         try:
@@ -290,10 +320,26 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                     except Exception:
                         pass
 
+    # Log file processing summary
+    logger.info(
+        "[%s] Processing %d files for scenario %s: %s",
+        eval_method, len(files), scenario_id, files
+    )
+    
+    # Log resolved_contents keys for debugging mismatches
+    resolved_keys = list(result.get("resolved_contents", {}).keys())
+    if set(files) != set(resolved_keys):
+        logger.warning(
+            "[%s] File key mismatch! Expected files: %s, resolved_contents keys: %s",
+            eval_method, files, resolved_keys
+        )
+    
     for file_path in files:
         file_slug = file_path.replace("/", "_").replace("\\", "_")
         file_dir = scenario_dir / file_slug
         file_dir.mkdir(parents=True, exist_ok=True)
+        
+        logger.debug("[%s] Processing file: %s → slug: %s", eval_method, file_path, file_slug)
 
         # Write content and diff files
         (file_dir / "original.txt").write_text(
@@ -327,8 +373,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 (file_dir / "a_commit_message.txt").write_text(cm_a, encoding="utf-8")
             if cm_b:
                 (file_dir / "b_commit_message.txt").write_text(cm_b, encoding="utf-8")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("[%s] Failed to write commit messages for %s: %s", eval_method, file_path, e)
 
         # Duplicate LLM output into central per-method directory (simple/, multi/, bypass/)
         if eval_method != "base":
@@ -351,18 +397,21 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
             # Provide clearly named final artifacts for bypass family
             if eval_method in ("bypass", "bypass2", "bypass3", "bypass4"):
                 merged_out = result["resolved_contents"].get(file_path, "")
+                if not merged_out:
+                    logger.warning("[%s] EMPTY resolved_contents for %s when writing FINAL_MERGED", eval_method, file_path)
                 try:
                     (llm_out_dir / f"{file_slug}__FINAL_MERGED.txt").write_text(merged_out, encoding="utf-8")
-                except Exception:
-                    pass
+                    logger.debug("[%s] Wrote FINAL_MERGED for %s (%d chars)", eval_method, file_path, len(merged_out))
+                except Exception as e:
+                    logger.warning("[%s] Failed to write FINAL_MERGED for %s: %s", eval_method, file_path, e)
                 final_diff_map = result.get("final_diffs", {})
                 if final_diff_map:
                     diff_text = final_diff_map.get(file_path, "")
                     try:
                         (llm_out_dir / f"{file_slug}__FINAL_DIFF.diff").write_text(diff_text, encoding="utf-8")
                         (llm_out_dir / f"{file_slug}__FINAL_DIFF.txt").write_text(diff_text, encoding="utf-8")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("[%s] Failed to write FINAL_DIFF for %s: %s", eval_method, file_path, e)
 
             # ---------------- multi/bypass extra outputs -------------------
             if eval_method in ("multi", "bypass", "bypass_multi", "dynamic", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
@@ -370,13 +419,28 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                 if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
                     # Write simplified names for bypass7 inside a per-file subdirectory
                     per_file_agent_dir = llm_out_dir / file_slug
-                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
-                    (per_file_agent_dir / "a_summary.txt").write_text(
-                        summaries.get("summary_a", ""), encoding="utf-8"
-                    )
-                    (per_file_agent_dir / "b_summary.txt").write_text(
-                        summaries.get("summary_b", ""), encoding="utf-8"
-                    )
+                    try:
+                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                        logger.debug("[%s] Created per-file dir: %s", eval_method, per_file_agent_dir)
+                    except Exception as e:
+                        logger.error("[%s] Failed to create per-file dir %s: %s", eval_method, per_file_agent_dir, e)
+                        # Continue anyway - some writes might still work
+                    
+                    summary_a = summaries.get("summary_a", "")
+                    summary_b = summaries.get("summary_b", "")
+                    if not summary_a:
+                        logger.warning("[%s] EMPTY summary_a for %s", eval_method, file_path)
+                    if not summary_b:
+                        logger.warning("[%s] EMPTY summary_b for %s", eval_method, file_path)
+                    
+                    try:
+                        (per_file_agent_dir / "a_summary.txt").write_text(summary_a, encoding="utf-8")
+                        (per_file_agent_dir / "b_summary.txt").write_text(summary_b, encoding="utf-8")
+                        logger.debug("[%s] Wrote summaries for %s (a=%d, b=%d chars)", 
+                                     eval_method, file_path, len(summary_a), len(summary_b))
+                    except Exception as e:
+                        logger.warning("[%s] Failed to write summaries for %s: %s", eval_method, file_path, e)
+                    
                     # Also write plan at per-file level if useful (JSON subset per file)
                     try:
                         import json
@@ -391,8 +455,9 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                             (per_file_agent_dir / "agent_plan.txt").write_text(
                                 json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
                             )
-                    except Exception:
-                        pass
+                        logger.debug("[%s] Wrote plan for %s", eval_method, file_path)
+                    except Exception as e:
+                        logger.warning("[%s] Failed to write plan for %s: %s", eval_method, file_path, e)
                 else:
                     prefix = "bypass_" if is_bypass_like else ""
                     (llm_out_dir / "summaries" / f"{prefix}{file_slug}_A.txt").write_text(
@@ -406,8 +471,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                     dyn_text = str(dyn_prompts.get(file_path, "")).strip()
                     try:
                         (llm_out_dir / "prompts" / f"{file_slug}.txt").write_text(dyn_text, encoding="utf-8")
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        logger.warning("[%s] Failed to write dynamic prompt for %s: %s", eval_method, file_path, e)
                 reviews = result.get("reviews", {})
                 if reviews:
                     if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
@@ -475,32 +540,82 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                     res_hist = result.get("resolution_history", {}) or {}
                     r_items = res_hist.get(file_path, [])
                     per_file_agent_dir = llm_out_dir / file_slug
-                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    
+                    # Log resolution history state for debugging
+                    bypass_decision = result.get("bypass_decision", "unknown")
+                    logger.info(
+                        "[%s] Writing resolution for %s: bypass_decision=%s, resolution_history_items=%d",
+                        eval_method, file_path, bypass_decision, len(r_items)
+                    )
+                    
+                    try:
+                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    except Exception as e:
+                        logger.error("[%s] Failed to create resolution dir %s: %s", eval_method, per_file_agent_dir, e)
+                    
                     if r_items:
                         for idx, txt in enumerate(r_items, start=1):
-                            (per_file_agent_dir / f"resolution{idx}.txt").write_text(txt, encoding="utf-8")
+                            txt_len = len(txt) if txt else 0
+                            if txt_len == 0:
+                                logger.warning("[%s] EMPTY resolution_history[%d] for %s", eval_method, idx, file_path)
+                            try:
+                                (per_file_agent_dir / f"resolution{idx}.txt").write_text(txt, encoding="utf-8")
+                                logger.debug("[%s] Wrote resolution%d.txt for %s (%d chars)", eval_method, idx, file_path, txt_len)
+                            except Exception as e:
+                                logger.error("[%s] Failed to write resolution%d.txt for %s: %s", eval_method, idx, file_path, e)
                     else:
-                        # Single resolution fallback name
-                        (per_file_agent_dir / "resolution1.txt").write_text(
-                            result["resolved_contents"].get(file_path, ""), encoding="utf-8"
-                        )
+                        # Single resolution fallback name - this happens for ALL_A/ALL_B bypass
+                        resolved_content = result["resolved_contents"].get(file_path, "")
+                        resolved_len = len(resolved_content) if resolved_content else 0
+                        if resolved_len == 0:
+                            # This is the key diagnostic for missing files
+                            logger.warning(
+                                "[%s] EMPTY resolved_contents for %s (bypass_decision=%s). "
+                                "Check parent_a_contents/parent_b_contents population.",
+                                eval_method, file_path, bypass_decision
+                            )
+                            # Log what keys exist in resolved_contents for debugging
+                            resolved_keys = list(result.get("resolved_contents", {}).keys())
+                            logger.warning("[%s] Available resolved_contents keys: %s", eval_method, resolved_keys[:10])
+                        try:
+                            (per_file_agent_dir / "resolution1.txt").write_text(resolved_content, encoding="utf-8")
+                            logger.info("[%s] Wrote resolution1.txt for %s (%d chars)", eval_method, file_path, resolved_len)
+                        except Exception as e:
+                            logger.error("[%s] Failed to write resolution1.txt for %s: %s", eval_method, file_path, e)
 
                     # Also include the final merged and diff artifacts inside the per-file directory
                     merged_out = result["resolved_contents"].get(file_path, "")
+                    merged_len = len(merged_out) if merged_out else 0
                     try:
                         (per_file_agent_dir / f"bypass_{file_slug}.txt").write_text(merged_out, encoding="utf-8")
-                    except Exception:
-                        pass
+                        logger.info("[%s] Wrote bypass_%s.txt (%d chars)", eval_method, file_slug, merged_len)
+                    except Exception as e:
+                        logger.error("[%s] Failed to write bypass_%s.txt for %s: %s", eval_method, file_slug, file_path, e)
+                    
                     final_diff_map = result.get("final_diffs", {})
                     if final_diff_map:
                         diff_text = final_diff_map.get(file_path, "")
+                        diff_len = len(diff_text) if diff_text else 0
                         try:
                             (per_file_agent_dir / f"bypass_{file_slug}.diff").write_text(diff_text, encoding="utf-8")
                             (per_file_agent_dir / f"bypass_{file_slug}_final_diff.txt").write_text(diff_text, encoding="utf-8")
                             # Convenience duplicate: final_diff.txt without prefix
                             (per_file_agent_dir / "final_diff.txt").write_text(diff_text, encoding="utf-8")
-                        except Exception:
-                            pass
+                            logger.debug("[%s] Wrote diff files for %s (%d chars)", eval_method, file_path, diff_len)
+                        except Exception as e:
+                            logger.error("[%s] Failed to write diff files for %s: %s", eval_method, file_path, e)
+                    else:
+                        logger.debug("[%s] No final_diffs available for %s", eval_method, file_path)
+
+    # Summary log for bypass7 file writing
+    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
+        bypass_decision = result.get("bypass_decision", "unknown")
+        resolved_count = len(result.get("resolved_contents", {}))
+        res_hist_count = len(result.get("resolution_history", {}))
+        logger.info(
+            "[%s] File writing complete for scenario %s: bypass_decision=%s, resolved_files=%d, resolution_history_files=%d, output_dir=%s",
+            eval_method, scenario_id, bypass_decision, resolved_count, res_hist_count, scenario_dir / eval_method
+        )
 
     eval_ = result.get("evaluation", {})
 
