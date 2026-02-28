@@ -1,6 +1,6 @@
 # GH-ACR: GitHub Auto Conflict Resolver
 
-Merge conflict resolution pipeline for evaluating LLM-based and baseline methods on the GitGoodBench dataset.
+Merge conflict resolution pipeline for evaluating LLM-based and baseline methods on the [GitGoodBench](https://github.com/JetBrains-Research/git-good-bench) dataset.
 
 ---
 
@@ -33,7 +33,7 @@ Copy `src/.env.example` to `src/.env` and fill in your API keys.
 
 ## Data Preprocessing
 
-After obtaining the GitGoodBench dataset, filter scenarios that include merge commit hashes:
+After obtaining the [GitGoodBench](https://github.com/JetBrains-Research/git-good-bench) dataset, filter scenarios that include merge commit hashes. Follow these steps after cloning their repo to obtain the initial dataset:
 
 ```bash
 # Default: uses DATA_PATH from config, outputs to data/git_good_bench_merge_commits.csv
@@ -92,6 +92,8 @@ export DATASET_CSV=data/git_good_bench_merge_commits.csv
 ---
 
 ## Running the Pipeline
+
+Now we can run the pipeline as we have our dataset. Copy the csv into this repository and configure the DATASET_CSV (above).
 
 Use the consolidated entrypoint:
 
@@ -172,12 +174,6 @@ python -m src.results.main --results-csv data/YYYY_MM_DD_results_all.csv
 
 Outputs go to `results/` by default.
 
-**Find missing results** (for partial/batch runs):
-
-```bash
-python -m src.results.processing.find_missing_results --results-csv data/2025_08_29_results_all.csv --results-per-instance 4 --remove-prep
-```
-
 ---
 
 ## Groq Usage
@@ -188,25 +184,3 @@ python -m src.cli.run_all --mode clone --methods agent bypass7 --model-name groq
 ```
 
 Outputs are nested under `data/groq_<model>/...` for Windows-safe paths.
-
----
-
-## Additional Utilities
-
-**Add difficulty column** to a CSV:
-
-```bash
-python -m src.dataset.processing.add_difficulty_column_to_dataset data/results.csv -d easy -o data/results_easy.csv
-```
-
-**Extract subset by IDs**:
-
-```bash
-python -m src.dataset.processing.extract_samples_from_subset --ids-csv data/2025_08_11_results_all.csv --source-csv data/git_good_bench_merge_commits.csv --output-csv data/source_filtered.csv --ids-column id --source-id-column id
-```
-
-**Create EM dataset** (aggregate per-id for exact-match analysis):
-
-```bash
-python -m src.results.processing.create_em_dataset --input data/2025_10_18_Final_Results.csv --output results/em_datasets
-```
