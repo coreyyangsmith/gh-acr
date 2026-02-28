@@ -32,9 +32,6 @@ from ..agents.base_agent import (
     resolve_conflict_base_b_node,
 )
 from ..agents.agent import resolve_conflict_agent_node
-from ..agents.agent import resolve_conflict_agent_node
-from ..agents.bypass import resolve_conflict_bypass_multi_agent_node
-from ..agents.bypass_only import resolve_conflict_bypass_only_multi_agent_node
 from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
 
 # Evaluation
@@ -550,9 +547,10 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     Parameters
     ----------
     eval_method
-        "agent" – use LLM-based resolver.
-        "base"  – use parent-A stub.
-        "bypass2"/"bypass3" – alternative bypass agent variants.
+        "agent"   – LLM-based single-agent resolver.
+        "base_a"  – baseline Parent-A resolver.
+        "base_b"  – baseline Parent-B resolver.
+        "bypass7" – multi-agent bypass resolver.
     """
 
     sg = StateGraph(dict)
@@ -569,21 +567,12 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "base_b":
         resolver_node_name = "resolve_base_b"
         sg.add_node(resolver_node_name, resolve_conflict_base_b_node)
-    elif eval_method == "bypass":
-        resolver_node_name = "resolve_bypass_multi"
-        sg.add_node(resolver_node_name, resolve_conflict_bypass_multi_agent_node)
     elif eval_method == "bypass7":
         resolver_node_name = "resolve_bypass7_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass7_multi_agent_node)
-    elif eval_method == "dynamic":
-        resolver_node_name = "resolve_dynamic"
-        sg.add_node(resolver_node_name, resolve_conflict_dynamic_agent_node)
-    elif eval_method == "bypass_only":
-        resolver_node_name = "resolve_bypass_only_multi"
-        sg.add_node(resolver_node_name, resolve_conflict_bypass_only_multi_agent_node)
     else:
         raise ValueError(
-            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'bypass', 'bypass7', 'bypass_only', or 'dynamic'."
+            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', or 'bypass7'."
         )
 
     sg.add_node("evaluate", evaluate_node)
@@ -602,7 +591,7 @@ def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "multi" | "bypass" | "bypass2" | "bypass3" | "bypass4" | "bypass5" | "bypass6" | "bypass7" | "bypass8" | "bypass_only" | "bypass_only2" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "bypass7" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

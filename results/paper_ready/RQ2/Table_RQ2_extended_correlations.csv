@@ -1,0 +1,109 @@
+analysis,metric,advantage_metric,statistic,value,p_value,n_with,n_without,n
+Label vs Advantage,favored_simplicity,delta_exact_match,Mann-Whitney U,-0.15176391344615642,3.224694080690175e-07,444.0,428.0,
+Label vs Advantage,favored_complexity,delta_exact_match,Mann-Whitney U,0.06957437842393596,0.019218980878055576,420.0,452.0,
+Label vs Advantage,detailed_commit_message,delta_exact_match,Mann-Whitney U,0.06050932307915549,0.09979003223121526,179.0,693.0,
+Label vs Advantage,test_oriented,delta_exact_match,Mann-Whitney U,-0.18500940270439686,0.13120897482802257,13.0,859.0,
+Label vs Advantage,modification_bias,delta_similarity,Mann-Whitney U,0.040411977282092504,0.1699093310417884,178.0,694.0,
+Label vs Advantage,modification_bias,delta_rouge_l,Mann-Whitney U,0.030030527319221734,0.19128711006713972,178.0,694.0,
+Label vs Advantage,structural_change_bias,delta_rouge_l,Mann-Whitney U,0.020116122322759278,0.21976011845382992,292.0,580.0,
+Label vs Advantage,modification_bias,delta_bleu3,Mann-Whitney U,0.04579856473166266,0.23155314111113745,178.0,694.0,
+Label vs Advantage,fix_oriented,delta_bleu3,Mann-Whitney U,0.04663045748198813,0.24007799038988775,79.0,793.0,
+Label vs Advantage,structural_change_bias,delta_similarity,Mann-Whitney U,0.027798089195205766,0.25417194612422356,292.0,580.0,
+Label vs Advantage,structural_change_bias,delta_bleu3,Mann-Whitney U,0.03485864741180922,0.27029468762772646,292.0,580.0,
+Label vs Advantage,feature_oriented,delta_similarity,Mann-Whitney U,0.04422000360610567,0.3090745958318175,52.0,820.0,
+Label vs Advantage,feature_oriented,delta_bleu3,Mann-Whitney U,0.04044404021892678,0.31137563780853494,52.0,820.0,
+Label vs Advantage,feature_oriented,delta_rouge_l,Mann-Whitney U,0.050680388797495535,0.32152343821628093,52.0,820.0,
+Label vs Advantage,fix_oriented,delta_similarity,Mann-Whitney U,0.02782266908979808,0.3502909760793178,79.0,793.0,
+Label vs Advantage,favored_simplicity,delta_rouge_l,Mann-Whitney U,0.022173718278942878,0.4541673908178533,444.0,428.0,
+Label vs Advantage,favored_simplicity,delta_similarity,Mann-Whitney U,0.019201847225285285,0.492911266935781,444.0,428.0,
+Label vs Advantage,detailed_commit_message,delta_rouge_l,Mann-Whitney U,-0.029013209493558734,0.52176210377249,179.0,693.0,
+Label vs Advantage,fix_oriented,delta_rouge_l,Mann-Whitney U,0.0013860554898096344,0.5453601495989802,79.0,793.0,
+Label vs Advantage,detailed_commit_message,delta_similarity,Mann-Whitney U,-0.02780117622371414,0.5606489836472639,179.0,693.0,
+Label vs Advantage,detailed_commit_message,delta_bleu3,Mann-Whitney U,-0.03746945091949344,0.572254405343974,179.0,693.0,
+Label vs Advantage,simple_commit_message,delta_exact_match,Mann-Whitney U,0.01753439438899379,0.6209209626301502,198.0,674.0,
+Label vs Advantage,feature_oriented,delta_exact_match,Mann-Whitney U,-0.03020637898686679,0.6302302975520482,52.0,820.0,
+Label vs Advantage,refactor_oriented,delta_rouge_l,Mann-Whitney U,0.03856812336942034,0.6302518272914202,17.0,855.0,
+Label vs Advantage,vague_commit_message,delta_exact_match,Mann-Whitney U,0.016715957310016683,0.6593892639883687,165.0,707.0,
+Label vs Advantage,fix_oriented,delta_exact_match,Mann-Whitney U,0.02123006688269191,0.6817161959984359,79.0,793.0,
+Label vs Advantage,favored_simplicity,delta_bleu3,Mann-Whitney U,0.021124206300320192,0.7088240504173582,444.0,428.0,
+Label vs Advantage,refactor_oriented,delta_bleu3,Mann-Whitney U,0.03769226869074066,0.7110018494555012,17.0,855.0,
+Label vs Advantage,simple_commit_message,delta_bleu3,Mann-Whitney U,-0.005475089445776238,0.7762643911282378,198.0,674.0,
+Label vs Advantage,vague_commit_message,delta_rouge_l,Mann-Whitney U,0.0008697329792203834,0.788761075916818,165.0,707.0,
+Label vs Advantage,test_oriented,delta_bleu3,Mann-Whitney U,0.03531899845341202,0.7968724153346254,13.0,859.0,
+Label vs Advantage,simple_commit_message,delta_rouge_l,Mann-Whitney U,-0.001526689170004536,0.8012143849255975,198.0,674.0,
+Label vs Advantage,refactor_oriented,delta_similarity,Mann-Whitney U,0.023314980187694345,0.8184781439619979,17.0,855.0,
+Label vs Advantage,refactor_oriented,delta_exact_match,Mann-Whitney U,-0.024355005159958698,0.8210810337701222,17.0,855.0,
+Label vs Advantage,favored_complexity,delta_similarity,Mann-Whitney U,0.005521906469631244,0.8311320191308548,420.0,452.0,
+Label vs Advantage,simple_commit_message,delta_similarity,Mann-Whitney U,0.0006355619946474822,0.8361313366142329,198.0,674.0,
+Label vs Advantage,test_oriented,delta_rouge_l,Mann-Whitney U,0.03403630348562775,0.839542945989981,13.0,859.0,
+Label vs Advantage,modification_bias,delta_exact_match,Mann-Whitney U,0.006119871774115215,0.8682207873145167,178.0,694.0,
+Label vs Advantage,favored_complexity,delta_rouge_l,Mann-Whitney U,-0.0042222740513788715,0.8738577940685008,420.0,452.0,
+Label vs Advantage,test_oriented,delta_similarity,Mann-Whitney U,-0.0008373462693401224,0.910338866302108,13.0,859.0,
+Label vs Advantage,favored_complexity,delta_bleu3,Mann-Whitney U,0.003266167577705925,0.9202652020815971,420.0,452.0,
+Label vs Advantage,vague_commit_message,delta_similarity,Mann-Whitney U,-0.008487422993377125,0.9510050058072692,165.0,707.0,
+Label vs Advantage,structural_change_bias,delta_exact_match,Mann-Whitney U,0.0016532829475672806,0.9582382199661664,292.0,580.0,
+Label vs Advantage,vague_commit_message,delta_bleu3,Mann-Whitney U,-0.008355452359610327,0.9841155848995322,165.0,707.0,
+Code Metric vs Advantage,gt_loc,delta_bleu3,Spearman r,0.8132953283581229,8.088616967477463e-207,,,872.0
+Code Metric vs Advantage,gt_sloc,delta_bleu3,Spearman r,0.8094160809500004,2.4567791561907096e-203,,,872.0
+Code Metric vs Advantage,gt_loc,delta_similarity,Spearman r,0.7997013320896538,5.901938233330715e-195,,,872.0
+Code Metric vs Advantage,gt_sloc,delta_similarity,Spearman r,0.7965530342628293,2.4448501630640753e-192,,,872.0
+Code Metric vs Advantage,gt_loc,delta_rouge_l,Spearman r,0.7834549309449662,6.313486398655567e-182,,,872.0
+Code Metric vs Advantage,gt_sloc,delta_rouge_l,Spearman r,0.7802638469281648,1.6879385510526928e-179,,,872.0
+Code Metric vs Advantage,gt_diff_hunks,delta_rouge_l,Spearman r,0.4770182104523561,9.469941905648593e-51,,,872.0
+Code Metric vs Advantage,gt_diff_hunks,delta_similarity,Spearman r,0.47489369239117374,2.9663684690445006e-50,,,872.0
+Code Metric vs Advantage,gt_diff_hunks,delta_bleu3,Spearman r,0.45905520049168597,1.1510060896595568e-46,,,872.0
+Code Metric vs Advantage,gt_diff_lines_removed,delta_rouge_l,Spearman r,0.3384632094786404,8.195353452251177e-25,,,872.0
+Code Metric vs Advantage,gt_diff_lines_removed,delta_similarity,Spearman r,0.32980605174749644,1.4286924437134567e-23,,,872.0
+Code Metric vs Advantage,gt_diff_lines_removed,delta_bleu3,Spearman r,0.3073099845118593,1.5810394621897543e-20,,,872.0
+Code Metric vs Advantage,gt_diff_total_change,delta_rouge_l,Spearman r,0.3018120822307859,8.01597984560123e-20,,,872.0
+Code Metric vs Advantage,gt_diff_total_change,delta_similarity,Spearman r,0.29532823460599056,5.202374137861283e-19,,,872.0
+Code Metric vs Advantage,gt_diff_total_change,delta_bleu3,Spearman r,0.27803326180457255,6.067646229911898e-17,,,872.0
+Code Metric vs Advantage,gt_diff_hunks,delta_exact_match,Spearman r,-0.25825660077851315,9.402834350387262e-15,,,872.0
+Code Metric vs Advantage,gt_diff_lines_added,delta_similarity,Spearman r,0.2493730227024788,7.917390661524687e-14,,,872.0
+Code Metric vs Advantage,gt_diff_lines_added,delta_rouge_l,Spearman r,0.2461360336224507,1.6861436712191493e-13,,,872.0
+Code Metric vs Advantage,gt_diff_lines_added,delta_bleu3,Spearman r,0.23817505002569206,1.0338046173814114e-12,,,872.0
+Code Metric vs Advantage,gt_sloc,delta_exact_match,Spearman r,-0.19297766577643052,9.221071850657376e-09,,,872.0
+Code Metric vs Advantage,gt_loc,delta_exact_match,Spearman r,-0.1906381180428548,1.398998643776889e-08,,,872.0
+Code Metric vs Advantage,n_commits_total,delta_rouge_l,Spearman r,0.18186278445097592,6.380424613287362e-08,,,872.0
+Code Metric vs Advantage,gt_diff_lines_added,delta_exact_match,Spearman r,-0.17535223958236304,1.8773505599463224e-07,,,872.0
+Code Metric vs Advantage,n_commits_total,delta_exact_match,Spearman r,-0.1739581895419212,2.3533060421815558e-07,,,872.0
+Code Metric vs Advantage,n_commits_b,delta_rouge_l,Spearman r,0.15948442351180983,2.211282080505691e-06,,,872.0
+Code Metric vs Advantage,n_commits_total,delta_bleu3,Spearman r,0.1556804024350442,3.859998339171976e-06,,,872.0
+Code Metric vs Advantage,n_commits_total,delta_similarity,Spearman r,0.15558538301161984,3.913431602307695e-06,,,872.0
+Code Metric vs Advantage,gt_diff_total_change,delta_exact_match,Spearman r,-0.15360138931540485,5.204937806614719e-06,,,872.0
+Code Metric vs Advantage,n_commits_b,delta_similarity,Spearman r,0.14784084322644445,1.1676890306137659e-05,,,872.0
+Code Metric vs Advantage,n_commits_a,delta_exact_match,Spearman r,-0.13994539698510372,3.3681007189609996e-05,,,872.0
+Code Metric vs Advantage,n_commits_b,delta_exact_match,Spearman r,-0.13954113096684717,3.550542813006152e-05,,,872.0
+Code Metric vs Advantage,n_commits_b,delta_bleu3,Spearman r,0.1361721935674869,5.47994132007936e-05,,,872.0
+Code Metric vs Advantage,gt_diff_lines_removed,delta_exact_match,Spearman r,-0.13614542368884774,5.4986516451052346e-05,,,872.0
+Code Metric vs Advantage,n_commits_a,delta_rouge_l,Spearman r,0.11118026626313926,0.0010068521034174761,,,872.0
+Code Metric vs Advantage,n_commits_a,delta_bleu3,Spearman r,0.09240447425779989,0.00632188930155099,,,872.0
+Code Metric vs Advantage,n_commits_a,delta_similarity,Spearman r,0.08890875997547953,0.008617122633432794,,,872.0
+Complexity vs Advantage,sloc,delta_bleu3,Spearman r,0.7952398645242095,2.926182269258246e-191,,,872.0
+Complexity vs Advantage,sloc,delta_similarity,Spearman r,0.7826461349200793,2.6261362788372586e-181,,,872.0
+Complexity vs Advantage,sloc,delta_rouge_l,Spearman r,0.7671648928231197,6.003839814752506e-170,,,872.0
+Complexity vs Advantage,cc_total,delta_bleu3,Spearman r,0.7103655838919751,7.561383135672626e-135,,,872.0
+Complexity vs Advantage,h_bugs,delta_bleu3,Spearman r,0.7048193534240339,7.108730254878072e-132,,,872.0
+Complexity vs Advantage,cc_total,delta_similarity,Spearman r,0.6984745523241974,1.4756910661090065e-128,,,872.0
+Complexity vs Advantage,h_bugs,delta_similarity,Spearman r,0.6938321195136635,3.4778651513555946e-126,,,872.0
+Complexity vs Advantage,cc_total,delta_rouge_l,Spearman r,0.6842030619289879,2.09091521729333e-121,,,872.0
+Complexity vs Advantage,h_bugs,delta_rouge_l,Spearman r,0.6800713158739674,2.063547200901126e-119,,,872.0
+Complexity vs Advantage,mi_score,delta_bleu3,Spearman r,-0.6779215805447797,2.1840969981624635e-118,,,872.0
+Complexity vs Advantage,mi_score,delta_similarity,Spearman r,-0.6727883958756702,5.63505590718328e-116,,,872.0
+Complexity vs Advantage,mi_score,delta_rouge_l,Spearman r,-0.6604736906059541,2.1999942177567156e-110,,,872.0
+Complexity vs Advantage,h_difficulty,delta_bleu3,Spearman r,0.6474502072570045,9.427856134410753e-105,,,872.0
+Complexity vs Advantage,h_difficulty,delta_similarity,Spearman r,0.6357947468475142,6.104346443028233e-100,,,872.0
+Complexity vs Advantage,h_difficulty,delta_rouge_l,Spearman r,0.6233189900885724,5.138293469476209e-95,,,872.0
+Complexity vs Advantage,cc_max,delta_bleu3,Spearman r,0.5876384748883859,4.314678915086458e-82,,,872.0
+Complexity vs Advantage,cc_max,delta_similarity,Spearman r,0.5824710458018975,2.374366535190537e-80,,,872.0
+Complexity vs Advantage,cc_max,delta_rouge_l,Spearman r,0.5653046824144896,8.703465696542345e-75,,,872.0
+Complexity vs Advantage,cc_avg,delta_similarity,Spearman r,0.35355256963185083,4.506204363323746e-27,,,872.0
+Complexity vs Advantage,cc_avg,delta_bleu3,Spearman r,0.3517237447701148,8.596068512903825e-27,,,872.0
+Complexity vs Advantage,cc_avg,delta_rouge_l,Spearman r,0.3422808597544578,2.25675513033083e-25,,,872.0
+Complexity vs Advantage,mi_score,delta_exact_match,Spearman r,0.1964662212714871,4.9049526877593355e-09,,,872.0
+Complexity vs Advantage,sloc,delta_exact_match,Spearman r,-0.18814873080870717,2.1675770207406318e-08,,,872.0
+Complexity vs Advantage,cc_total,delta_exact_match,Spearman r,-0.17899151000515298,1.0319724917444352e-07,,,872.0
+Complexity vs Advantage,h_bugs,delta_exact_match,Spearman r,-0.15656298503421687,3.3959396872155716e-06,,,872.0
+Complexity vs Advantage,cc_max,delta_exact_match,Spearman r,-0.1351029492993058,6.27609200726384e-05,,,872.0
+Complexity vs Advantage,h_difficulty,delta_exact_match,Spearman r,-0.13021512712921743,0.00011520087582214968,,,872.0
+Complexity vs Advantage,cc_avg,delta_exact_match,Spearman r,-0.07311386137301881,0.03086418632398251,,,872.0

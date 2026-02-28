@@ -21,11 +21,10 @@ def build_graph(*, process_mode: ProcessMode = "clone", eval_method: EvalMethod 
     process_mode
         "clone" – clone the full repository locally.
     eval_method
-        "agent"  – LLM-based resolver (default)
-        "base_a" – baseline Parent-A resolver (alias: "base")
-        "base_b" – baseline Parent-B resolver
-        "multi"  – multi-agent resolver
-        "bypass" – bypass resolver
+        "agent"   – LLM-based resolver (default)
+        "base_a"  – baseline Parent-A resolver
+        "base_b"  – baseline Parent-B resolver
+        "bypass7" – multi-agent bypass resolver
     """
 
     if process_mode == "clone":

@@ -1,15 +1,12 @@
-"""Graph builders for multi-agent merge resolution workflows.
+"""Graph builder for the bypass7 multi-agent merge resolution workflow.
 
-This module provides factory functions that create complete LangGraph workflows
-for different bypass variants. The workflows use the node factories from
-`nodes.py` and wire them together appropriately.
+This module provides the factory function that creates the complete LangGraph
+workflow. The workflow uses the node factories from `nodes.py` and wires
+them together appropriately.
 
-Workflow Types
---------------
+Workflow
+--------
 - **build_bypass_graph**: Full multi-agent with summary → analyze → plan → patch → review loop
-- **build_bypass_only_graph**: Lightweight version (summarize → analyze → bypass only)
-
-Both return callable functions that can be used directly as LangGraph nodes.
 """
 
 from __future__ import annotations
@@ -276,67 +273,8 @@ def build_bypass_graph(prompt_variant: PromptVariant = "bypass") -> ResolverFunc
     return resolver_function
 
 
-def build_bypass_only_graph(prompt_variant: PromptVariant = "bypass_only") -> ResolverFunc:
-    """Build a lightweight bypass-only resolver (no merge, just parent selection).
-
-    This is a simplified workflow that only summarizes and analyzes, then bypasses:
-
-    ```
-    summarise → analyze → bypass → finalize → END
-    ```
-
-    Unlike the full bypass graph, the "mix" case also goes to bypass (defaults to
-    the analyzer's best guess).
-
-    Parameters
-    ----------
-    prompt_variant
-        Which prompt templates to use (typically "bypass_only")
-
-    Returns
-    -------
-    ResolverFunc
-        A callable that executes the bypass-only workflow on a state dict.
-    """
-    summarizer = create_summarizer_node(prompt_variant)
-    analyzer = create_conflict_analyzer_node(prompt_variant)
-    bypass_select = _create_bypass_select_node()
-    finalize = _create_finalize_node()
-
-    def resolver_function(state: Dict[str, Any]) -> Dict[str, Any]:
-        """Execute the bypass-only workflow."""
-        sg = StateGraph(dict)
-
-        sg.add_node("summarise", summarizer)
-        sg.add_node("analyze", analyzer)
-        sg.add_node("bypass", bypass_select)
-        sg.add_node("finalize", finalize)
-
-        sg.set_entry_point("summarise")
-        sg.add_edge("summarise", "analyze")
-
-        # All paths go to bypass (even "mix" since we don't do actual merging)
-        sg.add_conditional_edges(
-            "analyze",
-            _route_after_analyze,
-            {"all_a": "bypass", "all_b": "bypass", "mix": "bypass"},
-        )
-        sg.add_edge("bypass", "finalize")
-        sg.add_edge("finalize", END)
-
-        sub_app = sg.compile()
-
-        if "_review_iter" not in state:
-            state["_review_iter"] = 0
-
-        return sub_app.invoke(state)
-
-    return resolver_function
-
-
 __all__ = [
     "build_bypass_graph",
-    "build_bypass_only_graph",
     "ResolverFunc",
 ]
 

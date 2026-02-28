@@ -117,37 +117,12 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     logger = setup_logger(__name__)
 
-    # Attach Langfuse callback only if explicitly enabled AND startup marked it ready
-    langfuse_handler = None
-    if str(os.getenv("LANGFUSE_ENABLED", "0")).strip().lower() in ("1", "true", "yes", "on") and str(os.getenv("LANGFUSE_READY", "0")).strip() in ("1", "true", "TRUE"):
-        try:
-            from langfuse.langchain import CallbackHandler as LangfuseCallback  # type: ignore
-            langfuse_handler = LangfuseCallback()
-            try:
-                app = app.with_config({"callbacks": [langfuse_handler]})
-            except Exception:
-                pass
-        except Exception:
-            langfuse_handler = None
-
     init_state = {
         "scenario_id": scenario_id,
         "status": "start",
         "logs": [],
         "model_name": model_name,
     }
-
-    # Derive a session id for tracing (per conversation/scenario)
-    session_id = f"{scenario_id}:{eval_method}"
-    if langfuse_handler is not None:
-        try:
-            from langfuse.decorators import langfuse_context  # type: ignore
-            try:
-                langfuse_context.update_current_trace(session_id=session_id)  # type: ignore[attr-defined]
-            except Exception:
-                pass
-        except Exception:
-            pass
 
     # ---------------------------------------------------------------------------
     # Optional pre-run preparation: clone repository (clone mode only)
@@ -222,13 +197,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     
     invoke_cfg: Dict[str, Any] = {
         "configurable": {"thread_id": f"scn-{scenario_id}"},
-        "metadata": {
-            "langfuse_session_id": session_id,
-        },
         "run_name": f"{eval_method}-scenario-{scenario_id}",
     }
-    if langfuse_handler is not None:
-        invoke_cfg["callbacks"] = [langfuse_handler]
 
     # Log initial state diagnostics
     _log_pipeline_diagnostics(logger, "PRE-INVOKE", init_state)
@@ -276,49 +246,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         llm_out_dir = scenario_dir / eval_method
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Multi-style outputs: include bypass to mirror multi folder structure
-        is_multi_like = eval_method in ("multi", "bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "dynamic", "bypass_only", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5")
-        if is_multi_like:
-            # Skip redundant folders for bypass7; it writes per-file artifacts under <llm_out_dir>/<file_slug>/
-            if eval_method not in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                (llm_out_dir / "summaries").mkdir(exist_ok=True)
-                (llm_out_dir / "reviews").mkdir(exist_ok=True)
-            if eval_method == "dynamic":
-                (llm_out_dir / "prompts").mkdir(exist_ok=True)
-            # Persist the merge plan as text (skip for bypass_only and bypass7 – bypass7 writes per-file only)
-            if eval_method not in ("bypass_only", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                try:
-                    import json
-                    plan_obj = result.get("conflict_plan", {})
-                    # Only write if a plan exists (avoid empty file spam)
-                    if plan_obj:
-                        (llm_out_dir / "plan.txt").write_text(
-                            json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
-                        )
-                    if eval_method == "dynamic":
-                        dyn_prompts = result.get("dynamic_prompts", {}) or {}
-                        if dyn_prompts:
-                            (llm_out_dir / "prompts.json").write_text(
-                                json.dumps(dyn_prompts, indent=2, ensure_ascii=False), encoding="utf-8"
-                            )
-                except Exception:
-                    pass
-            # Persist bypass analyzer output if present
-            if eval_method in ("bypass", "bypass_multi", "bypass_only"):
-                decision = str(result.get("bypass_decision", "")).strip()
-                analyzer_raw = str(result.get("bypass_analyzer_output", "")).strip()
-                try:
-                    (llm_out_dir / "bypass_analyzer.txt").write_text(
-                        f"decision: {decision}\n\nraw:\n{analyzer_raw}\n", encoding="utf-8"
-                    )
-                except Exception:
-                    pass
-                # If bypass_only defaulted to 'A' after invalid outputs, persist a flag
-                if eval_method == "bypass_only" and result.get("bypass_only_defaulted"):
-                    try:
-                        (llm_out_dir / "bypass_only_defaulted.flag").write_text("defaulted_to_A", encoding="utf-8")
-                    except Exception:
-                        pass
+        # Multi-style outputs: bypass7 writes per-file artifacts under <llm_out_dir>/<file_slug>/
+        is_multi_like = eval_method == "bypass7"
 
     # Log file processing summary
     logger.info(
@@ -379,164 +308,89 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         # Duplicate LLM output into central per-method directory (simple/, multi/, bypass/)
         if eval_method != "base":
             # Agent-specific file base within its directory
-            is_bypass_like = eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5")
+            is_bypass_like = eval_method == "bypass7"
             base_name = f"bypass_{file_slug}" if is_bypass_like else file_slug
 
-            if eval_method not in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                (llm_out_dir / f"{base_name}.txt").write_text(
-                    result["resolved_contents"].get(file_path, ""), encoding="utf-8"
-                )
-                # Also persist final diff if available from multi/bypass resolver
-                final_diff_map = result.get("final_diffs", {})
-                if final_diff_map:
-                    diff_text = final_diff_map.get(file_path, "")
-                    (llm_out_dir / f"{base_name}.diff").write_text(diff_text, encoding="utf-8")
-                    # Also provide a .txt variant to ensure all agent outputs are available as text files
-                    (llm_out_dir / f"{base_name}_final_diff.txt").write_text(diff_text, encoding="utf-8")
-
-            # Provide clearly named final artifacts for bypass family
-            if eval_method in ("bypass", "bypass2", "bypass3", "bypass4"):
-                merged_out = result["resolved_contents"].get(file_path, "")
-                if not merged_out:
-                    logger.warning("[%s] EMPTY resolved_contents for %s when writing FINAL_MERGED", eval_method, file_path)
-                try:
-                    (llm_out_dir / f"{file_slug}__FINAL_MERGED.txt").write_text(merged_out, encoding="utf-8")
-                    logger.debug("[%s] Wrote FINAL_MERGED for %s (%d chars)", eval_method, file_path, len(merged_out))
-                except Exception as e:
-                    logger.warning("[%s] Failed to write FINAL_MERGED for %s: %s", eval_method, file_path, e)
-                final_diff_map = result.get("final_diffs", {})
-                if final_diff_map:
-                    diff_text = final_diff_map.get(file_path, "")
-                    try:
-                        (llm_out_dir / f"{file_slug}__FINAL_DIFF.diff").write_text(diff_text, encoding="utf-8")
-                        (llm_out_dir / f"{file_slug}__FINAL_DIFF.txt").write_text(diff_text, encoding="utf-8")
-                    except Exception as e:
-                        logger.warning("[%s] Failed to write FINAL_DIFF for %s: %s", eval_method, file_path, e)
-
-            # ---------------- multi/bypass extra outputs -------------------
-            if eval_method in ("multi", "bypass", "bypass_multi", "dynamic", "bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
+            # ---------------- bypass7 extra outputs -------------------
+            if eval_method == "bypass7":
                 summaries = result.get("summaries", {}).get(file_path, {})
-                if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                    # Write simplified names for bypass7 inside a per-file subdirectory
-                    per_file_agent_dir = llm_out_dir / file_slug
-                    try:
-                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
-                        logger.debug("[%s] Created per-file dir: %s", eval_method, per_file_agent_dir)
-                    except Exception as e:
-                        logger.error("[%s] Failed to create per-file dir %s: %s", eval_method, per_file_agent_dir, e)
-                        # Continue anyway - some writes might still work
-                    
-                    summary_a = summaries.get("summary_a", "")
-                    summary_b = summaries.get("summary_b", "")
-                    if not summary_a:
-                        logger.warning("[%s] EMPTY summary_a for %s", eval_method, file_path)
-                    if not summary_b:
-                        logger.warning("[%s] EMPTY summary_b for %s", eval_method, file_path)
-                    
-                    try:
-                        (per_file_agent_dir / "a_summary.txt").write_text(summary_a, encoding="utf-8")
-                        (per_file_agent_dir / "b_summary.txt").write_text(summary_b, encoding="utf-8")
-                        logger.debug("[%s] Wrote summaries for %s (a=%d, b=%d chars)", 
-                                     eval_method, file_path, len(summary_a), len(summary_b))
-                    except Exception as e:
-                        logger.warning("[%s] Failed to write summaries for %s: %s", eval_method, file_path, e)
-                    
-                    # Also write plan at per-file level if useful (JSON subset per file)
-                    try:
-                        import json
-                        plan_obj = result.get("conflict_plan", {}) or {}
-                        # Always write a per-file plan; default to "merge" if missing
-                        single_plan = {file_path: plan_obj.get(file_path, "merge")}
-                        (per_file_agent_dir / "plan.txt").write_text(
-                            json.dumps(single_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+                # Write per-file artifacts inside a per-file subdirectory
+                per_file_agent_dir = llm_out_dir / file_slug
+                try:
+                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    logger.debug("[%s] Created per-file dir: %s", eval_method, per_file_agent_dir)
+                except Exception as e:
+                    logger.error("[%s] Failed to create per-file dir %s: %s", eval_method, per_file_agent_dir, e)
+
+                summary_a = summaries.get("summary_a", "")
+                summary_b = summaries.get("summary_b", "")
+                if not summary_a:
+                    logger.warning("[%s] EMPTY summary_a for %s", eval_method, file_path)
+                if not summary_b:
+                    logger.warning("[%s] EMPTY summary_b for %s", eval_method, file_path)
+
+                try:
+                    (per_file_agent_dir / "a_summary.txt").write_text(summary_a, encoding="utf-8")
+                    (per_file_agent_dir / "b_summary.txt").write_text(summary_b, encoding="utf-8")
+                    logger.debug("[%s] Wrote summaries for %s (a=%d, b=%d chars)",
+                                 eval_method, file_path, len(summary_a), len(summary_b))
+                except Exception as e:
+                    logger.warning("[%s] Failed to write summaries for %s: %s", eval_method, file_path, e)
+
+                try:
+                    import json
+                    plan_obj = result.get("conflict_plan", {}) or {}
+                    single_plan = {file_path: plan_obj.get(file_path, "merge")}
+                    (per_file_agent_dir / "plan.txt").write_text(
+                        json.dumps(single_plan, indent=2, ensure_ascii=False), encoding="utf-8"
+                    )
+                    if plan_obj:
+                        (per_file_agent_dir / "agent_plan.txt").write_text(
+                            json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
                         )
-                        # Also include the full agent plan for convenience under the slug folder
-                        if plan_obj:
-                            (per_file_agent_dir / "agent_plan.txt").write_text(
-                                json.dumps(plan_obj, indent=2, ensure_ascii=False), encoding="utf-8"
-                            )
-                        logger.debug("[%s] Wrote plan for %s", eval_method, file_path)
-                    except Exception as e:
-                        logger.warning("[%s] Failed to write plan for %s: %s", eval_method, file_path, e)
-                else:
-                    prefix = "bypass_" if is_bypass_like else ""
-                    (llm_out_dir / "summaries" / f"{prefix}{file_slug}_A.txt").write_text(
-                        summaries.get("summary_a", ""), encoding="utf-8"
-                    )
-                    (llm_out_dir / "summaries" / f"{prefix}{file_slug}_B.txt").write_text(
-                        summaries.get("summary_b", ""), encoding="utf-8"
-                    )
-                if eval_method == "dynamic":
-                    dyn_prompts = result.get("dynamic_prompts", {}) or {}
-                    dyn_text = str(dyn_prompts.get(file_path, "")).strip()
-                    try:
-                        (llm_out_dir / "prompts" / f"{file_slug}.txt").write_text(dyn_text, encoding="utf-8")
-                    except Exception as e:
-                        logger.warning("[%s] Failed to write dynamic prompt for %s: %s", eval_method, file_path, e)
+                    logger.debug("[%s] Wrote plan for %s", eval_method, file_path)
+                except Exception as e:
+                    logger.warning("[%s] Failed to write plan for %s: %s", eval_method, file_path, e)
+
                 reviews = result.get("reviews", {})
                 if reviews:
-                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                        # Write review iterations if present
-                        per_file_agent_dir = llm_out_dir / file_slug
-                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
-                        hist = result.get("review_history", {}) or {}
-                        items = hist.get(file_path, [])
-                        if items:
-                            for idx, txt in enumerate(items, start=1):
-                                (per_file_agent_dir / f"review{idx}.txt").write_text(txt, encoding="utf-8")
-                        else:
-                            (per_file_agent_dir / "review.txt").write_text(
-                                reviews.get(file_path, ""), encoding="utf-8"
-                            )
+                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    hist = result.get("review_history", {}) or {}
+                    items = hist.get(file_path, [])
+                    if items:
+                        for idx, txt in enumerate(items, start=1):
+                            (per_file_agent_dir / f"review{idx}.txt").write_text(txt, encoding="utf-8")
                     else:
-                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}.txt").write_text(
+                        (per_file_agent_dir / "review.txt").write_text(
                             reviews.get(file_path, ""), encoding="utf-8"
                         )
-                # Persist structured review results and accumulated feedback history as txt
+
                 rr = result.get("review_results", {}) or {}
                 rr_item = rr.get(file_path)
                 if isinstance(rr_item, dict):
                     outcome = str(rr_item.get("outcome", "")).strip()
                     rationale = str(rr_item.get("rationale", "")).strip()
-                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                        per_file_agent_dir = llm_out_dir / file_slug
-                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
-                        (per_file_agent_dir / "review_results.txt").write_text(
-                            f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
-                        )
-                    else:
-                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}_results.txt").write_text(
-                            f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
-                        )
+                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    (per_file_agent_dir / "review_results.txt").write_text(
+                        f"outcome: {outcome}\n\nrationale:\n{rationale}\n", encoding="utf-8"
+                    )
+
                 feedback_map = result.get("review_feedback", {}) or {}
                 fb_text = str(feedback_map.get(file_path, "")).strip()
                 if fb_text:
-                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                        per_file_agent_dir = llm_out_dir / file_slug
-                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
-                        (per_file_agent_dir / "review_feedback.txt").write_text(
-                            fb_text, encoding="utf-8"
-                        )
-                    else:
-                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback.txt").write_text(
-                            fb_text, encoding="utf-8"
-                        )
+                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    (per_file_agent_dir / "review_feedback.txt").write_text(fb_text, encoding="utf-8")
+
                 fb_hist = result.get("review_feedback_history", {}) or {}
                 hist_entries = fb_hist.get(file_path, [])
                 if hist_entries:
-                    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
-                        per_file_agent_dir = llm_out_dir / file_slug
-                        per_file_agent_dir.mkdir(parents=True, exist_ok=True)
-                        (per_file_agent_dir / "review_feedback_history.txt").write_text(
-                            "\n\n".join(hist_entries), encoding="utf-8"
-                        )
-                    else:
-                        (llm_out_dir / "reviews" / f"{prefix}{file_slug}_feedback_history.txt").write_text(
-                            "\n\n".join(hist_entries), encoding="utf-8"
-                        )
+                    per_file_agent_dir.mkdir(parents=True, exist_ok=True)
+                    (per_file_agent_dir / "review_feedback_history.txt").write_text(
+                        "\n\n".join(hist_entries), encoding="utf-8"
+                    )
 
-                # For bypass7, also persist resolution iterations if present
-                if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
+                # Also persist resolution iterations if present
+                if True:
                     res_hist = result.get("resolution_history", {}) or {}
                     r_items = res_hist.get(file_path, [])
                     per_file_agent_dir = llm_out_dir / file_slug
@@ -608,7 +462,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                         logger.debug("[%s] No final_diffs available for %s", eval_method, file_path)
 
     # Summary log for bypass7 file writing
-    if eval_method in ("bypass7", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
+    if eval_method == "bypass7":
         bypass_decision = result.get("bypass_decision", "unknown")
         resolved_count = len(result.get("resolved_contents", {}))
         res_hist_count = len(result.get("resolution_history", {}))
@@ -709,7 +563,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     # -------------------------------------------------------------------
     per_file_rows = []
     # Determine bypass method label for this scenario (A/B/MIX) or NA for others
-    if eval_method in ("bypass", "bypass_multi", "bypass2", "bypass3", "bypass4", "bypass_only", "bypass_only2", "bypass5", "bypass6", "bypass7", "bypass8", "new_bypass", "new_bypass2", "new_bypass3", "new_bypass4", "new_bypass5"):
+    if eval_method == "bypass7":
         bypass_label = str(result.get("bypass_method") or result.get("bypass_decision", "MIX")).upper()
         # Normalize to short form if full form present
         if bypass_label in ("ALL_A", "A"):

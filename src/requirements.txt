@@ -39,7 +39,6 @@ langgraph>=0.5.4
 langgraph-checkpoint==2.1.1
 langgraph-prebuilt
 langgraph-sdk
-langsmith==0.4.8
 Jinja2==3.1.4
 markdown-it-py==3.0.0
 marshmallow==3.26.1
@@ -115,3 +114,4 @@ torch==2.7.1
 plotly==5.24.1
 dash==2.18.2
 matplotlib-venn==0.11.10
+radon>=6.0.1

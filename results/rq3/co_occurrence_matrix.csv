@@ -1,0 +1,16 @@
+,favored simplicity,favored complexity,lost information (compression),misprioritization,feature-oriented,fix-oriented,structural-change-bias,unclear,accurate,vague-commit-message,simple-commit-message,detailed-commit-message,refactor-oriented,modification-bias,test-oriented
+favored simplicity,543.0,173.0,0.0,8.0,33.0,53.0,171.0,31.0,0.0,105.0,138.0,102.0,8.0,125.0,10.0
+favored complexity,173.0,567.0,1.0,8.0,32.0,39.0,283.0,34.0,2.0,116.0,131.0,127.0,14.0,177.0,7.0
+lost information (compression),0.0,1.0,1.0,1.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0,0.0
+misprioritization,8.0,8.0,1.0,18.0,1.0,1.0,4.0,4.0,0.0,3.0,2.0,5.0,0.0,2.0,0.0
+feature-oriented,33.0,32.0,0.0,1.0,59.0,0.0,22.0,2.0,0.0,0.0,10.0,22.0,1.0,14.0,0.0
+fix-oriented,53.0,39.0,0.0,1.0,0.0,92.0,28.0,4.0,0.0,3.0,19.0,28.0,1.0,21.0,0.0
+structural-change-bias,171.0,283.0,0.0,4.0,22.0,28.0,375.0,21.0,0.0,74.0,82.0,74.0,6.0,75.0,5.0
+unclear,31.0,34.0,0.0,4.0,2.0,4.0,21.0,114.0,0.0,13.0,6.0,9.0,0.0,18.0,1.0
+accurate,0.0,2.0,0.0,0.0,0.0,0.0,0.0,0.0,3.0,0.0,0.0,1.0,0.0,0.0,0.0
+vague-commit-message,105.0,116.0,0.0,3.0,0.0,3.0,74.0,13.0,0.0,210.0,12.0,0.0,1.0,55.0,1.0
+simple-commit-message,138.0,131.0,0.0,2.0,10.0,19.0,82.0,6.0,0.0,12.0,251.0,2.0,7.0,59.0,4.0
+detailed-commit-message,102.0,127.0,0.0,5.0,22.0,28.0,74.0,9.0,1.0,0.0,2.0,225.0,6.0,56.0,2.0
+refactor-oriented,8.0,14.0,0.0,0.0,1.0,1.0,6.0,0.0,0.0,1.0,7.0,6.0,22.0,5.0,1.0
+modification-bias,125.0,177.0,0.0,2.0,14.0,21.0,75.0,18.0,0.0,55.0,59.0,56.0,5.0,247.0,6.0
+test-oriented,10.0,7.0,0.0,0.0,0.0,0.0,5.0,1.0,0.0,1.0,4.0,2.0,1.0,6.0,18.0

@@ -9,9 +9,7 @@ Evaluation Methods
 - **base_a**: Baseline that always selects Parent A's version
 - **base_b**: Baseline that always selects Parent B's version
 - **agent**: Single-turn LLM-based merge resolver
-- **bypass**: Multi-agent with analyzer that can bypass (All A/B) or merge
-- **bypass7**: Same as bypass with tuned prompts
-- **bypass_only**: Lightweight analyzer-only (no merge, just parent selection)
+- **bypass7**: Multi-agent with analyzer that can bypass (All A/B) or merge
 
 Usage Patterns
 --------------
@@ -51,9 +49,7 @@ EvalMethod = Literal[
     "base_a",
     "base_b",
     "agent",
-    "bypass",
     "bypass7",
-    "bypass_only",
 ]
 """Type alias for valid evaluation method identifiers.
 
@@ -69,9 +65,7 @@ ALL_EVAL_METHODS: Final[list[EvalMethod]] = [
     "base_a",
     "base_b",
     "agent",
-    "bypass",
     "bypass7",
-    "bypass_only",
 ]
 """Complete list of supported evaluation methods.
 
@@ -87,14 +81,12 @@ DEFAULT_METHOD_ORDER: Final[list[EvalMethod]] = [
     "base_a",
     "base_b",
     "agent",
-    "bypass",
     "bypass7",
-    "bypass_only",
 ]
 """Standard ordering for methods in reports and visualizations.
 
 This ordering places baselines first, then simple agent, then
-multi-agent variants in order of complexity.
+the multi-agent variant.
 """
 
 

@@ -66,7 +66,7 @@ def _log_node_end(node_name: str, start_time: float, state: Dict[str, Any]) -> N
 
 
 # Type alias for prompt variants
-PromptVariant = Literal["bypass", "bypass_only", "bypass7"]
+PromptVariant = Literal["bypass7"]
 
 # Type alias for node functions
 NodeFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
@@ -83,7 +83,7 @@ def _load_prompt(variant: PromptVariant, prompt_name: str) -> str:
     Parameters
     ----------
     variant
-        The prompt variant directory name (e.g., "bypass", "bypass7")
+        The prompt variant directory name (e.g., "bypass7")
     prompt_name
         The prompt file name (e.g., "summarizer_prompt.txt")
 
@@ -132,7 +132,7 @@ def create_summarizer_node(prompt_variant: PromptVariant) -> NodeFunc:
     Parameters
     ----------
     prompt_variant
-        Which prompt templates to use ("bypass", "bypass_only", or "bypass7")
+        Which prompt templates to use (currently "bypass7")
 
     Returns
     -------
@@ -213,16 +213,6 @@ def _normalize_decision_standard(text: str) -> str:
     return "MIX"
 
 
-def _normalize_decision_strict(text: str) -> str:
-    """Normalize decision requiring exactly 'A' or 'B' (used by bypass_only)."""
-    t = (text or "").strip().upper()
-    if t == "A":
-        return "ALL_A"
-    if t == "B":
-        return "ALL_B"
-    return "INVALID"
-
-
 def create_conflict_analyzer_node(prompt_variant: PromptVariant) -> NodeFunc:
     """Create a conflict analyzer node for global judgement (All A / All B / Mix).
 
@@ -237,7 +227,6 @@ def create_conflict_analyzer_node(prompt_variant: PromptVariant) -> NodeFunc:
         A LangGraph node function that analyzes conflicts.
     """
     prompt_str = _load_prompt(prompt_variant, "conflict_judge_prompt.txt")
-    is_strict = prompt_variant == "bypass_only"
 
     def conflict_analyzer_node(state: Dict[str, Any]) -> Dict[str, Any]:
         """Analyze summaries and diffs to make a global resolution decision."""
@@ -269,31 +258,14 @@ def create_conflict_analyzer_node(prompt_variant: PromptVariant) -> NodeFunc:
                 a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff
             )
 
-            if is_strict:
-                # Strict mode: retry up to 3 times for valid A/B response
-                attempts, decision, raw_output = 0, "INVALID", ""
-                while attempts < 3 and decision == "INVALID":
-                    result = llm.invoke(prompt_text)
-                    content = extract_text_content(result)
-                    raw_output = content.strip()
-                    decision = _normalize_decision_strict(raw_output)
-                    for path in summaries.keys():
-                        counts = _init_token_counts(state, path)
-                        counts["system_prompt"] += count_tokens(encoder, prompt_text)
-                        counts["output"] += count_tokens(encoder, raw_output)
-                    attempts += 1
-                if decision == "INVALID":
-                    decision = "ALL_A"
-                    state["bypass_only_defaulted"] = True
-            else:
-                result = llm.invoke(prompt_text)
-                content = extract_text_content(result)
-                raw_output = content.strip()
-                decision = _normalize_decision_standard(raw_output)
-                for path in summaries.keys():
-                    counts = _init_token_counts(state, path)
-                    counts["system_prompt"] += count_tokens(encoder, prompt_text)
-                    counts["output"] += count_tokens(encoder, raw_output)
+            result = llm.invoke(prompt_text)
+            content = extract_text_content(result)
+            raw_output = content.strip()
+            decision = _normalize_decision_standard(raw_output)
+            for path in summaries.keys():
+                counts = _init_token_counts(state, path)
+                counts["system_prompt"] += count_tokens(encoder, prompt_text)
+                counts["output"] += count_tokens(encoder, raw_output)
 
         state["bypass_decision"] = decision
         state["bypass_method"] = "A" if decision == "ALL_A" else ("B" if decision == "ALL_B" else "MIX")

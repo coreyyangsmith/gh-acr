@@ -13,7 +13,7 @@ __pycache__/
 *.pywz
 *.pyzw
 *.pyzwz
-
+/docs
 
 # Cursor
 *.cursorrules

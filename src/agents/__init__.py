@@ -1,16 +1,13 @@
 """Agent package for LLM-powered merge conflict resolution.
 
 This package provides the core agent implementations for resolving Git merge
-conflicts using Large Language Models. It includes multiple resolution
-strategies ranging from simple baselines to sophisticated multi-agent workflows.
+conflicts using Large Language Models.
 
 Package Structure
 -----------------
 - **agent/**: Single-turn LLM-based resolver (simple prompt → merged output)
 - **base_agent/**: Deterministic baselines (always select Parent A or B)
-- **bypass/**: Multi-agent with bypass analyzer (summarize → analyze → plan → patch → review)
-- **bypass_only/**: Lightweight analyzer-only (no merge, just parent selection)
-- **bypass7/**: Multi-agent with tuned prompts
+- **bypass7/**: Multi-agent with bypass analyzer and tuned prompts
 - **multi_agent/**: Consolidated implementation shared by bypass variants
 - **backends/**: LLM backend implementations (OpenAI, Groq, local)
 
@@ -32,29 +29,24 @@ Resolution Strategies
    - One prompt with diffs → merged output
    - Fast but less sophisticated
 
-3. **bypass**: Multi-agent pipeline
+3. **bypass7**: Multi-agent pipeline
    - Summarizer: Describe what each parent changed
    - Analyzer: Decide if bypass (A/B) or merge
    - Planner: Create per-file merge strategy
    - Resolver: Apply the plan to produce merged code
    - Reviewer: Check quality with retry loop
 
-4. **bypass_only**: Lightweight classification
-   - Only summarize and analyze
-   - Select parent without LLM merge
-   - Fast for cases where one parent is clearly better
-
 Example Usage
 -------------
 >>> from src.agents.llm_base import get_backend
->>> from src.agents.bypass import resolve_conflict_bypass_multi_agent_node
+>>> from src.agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
 >>> 
 >>> # Get an LLM backend
 >>> encoder, llm = get_backend("openai/gpt-4o-mini")
 >>> 
->>> # Run the bypass multi-agent resolver
+>>> # Run the bypass7 multi-agent resolver
 >>> state = {"model_name": "openai/gpt-4o-mini", ...}
->>> result = resolve_conflict_bypass_multi_agent_node(state)
+>>> result = resolve_conflict_bypass7_multi_agent_node(state)
 >>> merged = result["resolved_contents"]
 """
 

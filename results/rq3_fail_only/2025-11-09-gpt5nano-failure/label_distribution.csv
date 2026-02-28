@@ -1,0 +1,16 @@
+label,display_name,count,percentage,total_occurrences
+favored simplicity,Favored Simplicity,204,65.38461538461539,483
+favored complexity,Favored Complexity,92,29.487179487179485,120
+detailed-commit-message,Detailed Commit Message,75,24.03846153846154,137
+structural-change-bias,Structural Change Bias,70,22.435897435897434,79
+simple-commit-message,Simple Commit Message,51,16.346153846153847,70
+vague-commit-message,Vague Commit Message,49,15.705128205128204,87
+unclear,Unclear,44,14.102564102564102,58
+modification-bias,Modification Bias,37,11.85897435897436,44
+fix-oriented,Fix-Oriented,26,8.333333333333334,39
+feature-oriented,Feature-Oriented,23,7.371794871794871,29
+misprioritization,Misprioritization,18,5.769230769230769,19
+refactor-oriented,Refactor-Oriented,7,2.2435897435897436,10
+test-oriented,Test-Oriented,4,1.2820512820512822,4
+accurate,Accurate,3,0.9615384615384616,3
+lost information (compression),Lost Information,1,0.32051282051282054,1

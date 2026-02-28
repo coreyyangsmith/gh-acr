@@ -29,7 +29,6 @@ Each backend is wrapped with:
 1. **TruncatingLLMWrapper**: Clips over-long prompts to model limits
 2. **RateLimitAndCostHandler**: Enforces rate limits and logs token costs
 3. **_ThreadSafeLLMWrapper**: Prevents tokenizer concurrency issues
-4. **Langfuse callback** (optional): For observability when LANGFUSE_ENABLED=1
 
 Example Usage
 -------------
@@ -42,7 +41,6 @@ Example Usage
 from __future__ import annotations
 
 import logging
-import os
 import threading
 from functools import lru_cache
 from typing import Any, Optional, Tuple
@@ -55,12 +53,6 @@ from .callbacks import RateLimitAndCostHandler
 from .token_utils import count_tokens, tiktoken_encoder
 from .truncation_wrapper import TruncatingLLMWrapper
 from ..config.model_costs import MODEL_COSTS
-
-# Optional Langfuse callback integration (best-effort)
-try:  # pragma: no cover
-    from langfuse.langchain import CallbackHandler as LangfuseCallback  # type: ignore
-except Exception:  # pragma: no cover
-    LangfuseCallback = None  # type: ignore
 
 
 logger = logging.getLogger(__name__)
@@ -170,16 +162,6 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:
         raw_llm = raw_llm.with_config({"callbacks": [handler]})
     except Exception:
         pass
-
-    # Optional: Langfuse callback for observability
-    if os.getenv("LANGFUSE_ENABLED", "0").strip().lower() in ("1", "true", "yes", "on") and \
-       os.getenv("LANGFUSE_READY", "0").strip() in ("1", "true", "TRUE"):
-        try:
-            if LangfuseCallback is not None:
-                lf_handler = LangfuseCallback()
-                raw_llm = raw_llm.with_config({"callbacks": [lf_handler]})
-        except Exception:
-            pass
 
     # Final wrapper: thread-safe wrapper to prevent tokenizer concurrency issues
     try:

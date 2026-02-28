@@ -8,19 +8,8 @@ Responsibilities
 ----------------
 1. Load environment variables from a `.env` file (if present)
 2. Configure the root logger for consistent output
-3. Optionally initialize Langfuse tracing (if configured)
-4. Set up LLM callbacks for observability
-5. Log environment diagnostics for Compute Canada debugging
-
-Environment Variables
----------------------
-Tracing (Langfuse):
-- LANGFUSE_ENABLED: Set to "1" to enable tracing
-- LANGFUSE_PUBLIC_KEY: Your Langfuse public key
-- LANGFUSE_SECRET_KEY: Your Langfuse secret key
-- LANGFUSE_HOST: Langfuse endpoint (default: https://cloud.langfuse.com)
-
-The module sets LANGFUSE_READY="1" if initialization succeeds.
+3. Set up LLM callbacks for observability
+4. Log environment diagnostics for Compute Canada debugging
 
 Usage
 -----
@@ -34,17 +23,12 @@ Subsequent imports are no-ops due to the `_STARTUP_HAS_RUN` guard.
 Notes
 -----
 - The module uses best-effort error handling to avoid crashes
-- Langfuse initialization checks network reachability before connecting
-- If Langfuse is unreachable, tracing is disabled for the run
 """
 
 from __future__ import annotations
 
 import os
-import socket
 import sys
-from typing import Optional
-from urllib.parse import urlparse
 
 try:  # optional dependency
     from dotenv import find_dotenv, load_dotenv  # type: ignore
@@ -53,12 +37,6 @@ except Exception:  # pragma: no cover
         return False
     def find_dotenv(*args, **kwargs):  # type: ignore
         return ""
-
-# Langfuse is optional; initialize if configured
-try:  # pragma: no cover
-    from langfuse import Langfuse  # type: ignore
-except Exception:  # pragma: no cover
-    Langfuse = None  # type: ignore
 
 from .utils.logger import setup_logger
 
@@ -196,8 +174,7 @@ def _run_startup_once() -> None:
     Steps:
     1. Load .env file (best-effort)
     2. Configure root logger
-    3. Initialize Langfuse if enabled and reachable
-    4. Import LLM callbacks to trigger early initialization
+    3. Import LLM callbacks to trigger early initialization
     """
     global _STARTUP_HAS_RUN
     if _STARTUP_HAS_RUN:
@@ -221,68 +198,12 @@ def _run_startup_once() -> None:
     if os.getenv("GHACR_DEBUG", "0").strip().lower() in ("1", "true", "yes", "on"):
         _log_environment_diagnostics(logger)
 
-    def _is_truthy(val: Optional[str]) -> bool:
-        """Check if a string value represents a truthy boolean."""
-        if val is None:
-            return False
-        return val.strip().lower() in {"1", "true", "yes", "on"}
-
-    def _collector_reachable(url: str) -> bool:
-        """Check if a URL's host:port is reachable via TCP."""
-        try:
-            parsed = urlparse(url)
-            host = parsed.hostname or "localhost"
-            port = parsed.port
-            if port is None:
-                port = 443 if parsed.scheme == "https" else 80
-            with socket.create_connection((host, port), timeout=1.0):
-                return True
-        except Exception:
-            return False
-
-    # Initialize Langfuse tracing if enabled
-    lf_enabled_env = os.getenv("LANGFUSE_ENABLED")
-    lf_enabled = _is_truthy(lf_enabled_env) if lf_enabled_env is not None else True
-
-    if lf_enabled and Langfuse is not None:
-        host = os.getenv("LANGFUSE_HOST", "https://cloud.langfuse.com")
-        public_key = os.getenv("LANGFUSE_PUBLIC_KEY", "").strip()
-        secret_key = os.getenv("LANGFUSE_SECRET_KEY", "").strip()
-
-        if public_key and secret_key:
-            if _collector_reachable(host):
-                try:
-                    Langfuse(public_key=public_key, secret_key=secret_key, host=host)
-                    logger.info("Langfuse initialized (host=%s)", host)
-                    os.environ["LANGFUSE_READY"] = "1"
-                except Exception as e:
-                    logger.warning("Langfuse init failed, disabling tracing: %s", e)
-                    os.environ["LANGFUSE_ENABLED"] = "0"
-                    os.environ["LANGFUSE_READY"] = "0"
-            else:
-                logger.info("Langfuse host not reachable; disabling tracing for this run.")
-                os.environ["LANGFUSE_ENABLED"] = "0"
-                os.environ["LANGFUSE_READY"] = "0"
-        else:
-            logger.info("Langfuse keys not set; tracing disabled.")
-            os.environ["LANGFUSE_ENABLED"] = "0"
-            os.environ["LANGFUSE_READY"] = "0"
-    else:
-        if Langfuse is None:
-            logger.info("Langfuse not installed; tracing disabled.")
-        else:
-            logger.info("Langfuse explicitly disabled via LANGFUSE_ENABLED.")
-        os.environ["LANGFUSE_READY"] = "0"
-
     # Trigger early LLM callback initialization
     try:
         from .agents import llm_base  # noqa: F401
-        if os.getenv("LANGFUSE_ENABLED", "0").strip() in ("1", "true", "TRUE"):
-            logger.info("Startup complete: environment loaded, logging configured, Langfuse ready.")
-        else:
-            logger.info("Startup complete: environment loaded, logging configured (Langfuse disabled).")
     except Exception:
-        logger.info("Startup complete: environment loaded, logging configured.")
+        pass
+    logger.info("Startup complete: environment loaded, logging configured.")
 
 
 # Execute immediately on import

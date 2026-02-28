@@ -53,13 +53,11 @@ Performance Notes
 from . import exact_match
 from . import bleu
 from . import rouge_l
-from .reporter import Reporter
 
 __all__ = [
     "exact_match",
     "bleu",
     "rouge_l",
-    "Reporter",
 ]
 
 

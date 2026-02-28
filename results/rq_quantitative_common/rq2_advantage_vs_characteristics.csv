@@ -1,0 +1,81 @@
+model,scenario_metric,advantage_metric,n,spearman_r,spearman_p
+LLaMA-3.1-8B,repo_commits,advantage_bleu3,1888,0.15168080419972485,3.479527890503722e-11
+LLaMA-3.1-8B,repo_commits,advantage_rouge_l,1888,0.14835669355513165,9.302476561122315e-11
+LLaMA-3.1-8B,repo_commits,advantage_similarity,1888,0.13886142723630138,1.369154086135601e-09
+Qwen3-32B,n_conflict_files,advantage_exact_match,1888,-0.1306555959707545,1.2135451860810149e-08
+LLaMA-3.1-8B,n_total_conflicts,advantage_exact_match,1888,-0.12519491899291632,4.822266151761545e-08
+LLaMA-3.1-8B,repo_code_lines,advantage_bleu3,1888,0.12150529612895995,1.1857669576403421e-07
+LLaMA-3.1-8B,n_conflict_files,advantage_exact_match,1888,-0.1211147900124903,1.3022436568900224e-07
+LLaMA-3.1-8B,repo_contributors,advantage_bleu3,1888,0.12105466089375924,1.321133707304243e-07
+Qwen3-32B,n_total_conflicts,advantage_exact_match,1888,-0.11792733006505844,2.7676261345201405e-07
+LLaMA-3.1-8B,repo_contributors,advantage_rouge_l,1888,0.11679607395901218,3.599852771154157e-07
+LLaMA-3.1-8B,repo_code_lines,advantage_rouge_l,1888,0.11673957192535145,3.647201027282472e-07
+LLaMA-3.1-8B,repo_code_lines,advantage_similarity,1888,0.11528477689227072,5.095277780344732e-07
+LLaMA-3.1-8B,repo_contributors,advantage_similarity,1888,0.11309726557215252,8.360308431729295e-07
+LLaMA-3.1-8B,n_conflict_files,advantage_bleu3,1888,-0.11167313313764939,1.1484448035512117e-06
+GPT-5-nano,repo_code_lines,advantage_rouge_l,1888,0.10992344340197041,1.6874717198231248e-06
+GPT-5-nano,repo_code_lines,advantage_similarity,1888,0.10920077377085764,1.9748357262384355e-06
+GPT-5-nano,repo_code_lines,advantage_bleu3,1888,0.10325641707374218,6.935551111341202e-06
+LLaMA-3.1-8B,n_conflict_files,advantage_similarity,1888,-0.09820647159984686,1.9140192383116748e-05
+Qwen3-32B,repo_commits,advantage_exact_match,1888,-0.09655296471282838,2.641261797747611e-05
+GPT-5-nano,repo_commits,advantage_rouge_l,1888,0.09107842702371903,7.398960973696449e-05
+GPT-5-nano,repo_contributors,advantage_rouge_l,1888,0.09107105283739862,7.408957446421551e-05
+GPT-5-nano,repo_commits,advantage_similarity,1888,0.0898151141713181,9.310843019429003e-05
+GPT-5-nano,repo_commits,advantage_bleu3,1888,0.08967947163444981,9.541807494706665e-05
+GPT-5-nano,n_total_conflicts,advantage_similarity,1888,0.08955746239496437,9.754166207205425e-05
+Qwen3-32B,repo_contributors,advantage_exact_match,1888,-0.08955032338959326,9.766728803859642e-05
+GPT-5-nano,n_total_conflicts,advantage_rouge_l,1888,0.08881593165463714,0.00011143811518795053
+GPT-5-nano,repo_contributors,advantage_similarity,1888,0.08588059182170452,0.00018694045383129166
+GPT-5-nano,repo_contributors,advantage_bleu3,1888,0.08281147326818496,0.0003157096678612964
+Qwen3-32B,n_conflict_files,advantage_rouge_l,1888,0.08261207590980026,0.00032644917403873875
+All Models,n_conflict_files,advantage_exact_match,5664,-0.07622749266105247,9.249915290760941e-09
+LLaMA-3.1-8B,n_conflict_files,advantage_rouge_l,1888,-0.07307249504835137,0.0014869050602589224
+Qwen3-32B,repo_code_lines,advantage_exact_match,1888,-0.07291264948496776,0.0015230340269379607
+Qwen3-32B,repo_commits,advantage_similarity,1888,-0.07270412768010506,0.0015713796111300705
+GPT-5-nano,n_total_conflicts,advantage_exact_match,1888,0.07169185201480453,0.0018267695396936962
+Qwen3-32B,repo_commits,advantage_rouge_l,1888,-0.07100026800562959,0.0020225947219671913
+GPT-5-nano,n_total_conflicts,advantage_bleu3,1888,0.06597033764260558,0.004134529894229505
+All Models,n_total_conflicts,advantage_exact_match,5664,-0.06156851333074728,3.5351056361817863e-06
+GPT-5-nano,repo_commits,advantage_exact_match,1888,0.06102682826506674,0.007992171069808535
+LLaMA-3.1-8B,repo_commits,advantage_exact_match,1888,-0.06089982997582146,0.00812404854849695
+Qwen3-32B,n_conflict_files,advantage_bleu3,1888,0.05752680916605302,0.012418650240937867
+LLaMA-3.1-8B,repo_code_lines,advantage_exact_match,1888,-0.056966451187441654,0.013300231301625743
+All Models,repo_code_lines,advantage_bleu3,5664,0.056296799773766844,2.2421902911947057e-05
+Qwen3-32B,n_conflict_files,advantage_similarity,1888,0.05480851113799631,0.01723272489341282
+GPT-5-nano,repo_contributors,advantage_exact_match,1888,0.052526080763907475,0.022466843247956208
+All Models,repo_commits,advantage_bleu3,5664,0.05093915084691781,0.00012541043350866268
+Qwen3-32B,repo_commits,advantage_bleu3,1888,-0.050002154490127064,0.02981270790585548
+All Models,repo_code_lines,advantage_similarity,5664,0.04951345503448066,0.0001931398984684459
+All Models,repo_code_lines,advantage_rouge_l,5664,0.04932244235692153,0.00020447257507091204
+All Models,repo_contributors,advantage_bleu3,5664,0.04931960735366693,0.00020464538421202316
+All Models,repo_contributors,advantage_rouge_l,5664,0.046110787603859976,0.0005178338933429271
+All Models,repo_commits,advantage_rouge_l,5664,0.04434484193388684,0.0008429924097789656
+All Models,repo_contributors,advantage_similarity,5664,0.04413000159878549,0.0008934605808268959
+Qwen3-32B,repo_contributors,advantage_rouge_l,1888,-0.04395210327087999,0.05620714463818053
+LLaMA-3.1-8B,n_total_conflicts,advantage_bleu3,1888,-0.04373712986532165,0.057422886589181606
+Qwen3-32B,repo_contributors,advantage_similarity,1888,-0.04322274687431643,0.06042077382968127
+All Models,repo_code_lines,advantage_exact_match,5664,-0.04089917168339408,0.002079324293107452
+Qwen3-32B,repo_code_lines,advantage_similarity,1888,-0.040673973290905,0.07724657344362389
+All Models,repo_commits,advantage_similarity,5664,0.040180083510171986,0.0024905359419128826
+LLaMA-3.1-8B,repo_contributors,advantage_exact_match,1888,-0.03774571723813834,0.1010900626095832
+Qwen3-32B,repo_code_lines,advantage_rouge_l,1888,-0.03752957042061905,0.10306002729395432
+All Models,repo_commits,advantage_exact_match,5664,-0.034331243876361425,0.009767726223160455
+LLaMA-3.1-8B,n_total_conflicts,advantage_similarity,1888,-0.03332062060590519,0.14782373966195106
+GPT-5-nano,n_conflict_files,advantage_exact_match,1888,0.03301130936058406,0.1516238534606363
+Qwen3-32B,repo_contributors,advantage_bleu3,1888,-0.03054773626610264,0.1845867722749179
+All Models,n_total_conflicts,advantage_rouge_l,5664,0.029118009579869708,0.028423635141396564
+Qwen3-32B,n_total_conflicts,advantage_bleu3,1888,-0.029093446166480675,0.20638328560998945
+All Models,repo_contributors,advantage_exact_match,5664,-0.026553082071548505,0.04568584989973577
+GPT-5-nano,n_conflict_files,advantage_rouge_l,1888,0.023950197971747696,0.29828278097509653
+GPT-5-nano,n_conflict_files,advantage_similarity,1888,0.02324762794029813,0.31268554873743154
+All Models,n_total_conflicts,advantage_similarity,5664,0.023015505173299762,0.08327646861916232
+Qwen3-32B,repo_code_lines,advantage_bleu3,1888,-0.020442164612824634,0.3746808999881547
+LLaMA-3.1-8B,n_total_conflicts,advantage_rouge_l,1888,-0.014520126197632809,0.5283471155607524
+Qwen3-32B,n_total_conflicts,advantage_rouge_l,1888,0.014460467608100868,0.5300430845033259
+All Models,n_conflict_files,advantage_rouge_l,5664,0.01307374134517529,0.3252390515566612
+All Models,n_total_conflicts,advantage_bleu3,5664,0.01243444783122974,0.34945827339248214
+GPT-5-nano,repo_code_lines,advantage_exact_match,1888,0.009475526431217088,0.6807361336366683
+GPT-5-nano,n_conflict_files,advantage_bleu3,1888,0.005881531386761405,0.798420275525843
+Qwen3-32B,n_total_conflicts,advantage_similarity,1888,-0.005738227230765676,0.8032297985185191
+All Models,n_conflict_files,advantage_similarity,5664,0.0011995784034968717,0.9280807342076012
+All Models,n_conflict_files,advantage_bleu3,5664,-0.0004882930630905967,0.9706918301078589
