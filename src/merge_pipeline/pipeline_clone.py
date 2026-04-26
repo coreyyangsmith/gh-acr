@@ -33,6 +33,7 @@ from ..agents.base_agent import (
 )
 from ..agents.agent import resolve_conflict_agent_node
 from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
+from ..agents.force_mix import resolve_conflict_force_mix_node
 
 # Evaluation
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
@@ -547,10 +548,12 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     Parameters
     ----------
     eval_method
-        "agent"   – LLM-based single-agent resolver.
-        "base_a"  – baseline Parent-A resolver.
-        "base_b"  – baseline Parent-B resolver.
-        "bypass7" – multi-agent bypass resolver.
+        "agent"      – LLM-based single-agent resolver.
+        "base_a"     – baseline Parent-A resolver.
+        "base_b"     – baseline Parent-B resolver.
+        "bypass7"    – multi-agent bypass resolver (analyze → bypass or mix).
+        "force_mix"  – multi-agent resolver that skips the conflict analyzer
+                       and always uses the mix (plan → patch → review) path.
     """
 
     sg = StateGraph(dict)
@@ -570,9 +573,12 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "bypass7":
         resolver_node_name = "resolve_bypass7_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass7_multi_agent_node)
+    elif eval_method == "force_mix":
+        resolver_node_name = "resolve_force_mix"
+        sg.add_node(resolver_node_name, resolve_conflict_force_mix_node)
     else:
         raise ValueError(
-            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', or 'bypass7'."
+            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'bypass7', or 'force_mix'."
         )
 
     sg.add_node("evaluate", evaluate_node)
@@ -591,7 +597,7 @@ def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "bypass7" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "bypass7" | "force_mix" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

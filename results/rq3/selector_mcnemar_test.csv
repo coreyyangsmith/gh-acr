@@ -1,0 +1,2 @@
+n_total,n_both_correct,n_both_wrong,b_selector_wins,c_selector_loses,n_discordant,p_value,test,metric
+1907,4,1388,284,231,515,0.010924722750870636,selector_McNemar_exact_binomial,exact_match

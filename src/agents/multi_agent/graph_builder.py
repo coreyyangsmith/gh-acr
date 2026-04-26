@@ -273,8 +273,86 @@ def build_bypass_graph(prompt_variant: PromptVariant = "bypass") -> ResolverFunc
     return resolver_function
 
 
+def build_force_mix_graph(prompt_variant: PromptVariant = "force_mix") -> ResolverFunc:
+    """Build a force-mix multi-agent resolver that always takes the mix path.
+
+    Unlike :func:`build_bypass_graph`, this workflow **skips** the conflict
+    analyzer (LLM-as-judge) step entirely. ``bypass_decision`` and
+    ``bypass_method`` are hard-set to ``"MIX"`` in state before the planner
+    runs, preserving downstream reporting compatibility.
+
+    Workflow::
+
+        summarise → force_mix_marker → plan → patch → review ─┬─ [finish] → finalize → END
+                                                      ↑        └─ [retry] → feedback ─┘
+                                                      └────────────────────────────────┘
+
+    Parameters
+    ----------
+    prompt_variant
+        Which prompt templates to use (defaults to "force_mix").
+
+    Returns
+    -------
+    ResolverFunc
+        A callable that executes the force-mix workflow on a state dict.
+    """
+    summarizer = create_summarizer_node(prompt_variant)
+    planner = create_conflict_agent_node(prompt_variant)
+    resolver = create_resolution_agent_node(prompt_variant)
+    reviewer = create_review_agent_node(prompt_variant)
+    finalize = _create_finalize_node()
+
+    def _force_mix_marker(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Set bypass_decision/method to MIX without calling the LLM analyzer."""
+        state["bypass_decision"] = "MIX"
+        state["bypass_method"] = "MIX"
+        state["bypass_analyzer_output"] = "[force_mix] conflict analyzer skipped"
+        state["status"] = "analyzed"
+        return state
+
+    def feedback_node(state: Dict[str, Any]) -> Dict[str, Any]:
+        return _prepare_feedback_for_retry(state)
+
+    def resolver_function(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute the force-mix workflow (no analyzer, always mix path)."""
+        sg = StateGraph(dict)
+
+        sg.add_node("summarise", summarizer)
+        sg.add_node("force_mix_marker", _force_mix_marker)
+        sg.add_node("plan", planner)
+        sg.add_node("patch", resolver)
+        sg.add_node("review", reviewer)
+        sg.add_node("finalize", finalize)
+        sg.add_node("feedback", feedback_node)
+
+        sg.set_entry_point("summarise")
+
+        sg.add_edge("summarise", "force_mix_marker")
+        sg.add_edge("force_mix_marker", "plan")
+        sg.add_edge("plan", "patch")
+        sg.add_edge("patch", "review")
+        sg.add_conditional_edges(
+            "review",
+            _route_after_review,
+            {"finish": "finalize", "retry": "feedback"},
+        )
+        sg.add_edge("feedback", "patch")
+        sg.add_edge("finalize", END)
+
+        sub_app = sg.compile()
+
+        if "_review_iter" not in state:
+            state["_review_iter"] = 0
+
+        return sub_app.invoke(state)
+
+    return resolver_function
+
+
 __all__ = [
     "build_bypass_graph",
+    "build_force_mix_graph",
     "ResolverFunc",
 ]
 

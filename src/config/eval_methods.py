@@ -10,6 +10,8 @@ Evaluation Methods
 - **base_b**: Baseline that always selects Parent B's version
 - **agent**: Single-turn LLM-based merge resolver
 - **bypass7**: Multi-agent with analyzer that can bypass (All A/B) or merge
+- **force_mix**: Multi-agent that skips the conflict analyzer and always uses
+  the mix (plan → patch → review) path
 
 Usage Patterns
 --------------
@@ -50,6 +52,7 @@ EvalMethod = Literal[
     "base_b",
     "agent",
     "bypass7",
+    "force_mix",
 ]
 """Type alias for valid evaluation method identifiers.
 
@@ -66,6 +69,7 @@ ALL_EVAL_METHODS: Final[list[EvalMethod]] = [
     "base_b",
     "agent",
     "bypass7",
+    "force_mix",
 ]
 """Complete list of supported evaluation methods.
 
@@ -82,6 +86,7 @@ DEFAULT_METHOD_ORDER: Final[list[EvalMethod]] = [
     "base_b",
     "agent",
     "bypass7",
+    "force_mix",
 ]
 """Standard ordering for methods in reports and visualizations.
 

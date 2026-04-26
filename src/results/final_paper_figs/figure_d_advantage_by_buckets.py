@@ -165,7 +165,7 @@ def generate_figure_d(
             # Fallback color for unknown models
             model_colors[model] = "#7f7f7f"
 
-    fig, axes = plt.subplots(2, 3, figsize=(13, 7.6))
+    fig, axes = plt.subplots(2, 3, figsize=(13, 4.5))
 
     em_lo, em_hi = -0.03, 0.22
     sim_lo, sim_hi = -0.1, 0.55
@@ -283,10 +283,10 @@ def generate_figure_d(
     available_sizes = [s for s in SIZE_ORDER if s in merged["project_size"].values]
     _draw_row(1, merged, available_sizes, "project_size", "Project Size")
 
-    # Row labels
+    # Row labels - reduced spacing by changing x position from -0.35 to -0.25
     axes[0, 0].annotate(
         "By Difficulty",
-        xy=(-0.35, 0.5),
+        xy=(-0.27, 0.5),
         xycoords="axes fraction",
         fontsize=11,
         fontweight="bold",
@@ -295,7 +295,7 @@ def generate_figure_d(
     )
     # axes[1, 0].annotate(
     #     "By Conflict Count",
-    #     xy=(-0.35, 0.5),
+    #     xy=(-0.25, 0.5),
     #     xycoords="axes fraction",
     #     fontsize=11,
     #     fontweight="bold",
@@ -304,7 +304,7 @@ def generate_figure_d(
     # )
     axes[1, 0].annotate(
         "By Project Size",
-        xy=(-0.35, 0.5),
+        xy=(-0.27, 0.5),
         xycoords="axes fraction",
         fontsize=11,
         fontweight="bold",
@@ -330,7 +330,7 @@ def generate_figure_d(
         loc="lower center",
         ncol=2,
         fontsize=9,
-        bbox_to_anchor=(0.5, 0.03),
+        bbox_to_anchor=(0.5, 0.02),
     )
 
     plt.tight_layout(rect=(0, 0.06, 1, 1))

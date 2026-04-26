@@ -66,7 +66,7 @@ def _log_node_end(node_name: str, start_time: float, state: Dict[str, Any]) -> N
 
 
 # Type alias for prompt variants
-PromptVariant = Literal["bypass7"]
+PromptVariant = Literal["bypass7", "force_mix"]
 
 # Type alias for node functions
 NodeFunc = Callable[[Dict[str, Any]], Dict[str, Any]]

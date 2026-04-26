@@ -261,7 +261,7 @@ def generate_figure_b(
     logger.info(f"  Saved {table_csv_path.name}")
 
     # Layout: 3 panels in a row (models on x-axis, win rate on y-axis)
-    fig = plt.figure(figsize=(10.5, 5.0))
+    fig = plt.figure(figsize=(11, 2.5))
     axes = [fig.add_subplot(1, 3, j + 1) for j in range(3)]
 
     # Share y-axis across the three violin panels

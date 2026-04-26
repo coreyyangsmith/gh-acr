@@ -68,7 +68,7 @@ def generate_figure_c(results_csv: Path | None = None,
         "GPT-5-nano": "GPT-5-Nano",
     }
 
-    fig, ax = plt.subplots(1, 1, figsize=(6, 3))
+    fig, ax = plt.subplots(1, 1, figsize=(6, 2.42))
 
     model_pcts: dict[str, dict[str, float]] = {}
     for model in fig_model_order:
@@ -120,7 +120,7 @@ def generate_figure_c(results_csv: Path | None = None,
     # Clean legend without extra text
     ax.legend(
         loc="upper center",
-        bbox_to_anchor=(0.90, -0.1),
+        bbox_to_anchor=(0.90, -0.12),
         ncol=2,
         fontsize=9,
         frameon=True,

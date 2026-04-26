@@ -329,6 +329,79 @@ def plot_performance_delta_by_label(
     return fig
 
 
+def plot_label_improvement_forest(
+    improvement_df: pd.DataFrame,
+    config: RQ3Config = DEFAULT_CONFIG,
+    output_path: Optional[Path] = None,
+    show: bool = False,
+) -> plt.Figure:
+    """Forest plot of risk difference (P(improve | label) - P(improve | no label)) per label.
+
+    Horizontal plot with 95% CI; vertical reference line at 0. Points colored by significance.
+
+    Parameters
+    ----------
+    improvement_df : pd.DataFrame
+        Result of compute_label_improvement_tests (risk_diff, risk_diff_ci_low, risk_diff_ci_high, significant)
+    config : RQ3Config
+        Configuration
+    output_path : Path, optional
+        Path to save the figure
+    show : bool
+        Whether to display the figure
+
+    Returns
+    -------
+    plt.Figure
+        The matplotlib figure
+    """
+    fig, ax = plt.subplots(figsize=(10, max(6, len(improvement_df) * 0.35)))
+    data = improvement_df.dropna(subset=["risk_diff"]).copy()
+    if data.empty:
+        ax.text(0.5, 0.5, "No risk difference data available", ha="center", va="center", fontsize=14)
+        ax.set_xlim(-1, 1)
+        ax.set_ylim(-1, 1)
+    else:
+        data = data.sort_values("risk_diff", ascending=True)
+        y = np.arange(len(data))
+        rd = data["risk_diff"].values
+        ci_lo = data["risk_diff_ci_low"].values if "risk_diff_ci_low" in data.columns else rd - 0.05
+        ci_hi = data["risk_diff_ci_high"].values if "risk_diff_ci_high" in data.columns else rd + 0.05
+        sig = data["significant"].values if "significant" in data.columns else np.zeros(len(data), dtype=bool)
+        xerr_lo = np.where(np.isfinite(ci_lo), rd - ci_lo, 0)
+        xerr_hi = np.where(np.isfinite(ci_hi), ci_hi - rd, 0)
+        colors = ["#2ca02c" if s else "#7f7f7f" for s in sig]
+        ax.errorbar(
+            rd, y,
+            xerr=[xerr_lo, xerr_hi],
+            fmt="o",
+            color="none",
+            ecolor="gray",
+            elinewidth=1,
+            capsize=2.5,
+            markersize=7,
+        )
+        for i, (r, c) in enumerate(zip(rd, colors)):
+            ax.scatter(r, i, color=c, s=80, zorder=5, edgecolor="white", linewidth=0.8)
+        ax.axvline(x=0, color="black", linestyle="--", linewidth=1, alpha=0.6)
+        ax.set_yticks(y)
+        ax.set_yticklabels(data["display_name"])
+        ax.set_xlabel("Risk difference (P(improve | label) − P(improve | no label))", fontsize=11)
+        ax.set_title("Per-label improvement: Bypass wins vs ties (Fisher's exact)", fontsize=12, fontweight="bold")
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+    plt.tight_layout()
+    if output_path:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(output_path, dpi=config.dpi, bbox_inches="tight")
+        logger.info(f"  Saved: {output_path}")
+    if show:
+        plt.show()
+    else:
+        plt.close(fig)
+    return fig
+
+
 def plot_difficulty_interaction(
     stratified_df: pd.DataFrame,
     metric: str = "exact_match",

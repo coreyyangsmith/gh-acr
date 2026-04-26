@@ -39,23 +39,26 @@ from .nodes import (
     create_resolution_agent_node,
     create_review_agent_node,
 )
-from .graph_builder import build_bypass_graph
+from .graph_builder import build_bypass_graph, build_force_mix_graph
 
 
 # Type alias for supported prompt variants
-PromptVariant = Literal["bypass7"]
+PromptVariant = Literal["bypass7", "force_mix"]
 
 # Type alias for resolver functions
 ResolverFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
 
 
 def create_resolver(variant: PromptVariant = "bypass7") -> ResolverFunc:
-    """Create a multi-agent resolver function for the bypass7 variant.
+    """Create a multi-agent resolver function for the given variant.
 
     Parameters
     ----------
     variant
-        The prompt variant to use. Currently only "bypass7" is supported.
+        The prompt variant to use. Supported values:
+        - "bypass7": Full multi-agent with summarise → analyze → plan/bypass → finalize.
+        - "force_mix": Skips the conflict analyzer; always routes through the mix
+          (plan → patch → review) path. ``bypass_decision`` is hard-set to ``MIX``.
 
     Returns
     -------
@@ -66,7 +69,11 @@ def create_resolver(variant: PromptVariant = "bypass7") -> ResolverFunc:
     --------
     >>> resolver = create_resolver("bypass7")
     >>> result = resolver({"scenario_id": 123, ...})
+    >>> force_resolver = create_resolver("force_mix")
+    >>> result = force_resolver({"scenario_id": 456, ...})
     """
+    if variant == "force_mix":
+        return build_force_mix_graph(prompt_variant="force_mix")
     return build_bypass_graph(prompt_variant=variant)
 
 
@@ -80,6 +87,7 @@ __all__ = [
     "create_review_agent_node",
     "PromptVariant",
     "ResolverFunc",
+    "build_force_mix_graph",
 ]
 
 

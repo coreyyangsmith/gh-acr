@@ -246,8 +246,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         llm_out_dir = scenario_dir / eval_method
         llm_out_dir.mkdir(parents=True, exist_ok=True)
 
-        # Multi-style outputs: bypass7 writes per-file artifacts under <llm_out_dir>/<file_slug>/
-        is_multi_like = eval_method == "bypass7"
+        # Multi-style outputs: bypass7 / force_mix write per-file artifacts under <llm_out_dir>/<file_slug>/
+        is_multi_like = eval_method in ("bypass7", "force_mix")
 
     # Log file processing summary
     logger.info(
@@ -308,11 +308,11 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         # Duplicate LLM output into central per-method directory (simple/, multi/, bypass/)
         if eval_method != "base":
             # Agent-specific file base within its directory
-            is_bypass_like = eval_method == "bypass7"
+            is_bypass_like = eval_method in ("bypass7", "force_mix")
             base_name = f"bypass_{file_slug}" if is_bypass_like else file_slug
 
-            # ---------------- bypass7 extra outputs -------------------
-            if eval_method == "bypass7":
+            # ---------------- bypass7 / force_mix extra outputs -------------------
+            if eval_method in ("bypass7", "force_mix"):
                 summaries = result.get("summaries", {}).get(file_path, {})
                 # Write per-file artifacts inside a per-file subdirectory
                 per_file_agent_dir = llm_out_dir / file_slug
@@ -461,8 +461,8 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
                     else:
                         logger.debug("[%s] No final_diffs available for %s", eval_method, file_path)
 
-    # Summary log for bypass7 file writing
-    if eval_method == "bypass7":
+    # Summary log for bypass7 / force_mix file writing
+    if eval_method in ("bypass7", "force_mix"):
         bypass_decision = result.get("bypass_decision", "unknown")
         resolved_count = len(result.get("resolved_contents", {}))
         res_hist_count = len(result.get("resolution_history", {}))
@@ -563,7 +563,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     # -------------------------------------------------------------------
     per_file_rows = []
     # Determine bypass method label for this scenario (A/B/MIX) or NA for others
-    if eval_method == "bypass7":
+    if eval_method in ("bypass7", "force_mix"):
         bypass_label = str(result.get("bypass_method") or result.get("bypass_decision", "MIX")).upper()
         # Normalize to short form if full form present
         if bypass_label in ("ALL_A", "A"):

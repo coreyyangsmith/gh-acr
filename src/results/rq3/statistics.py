@@ -351,6 +351,254 @@ def compute_statistical_tests(
     return result
 
 
+def compute_mcnemar_test(
+    paired_df: pd.DataFrame,
+    config: RQ3Config = DEFAULT_CONFIG,
+) -> dict:
+    """Exact McNemar (binomial sign test on discordant pairs) for overall method difference.
+
+    Builds the paired 2x2 table (Agent vs Bypass EM) and tests whether Bypass is
+    better than Agent using discordant pairs: under H0, c ~ Binomial(b+c, 0.5).
+
+    Parameters
+    ----------
+    paired_df : pd.DataFrame
+        Paired data with agent_exact_match and bypass_exact_match columns
+    config : RQ3Config
+        Configuration
+
+    Returns
+    -------
+    dict
+        Keys: n_total, n_both_correct, n_both_wrong, b (agent_only), c (bypass_only),
+        n_discordant, p_value, test
+    """
+    agent_col = "agent_exact_match"
+    bypass_col = "bypass_exact_match"
+    if agent_col not in paired_df.columns or bypass_col not in paired_df.columns:
+        logger.warning("McNemar: missing agent_exact_match or bypass_exact_match")
+        return {}
+    agent_em = pd.to_numeric(paired_df[agent_col], errors="coerce").fillna(0).astype(int)
+    bypass_em = pd.to_numeric(paired_df[bypass_col], errors="coerce").fillna(0).astype(int)
+    n_total = len(paired_df)
+    n_both_correct = ((agent_em == 1) & (bypass_em == 1)).sum()
+    n_both_wrong = ((agent_em == 0) & (bypass_em == 0)).sum()
+    b = ((agent_em == 1) & (bypass_em == 0)).sum()  # Agent correct, Bypass wrong
+    c = ((agent_em == 0) & (bypass_em == 1)).sum()  # Agent wrong, Bypass correct
+    n_discordant = b + c
+    if n_discordant == 0:
+        p_value = 1.0
+    else:
+        result_binom = stats.binomtest(int(c), n_discordant, p=0.5, alternative="greater")
+        p_value = float(result_binom.pvalue)
+    return {
+        "n_total": n_total,
+        "n_both_correct": int(n_both_correct),
+        "n_both_wrong": int(n_both_wrong),
+        "b_agent_only": int(b),
+        "c_bypass_only": int(c),
+        "n_discordant": int(n_discordant),
+        "p_value": p_value,
+        "test": "McNemar_exact_binomial",
+    }
+
+
+def compute_selector_mcnemar_test(
+    results_df: pd.DataFrame,
+    metric: str = "exact_match",
+) -> dict:
+    """McNemar / exact sign test evaluating the Bypass selector directly.
+
+    Treats the selector as a paired decision problem: for each sample where
+    Bypass had two candidate diffs (A and B), compare the chosen diff's
+    performance against the rejected diff's performance.
+
+    - chosen  = the diff actually selected by the Bypass selector (bypass7 row)
+    - rejected = the other candidate diff (base_a if chosen==B, base_b if chosen==A)
+
+    Discordant pairs:
+      b = chosen correct, rejected wrong  (selector wins)
+      c = chosen wrong,   rejected correct (selector loses)
+
+    Under H0 (selector is random), b and c are symmetric.
+    One-sided exact binomial: H1 = selector wins more often than chance.
+
+    Parameters
+    ----------
+    results_df : pd.DataFrame
+        Full results CSV with eval_method in {agent, bypass7, base_a, base_b}
+        and bypass_method in {A, B, MIX}.
+    metric : str
+        Performance metric column to use (default: exact_match).
+
+    Returns
+    -------
+    dict
+        Keys: n_total, n_both_correct, n_both_wrong, b_selector_wins,
+        c_selector_loses, n_discordant, p_value, test, metric
+    """
+    logger.info(f"Computing selector McNemar test on metric={metric}...")
+
+    required_cols = {"id", "eval_method", "bypass_method", metric}
+    if not required_cols.issubset(results_df.columns):
+        missing = required_cols - set(results_df.columns)
+        logger.warning(f"Selector McNemar: missing columns {missing}")
+        return {}
+
+    def to_binary(series: pd.Series) -> pd.Series:
+        return series.apply(lambda x: 1 if str(x).lower() in ["true", "1", "1.0"] else 0)
+
+    # base_a and base_b: one row per id (deduplicated)
+    base_a = (
+        results_df[results_df["eval_method"] == "base_a"]
+        .drop_duplicates("id")[["id", metric]]
+        .rename(columns={metric: f"{metric}_a"})
+    )
+    base_b = (
+        results_df[results_df["eval_method"] == "base_b"]
+        .drop_duplicates("id")[["id", metric]]
+        .rename(columns={metric: f"{metric}_b"})
+    )
+
+    # bypass7: one row per id — the chosen diff
+    bypass7 = (
+        results_df[results_df["eval_method"] == "bypass7"]
+        .drop_duplicates("id")[["id", "bypass_method", metric]]
+        .rename(columns={metric: f"{metric}_chosen", "bypass_method": "chosen_diff"})
+    )
+
+    # Merge all three
+    merged = bypass7.merge(base_a, on="id", how="inner").merge(base_b, on="id", how="inner")
+
+    # Keep only rows where selector chose A or B (drop MIX)
+    merged = merged[merged["chosen_diff"].isin(["A", "B"])].copy()
+
+    # Build rejected metric
+    merged[f"{metric}_rejected"] = merged.apply(
+        lambda r: r[f"{metric}_b"] if r["chosen_diff"] == "A" else r[f"{metric}_a"],
+        axis=1,
+    )
+
+    # Convert to binary
+    em_chosen = to_binary(merged[f"{metric}_chosen"])
+    em_rejected = to_binary(merged[f"{metric}_rejected"])
+
+    n_total = len(merged)
+    n_both_correct = ((em_chosen == 1) & (em_rejected == 1)).sum()
+    n_both_wrong = ((em_chosen == 0) & (em_rejected == 0)).sum()
+    b = ((em_chosen == 1) & (em_rejected == 0)).sum()  # selector wins
+    c = ((em_chosen == 0) & (em_rejected == 1)).sum()  # selector loses
+    n_discordant = b + c
+
+    if n_discordant == 0:
+        p_value = 1.0
+    else:
+        result_binom = stats.binomtest(int(b), int(n_discordant), p=0.5, alternative="greater")
+        p_value = float(result_binom.pvalue)
+
+    logger.info(
+        f"  n={n_total}, both_correct={n_both_correct}, both_wrong={n_both_wrong}, "
+        f"b(selector_wins)={b}, c(selector_loses)={c}, p={p_value:.4e}"
+    )
+
+    return {
+        "n_total": int(n_total),
+        "n_both_correct": int(n_both_correct),
+        "n_both_wrong": int(n_both_wrong),
+        "b_selector_wins": int(b),
+        "c_selector_loses": int(c),
+        "n_discordant": int(n_discordant),
+        "p_value": p_value,
+        "test": "selector_McNemar_exact_binomial",
+        "metric": metric,
+    }
+
+
+def compute_label_improvement_tests(
+    paired_df: pd.DataFrame,
+    config: RQ3Config = DEFAULT_CONFIG,
+    metric: str = "exact_match",
+) -> pd.DataFrame:
+    """Per-label Fisher's exact test on binary improve = (Bypass > Agent).
+
+    improve = 1 if Bypass_EM > Agent_EM, else 0 (tie or Agent wins).
+    For each label, tests whether the label changes P(improve) via Fisher's exact
+    on the 2x2 table (label_present x improve). Reports risk difference, relative risk,
+    and Haldane-Anscombe corrected odds ratio.
+
+    Parameters
+    ----------
+    paired_df : pd.DataFrame
+        Paired data with agent/bypass metric columns and label columns
+    config : RQ3Config
+        Configuration
+    metric : str
+        Metric for defining improve (default: exact_match)
+
+    Returns
+    -------
+    pd.DataFrame
+        One row per label with fisher_pval, risk_diff, relative_risk, odds_ratio_ha, etc.
+    """
+    logger.info(f"Computing label improvement tests (improve = Bypass > Agent on {metric})...")
+    agent_col = f"agent_{metric}"
+    bypass_col = f"bypass_{metric}"
+    if agent_col not in paired_df.columns or bypass_col not in paired_df.columns:
+        return pd.DataFrame()
+    agent_em = pd.to_numeric(paired_df[agent_col], errors="coerce").fillna(0)
+    bypass_em = pd.to_numeric(paired_df[bypass_col], errors="coerce").fillna(0)
+    improve = (bypass_em > agent_em).astype(int)
+    rows = []
+    for label in config.canonical_labels:
+        col_name = label_to_column_name(label)
+        if col_name not in paired_df.columns:
+            continue
+        label_present = (pd.to_numeric(paired_df[col_name], errors="coerce").fillna(0) != 0).values
+        a = int((label_present & (improve == 1)).sum())
+        b = int((label_present & (improve == 0)).sum())
+        c = int((~label_present & (improve == 1)).sum())
+        d = int((~label_present & (improve == 0)).sum())
+        n_with = a + b
+        n_without = c + d
+        if n_with < config.min_samples or n_without < config.min_samples:
+            continue
+        try:
+            _, fisher_pval = stats.fisher_exact([[a, b], [c, d]], alternative="two-sided")
+        except Exception:
+            fisher_pval = np.nan
+        p1 = a / n_with if n_with > 0 else np.nan
+        p0 = c / n_without if n_without > 0 else np.nan
+        risk_diff = (p1 - p0) if (pd.notna(p1) and pd.notna(p0)) else np.nan
+        relative_risk = (p1 / p0) if (pd.notna(p0) and p0 > 0) else np.nan
+        odds_ratio_ha = ((a + 0.5) * (d + 0.5)) / ((b + 0.5) * (c + 0.5)) if (b + 0.5) * (c + 0.5) != 0 else np.nan
+        se_rd = np.sqrt(p1 * (1 - p1) / n_with + p0 * (1 - p0) / n_without) if n_with > 0 and n_without > 0 and pd.notna(p1) and pd.notna(p0) else np.nan
+        z = 1.96
+        risk_diff_ci_low = (risk_diff - z * se_rd) if pd.notna(se_rd) and pd.notna(risk_diff) else np.nan
+        risk_diff_ci_high = (risk_diff + z * se_rd) if pd.notna(se_rd) and pd.notna(risk_diff) else np.nan
+        rows.append({
+            "label": label,
+            "display_name": config.get_label_display(label),
+            "n_with_label": n_with,
+            "n_without_label": n_without,
+            "n_improve_with": a,
+            "n_improve_without": c,
+            "p_improve_with": p1,
+            "p_improve_without": p0,
+            "risk_diff": risk_diff,
+            "risk_diff_ci_low": risk_diff_ci_low,
+            "risk_diff_ci_high": risk_diff_ci_high,
+            "relative_risk": relative_risk,
+            "odds_ratio_ha": odds_ratio_ha,
+            "fisher_pval": fisher_pval,
+            "significant": pd.notna(fisher_pval) and fisher_pval < 0.05,
+        })
+    result = pd.DataFrame(rows)
+    if not result.empty:
+        result = result.sort_values("risk_diff", ascending=False)
+    logger.info(f"  Computed improvement tests for {len(result)} labels")
+    return result
+
+
 def compute_label_difficulty_interaction(
     paired_df: pd.DataFrame,
     config: RQ3Config = DEFAULT_CONFIG,
@@ -536,6 +784,9 @@ def generate_summary_report(
     stratified_difficulty: pd.DataFrame,
     stratified_project_size: pd.DataFrame,
     label_winner_correlation: Optional[pd.DataFrame] = None,
+    mcnemar_result: Optional[dict] = None,
+    label_improvement_tests: Optional[pd.DataFrame] = None,
+    selector_mcnemar_result: Optional[dict] = None,
     config: RQ3Config = DEFAULT_CONFIG,
 ) -> str:
     """Generate a text summary report of findings.
@@ -554,6 +805,12 @@ def generate_summary_report(
         Stratified analysis by project size
     label_winner_correlation : pd.DataFrame, optional
         Correlation between labels and winner type
+    mcnemar_result : dict, optional
+        Result of compute_mcnemar_test (global paired test vs Agent)
+    label_improvement_tests : pd.DataFrame, optional
+        Result of compute_label_improvement_tests (Fisher's exact per label)
+    selector_mcnemar_result : dict, optional
+        Result of compute_selector_mcnemar_test (chosen vs rejected diff)
     config : RQ3Config
         Configuration
 
@@ -679,6 +936,80 @@ def generate_summary_report(
             lines.append("No labels showed a strong preference (|Delta EM| > 0.05) for either method.")
             lines.append("")
     
+    # Global Method Comparison (McNemar)
+    if mcnemar_result:
+        lines.append("---")
+        lines.append("")
+        lines.append("## Global Method Comparison (McNemar Test)")
+        lines.append("")
+        lines.append("Paired test on exact match: we only use *discordant* pairs (one method correct, the other wrong).")
+        lines.append("Under the null that methods are equivalent, the number of pairs where Bypass is correct and Agent is wrong")
+        lines.append("should be symmetric with the reverse. One-sided exact binomial test: **Bypass is better than Agent on EM**.")
+        lines.append("")
+        n_tot = mcnemar_result.get("n_total", 0)
+        b_val = mcnemar_result.get("b_agent_only", 0)
+        c_val = mcnemar_result.get("c_bypass_only", 0)
+        n_disc = mcnemar_result.get("n_discordant", 0)
+        p_val = mcnemar_result.get("p_value", np.nan)
+        lines.append("| Quantity | Value |")
+        lines.append("|----------|-------|")
+        lines.append(f"| N (total pairs) | {n_tot} |")
+        lines.append(f"| Agent correct, Bypass wrong (b) | {b_val} |")
+        lines.append(f"| Agent wrong, Bypass correct (c) | {c_val} |")
+        lines.append(f"| Discordant pairs (b + c) | {n_disc} |")
+        pval_str = f"{p_val:.2e}" if pd.notna(p_val) and p_val < 0.001 else (f"{p_val:.4f}" if pd.notna(p_val) else "N/A")
+        lines.append(f"| P-value (exact binomial, one-sided) | {pval_str} |")
+        lines.append("")
+        if pd.notna(p_val) and p_val < 0.05:
+            lines.append("**Conclusion:** Bypass is significantly better than Agent on exact match (p < 0.05).")
+        else:
+            lines.append("**Conclusion:** The global paired test does not show a significant advantage for Bypass at α = 0.05.")
+        lines.append("")
+
+    # Selector McNemar section
+    if selector_mcnemar_result:
+        lines.append("---")
+        lines.append("")
+        lines.append("## Selector Quality: Chosen vs Rejected Diff (McNemar Test)")
+        lines.append("")
+        lines.append("This test evaluates the Bypass *selector* directly, independent of the single-agent baseline.")
+        lines.append("For each sample, Bypass produces two candidate diffs (A and B) and a selector picks one.")
+        lines.append("We compare the **chosen** diff's exact match against the **rejected** diff's exact match.")
+        lines.append("")
+        lines.append("Discordant pairs:")
+        lines.append("- **b** = chosen correct, rejected wrong (selector picks the better diff)")
+        lines.append("- **c** = chosen wrong, rejected correct (selector picks the worse diff)")
+        lines.append("")
+        lines.append("Under H0 (selector is random), b and c are symmetric.")
+        lines.append("One-sided exact binomial: H1 = selector wins more often than chance.")
+        lines.append("")
+        n_tot = selector_mcnemar_result.get("n_total", 0)
+        b_val = selector_mcnemar_result.get("b_selector_wins", 0)
+        c_val = selector_mcnemar_result.get("c_selector_loses", 0)
+        n_disc = selector_mcnemar_result.get("n_discordant", 0)
+        p_val = selector_mcnemar_result.get("p_value", np.nan)
+        met = selector_mcnemar_result.get("metric", "exact_match")
+        lines.append(f"**Metric:** {met}")
+        lines.append("")
+        lines.append("| Quantity | Value |")
+        lines.append("|----------|-------|")
+        lines.append(f"| N (samples with both candidates) | {n_tot} |")
+        lines.append(f"| Both correct | {selector_mcnemar_result.get('n_both_correct', 0)} |")
+        lines.append(f"| Both wrong | {selector_mcnemar_result.get('n_both_wrong', 0)} |")
+        lines.append(f"| b: chosen correct, rejected wrong (selector wins) | {b_val} |")
+        lines.append(f"| c: chosen wrong, rejected correct (selector loses) | {c_val} |")
+        lines.append(f"| Discordant pairs (b + c) | {n_disc} |")
+        pval_str = f"{p_val:.2e}" if pd.notna(p_val) and p_val < 0.001 else (f"{p_val:.4f}" if pd.notna(p_val) else "N/A")
+        lines.append(f"| P-value (exact binomial, one-sided H1: b > c) | {pval_str} |")
+        lines.append("")
+        if pd.notna(p_val) and p_val < 0.05:
+            lines.append(f"**Conclusion:** The selector picks the better diff significantly more often than chance (p < 0.05). b={b_val} vs c={c_val}.")
+        elif pd.notna(p_val) and p_val < 0.1:
+            lines.append(f"**Conclusion:** Marginal evidence that the selector picks the better diff more often than chance (p < 0.10). b={b_val} vs c={c_val}.")
+        else:
+            lines.append(f"**Conclusion:** No significant evidence that the selector picks the better diff more often than chance (p={pval_str}). b={b_val} vs c={c_val}.")
+        lines.append("")
+
     lines.append("---")
     lines.append("")
     lines.append("## Statistical Significance")
@@ -729,6 +1060,44 @@ def generate_summary_report(
             lines.append("- Both methods perform similarly regardless of label")
             lines.append("")
     
+    # Mann-Whitney U Test section
+    if not statistical_tests.empty:
+        lines.append("### Mann-Whitney U Test")
+        lines.append("")
+        lines.append("The Mann-Whitney U test is a non-parametric alternative to the T-test. It compares")
+        lines.append("the *distribution* of performance deltas (Bypass − Agent) between samples with vs")
+        lines.append("without each label, without assuming normality. We report it alongside the T-test")
+        lines.append("because performance metrics may not be normally distributed.")
+        lines.append("")
+        sig_mw = []
+        for _, row in statistical_tests.iterrows():
+            for metric in config.metrics:
+                pval_col = f"mannwhitney_pval_{metric}"
+                if pval_col in row and pd.notna(row[pval_col]) and row[pval_col] < 0.05:
+                    sig_mw.append({
+                        "label": row["display_name"],
+                        "metric": metric,
+                        "pval": row[pval_col],
+                    })
+        if sig_mw:
+            lines.append("**Statistically significant Mann-Whitney results (p < 0.05):**")
+            lines.append("")
+            lines.append("| Label | Metric | P-value | Significance Level |")
+            lines.append("|-------|--------|---------|-------------------|")
+            for item in sorted(sig_mw, key=lambda x: x["pval"])[:15]:
+                if item["pval"] < 0.001:
+                    sig_level = "Highly significant (p < 0.001)"
+                elif item["pval"] < 0.01:
+                    sig_level = "Very significant (p < 0.01)"
+                else:
+                    sig_level = "Significant (p < 0.05)"
+                pval_str = f"{item['pval']:.2e}" if item["pval"] < 0.001 else f"{item['pval']:.4f}"
+                lines.append(f"| {item['label']} | {item['metric']} | {pval_str} | {sig_level} |")
+            lines.append("")
+        else:
+            lines.append("No Mann-Whitney results reached statistical significance (p < 0.05).")
+            lines.append("")
+    
     lines.append("---")
     lines.append("")
     lines.append("## Stratified Analysis")
@@ -761,6 +1130,9 @@ def generate_summary_report(
     lines.append("")
     lines.append("Which labels are more common when Bypass wins vs when methods tie (or Agent wins)?")
     lines.append("This reveals what characteristics predict Bypass success.")
+    lines.append("")
+    lines.append("**Metric:** Winner is determined by **exact match** (Bypass wins if Bypass EM > Agent EM; tie if equal).")
+    lines.append("The Chi-squared tests assess whether each label is more/less prevalent in Bypass-winning samples vs Tie samples.")
     lines.append("")
     
     if label_winner_correlation is not None and not label_winner_correlation.empty:
@@ -807,11 +1179,13 @@ def generate_summary_report(
                 lines.append("")
                 lines.append("These labels appear more frequently when Bypass outperforms Agent than when they tie:")
                 lines.append("")
-                lines.append("| Label | % in Bypass Wins | % in Ties | Difference | Significant? |")
-                lines.append("|-------|------------------|-----------|------------|--------------|")
+                lines.append("| Label | % in Bypass Wins | % in Ties | Difference | P-value | Significant? |")
+                lines.append("|-------|------------------|-----------|------------|--------|--------------|")
                 for item in sorted(bypass_favored, key=lambda x: x["pct_diff"], reverse=True):
                     sig_marker = "Yes (p<0.05)" if item["significant"] else "No"
-                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_tie']:.1f}% | +{item['pct_diff']:.1f}pp | {sig_marker} |")
+                    pval = item["pval"]
+                    pval_str = "N/A" if pd.isna(pval) else (f"{pval:.2e}" if pval < 0.001 else f"{pval:.4f}")
+                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_tie']:.1f}% | +{item['pct_diff']:.1f}pp | {pval_str} | {sig_marker} |")
                 lines.append("")
                 
                 # Interpretation
@@ -827,11 +1201,13 @@ def generate_summary_report(
                 lines.append("")
                 lines.append("These labels appear more frequently when methods tie than when Bypass wins:")
                 lines.append("")
-                lines.append("| Label | % in Bypass Wins | % in Ties | Difference | Significant? |")
-                lines.append("|-------|------------------|-----------|------------|--------------|")
+                lines.append("| Label | % in Bypass Wins | % in Ties | Difference | P-value | Significant? |")
+                lines.append("|-------|------------------|-----------|------------|--------|--------------|")
                 for item in sorted(tie_favored, key=lambda x: x["pct_diff"]):
                     sig_marker = "Yes (p<0.05)" if item["significant"] else "No"
-                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_tie']:.1f}% | {item['pct_diff']:.1f}pp | {sig_marker} |")
+                    pval = item["pval"]
+                    pval_str = "N/A" if pd.isna(pval) else (f"{pval:.2e}" if pval < 0.001 else f"{pval:.4f}")
+                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_tie']:.1f}% | {item['pct_diff']:.1f}pp | {pval_str} | {sig_marker} |")
                 lines.append("")
                 
                 # Interpretation
@@ -873,11 +1249,13 @@ def generate_summary_report(
                 lines.append("")
                 lines.append("These labels appear more frequently when Bypass outperforms Agent:")
                 lines.append("")
-                lines.append("| Label | % in Bypass Wins | % in Agent Wins | Difference | Significant? |")
-                lines.append("|-------|------------------|-----------------|------------|--------------|")
+                lines.append("| Label | % in Bypass Wins | % in Agent Wins | Difference | P-value | Significant? |")
+                lines.append("|-------|------------------|-----------------|------------|--------|--------------|")
                 for item in sorted(bypass_favored, key=lambda x: x["pct_diff"], reverse=True):
                     sig_marker = "Yes (p<0.05)" if item["significant"] else "No"
-                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_agent']:.1f}% | +{item['pct_diff']:.1f}pp | {sig_marker} |")
+                    pval = item["pval"]
+                    pval_str = "N/A" if pd.isna(pval) else (f"{pval:.2e}" if pval < 0.001 else f"{pval:.4f}")
+                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_agent']:.1f}% | +{item['pct_diff']:.1f}pp | {pval_str} | {sig_marker} |")
                 lines.append("")
                 
                 sig_items = [x for x in bypass_favored if x["significant"]]
@@ -892,11 +1270,13 @@ def generate_summary_report(
                 lines.append("")
                 lines.append("These labels appear more frequently when Agent outperforms Bypass:")
                 lines.append("")
-                lines.append("| Label | % in Bypass Wins | % in Agent Wins | Difference | Significant? |")
-                lines.append("|-------|------------------|-----------------|------------|--------------|")
+                lines.append("| Label | % in Bypass Wins | % in Agent Wins | Difference | P-value | Significant? |")
+                lines.append("|-------|------------------|-----------------|------------|--------|--------------|")
                 for item in sorted(agent_favored, key=lambda x: x["pct_diff"]):
                     sig_marker = "Yes (p<0.05)" if item["significant"] else "No"
-                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_agent']:.1f}% | {item['pct_diff']:.1f}pp | {sig_marker} |")
+                    pval = item["pval"]
+                    pval_str = "N/A" if pd.isna(pval) else (f"{pval:.2e}" if pval < 0.001 else f"{pval:.4f}")
+                    lines.append(f"| {item['label']} | {item['pct_bypass']:.1f}% | {item['pct_agent']:.1f}% | {item['pct_diff']:.1f}pp | {pval_str} | {sig_marker} |")
                 lines.append("")
                 
                 sig_items = [x for x in agent_favored if x["significant"]]
@@ -916,6 +1296,37 @@ def generate_summary_report(
         lines.append("Label-winner correlation analysis not available.")
         lines.append("")
     
+    # Per-Label Improvement Analysis (Fisher's exact on improve = Bypass > Agent)
+    if label_improvement_tests is not None and not label_improvement_tests.empty:
+        lines.append("---")
+        lines.append("")
+        lines.append("## Per-Label Improvement Analysis (Fisher's Exact)")
+        lines.append("")
+        lines.append("For each label we test whether the label changes the *probability of improvement* (Bypass EM > Agent EM).")
+        lines.append("**improve** = 1 if Bypass wins, 0 otherwise (tie or Agent wins). Fisher's exact test on the 2×2 table")
+        lines.append("(label present × improve). Effect sizes: risk difference, relative risk, and Haldane-Anscombe corrected odds ratio.")
+        lines.append("")
+        lines.append("| Label | P(improve given label) | P(improve given no label) | Risk Diff | Rel. Risk | OR (HA) | Fisher p | Sig? |")
+        lines.append("|-------|--------------------|-------------------------|------------|-----------|---------|---------|------|")
+        for _, row in label_improvement_tests.iterrows():
+            p1 = row.get("p_improve_with", np.nan)
+            p0 = row.get("p_improve_without", np.nan)
+            rd = row.get("risk_diff", np.nan)
+            rr = row.get("relative_risk", np.nan)
+            or_ha = row.get("odds_ratio_ha", np.nan)
+            fp = row.get("fisher_pval", np.nan)
+            sig = "Yes" if (pd.notna(fp) and fp < 0.05) else "No"
+            p1_s = f"{p1:.3f}" if pd.notna(p1) else "—"
+            p0_s = f"{p0:.3f}" if pd.notna(p0) else "—"
+            rd_s = f"{rd:+.3f}" if pd.notna(rd) else "—"
+            rr_s = f"{rr:.2f}" if pd.notna(rr) else "—"
+            or_s = f"{or_ha:.2f}" if pd.notna(or_ha) else "—"
+            fp_s = f"{fp:.2e}" if pd.notna(fp) and fp < 0.001 else (f"{fp:.4f}" if pd.notna(fp) else "—")
+            lines.append(f"| {row.get('display_name', row.get('label', ''))} | {p1_s} | {p0_s} | {rd_s} | {rr_s} | {or_s} | {fp_s} | {sig} |")
+        lines.append("")
+        lines.append("See `label_improvement_tests.csv` for full counts and `rq3_label_improvement_forest.png` for a forest plot of risk differences.")
+        lines.append("")
+    
     lines.append("---")
     lines.append("")
     lines.append("## Glossary")
@@ -927,7 +1338,9 @@ def generate_summary_report(
     lines.append("| Similarity | Continuous metric (0-1) measuring how similar output is to ground truth |")
     lines.append("| Win Rate | Percentage of samples where one method outperformed the other |")
     lines.append("| P-value | Probability of observing this difference by chance (lower = more significant) |")
-    lines.append("| T-test | Statistical test comparing means of two groups |")
+    lines.append("| T-test | Parametric test comparing means of two groups (assumes normality) |")
+    lines.append("| Mann-Whitney U | Non-parametric test comparing distributions of two groups (no normality assumption) |")
+    lines.append("| Chi-squared | Test for association between categorical variables (e.g., label prevalence vs winner type) |")
     lines.append("")
     
     return "\n".join(lines)

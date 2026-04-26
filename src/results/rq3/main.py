@@ -62,6 +62,9 @@ from .statistics import (
     compute_stratified_analysis,
     compute_statistical_tests,
     compute_label_winner_correlation,
+    compute_mcnemar_test,
+    compute_label_improvement_tests,
+    compute_selector_mcnemar_test,
     generate_summary_report,
     compute_complexity_performance_correlation,
     compute_complexity_by_label,
@@ -72,6 +75,7 @@ from .plots import (
     plot_co_occurrence_heatmap,
     plot_method_comparison_by_label,
     plot_performance_delta_by_label,
+    plot_label_improvement_forest,
     plot_difficulty_interaction,
     plot_project_size_interaction,
     plot_all_labels_violin,
@@ -288,6 +292,33 @@ def _run_single_analysis(
             label_winner_corr_df.to_csv(corr_path, index=False)
             outputs["label_winner_correlation"] = corr_path
     
+    # McNemar test (global paired method difference)
+    mcnemar_result = {}
+    if statistical_tests and not paired_df.empty:
+        mcnemar_result = compute_mcnemar_test(paired_df, config)
+        if mcnemar_result:
+            mcnemar_path = output_path / "mcnemar_test.csv"
+            pd.DataFrame([mcnemar_result]).to_csv(mcnemar_path, index=False)
+            outputs["mcnemar_test"] = mcnemar_path
+    
+    # Per-label improvement tests (Fisher's exact on improve = Bypass > Agent)
+    label_improvement_tests_df = pd.DataFrame()
+    if statistical_tests and not paired_df.empty:
+        label_improvement_tests_df = compute_label_improvement_tests(paired_df, config, metric="exact_match")
+        if not label_improvement_tests_df.empty:
+            imp_path = output_path / "label_improvement_tests.csv"
+            label_improvement_tests_df.to_csv(imp_path, index=False)
+            outputs["label_improvement_tests"] = imp_path
+
+    # Selector McNemar test (chosen vs rejected diff — evaluates selector quality)
+    selector_mcnemar_result = {}
+    if statistical_tests and not results_df.empty:
+        selector_mcnemar_result = compute_selector_mcnemar_test(results_df, metric="exact_match")
+        if selector_mcnemar_result:
+            sel_path = output_path / "selector_mcnemar_test.csv"
+            pd.DataFrame([selector_mcnemar_result]).to_csv(sel_path, index=False)
+            outputs["selector_mcnemar_test"] = sel_path
+
     # Generate plots
     if plots:
         if not label_summary_df.empty:
@@ -327,6 +358,11 @@ def _run_single_analysis(
                 plot_path = output_path / f"rq3_violin_all_labels_{metric}.png"
                 plot_all_labels_violin(paired_df, metric, config, output_path=plot_path, show=show)
                 outputs[f"plot_violin_{metric}"] = plot_path
+        
+        if not label_improvement_tests_df.empty:
+            plot_path = output_path / "rq3_label_improvement_forest.png"
+            plot_label_improvement_forest(label_improvement_tests_df, config, output_path=plot_path, show=show)
+            outputs["plot_label_improvement_forest"] = plot_path
     
     # Summary report
     if summary_report:
@@ -337,6 +373,9 @@ def _run_single_analysis(
             stratified_difficulty_df,
             stratified_project_size_df,
             label_winner_corr_df,
+            mcnemar_result if mcnemar_result else None,
+            label_improvement_tests_df if not label_improvement_tests_df.empty else None,
+            selector_mcnemar_result if selector_mcnemar_result else None,
             config,
         )
         report_path = output_path / "rq3_summary.md"

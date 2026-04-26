@@ -20,3 +20,5 @@ __pycache__/
 *.cursorignore
 
 *.sh
+
+*.zip

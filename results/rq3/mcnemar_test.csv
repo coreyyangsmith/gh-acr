@@ -1,0 +1,2 @@
+n_total,n_both_correct,n_both_wrong,b_agent_only,c_bypass_only,n_discordant,p_value,test
+872,0,646,0,226,226,9.273015376718553e-69,McNemar_exact_binomial
