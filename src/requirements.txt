@@ -95,6 +95,7 @@ zstandard==0.23.0
 rouge-score==0.1.2
 sacrebleu==2.4.3
 rapidfuzz==3.13.0
+pytest>=8
 transformers==4.56.1
 tokenizers==0.22.0
 huggingface_hub==0.34.4

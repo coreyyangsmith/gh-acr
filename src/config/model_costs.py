@@ -20,6 +20,7 @@ Each model entry contains:
 Model Naming Conventions
 ------------------------
 - "openai/<model>": OpenAI API models (e.g., "openai/gpt-4o-mini")
+- "openrouter/<provider>/<model>": OpenRouter models (e.g., "openrouter/anthropic/claude-sonnet-4.5")
 - "groq:<model>": Groq API models (e.g., "groq:llama-3.1-8b-instant")
 - "local:<path>": Local HuggingFace models (e.g., "local:meta-llama/Llama-3.1-8B")
 
@@ -84,6 +85,30 @@ MODEL_COSTS: Dict[str, Dict[str, Any]] = {
         "input_cost_per_1k": 0.00125,
         "output_cost_per_1k": 0.010,
         "tokenizer": "o200k_base",
+    },
+
+    # -------------------------------------------------------------------------
+    # OpenRouter Models (OpenAI-compatible API; costs vary by upstream provider)
+    # Add entries for models you use frequently. Lookup also falls back via
+    # get_model_config() if only the openrouter/<id> key is present.
+    # -------------------------------------------------------------------------
+    "openrouter/openai/gpt-4o-mini": {
+        "input_limit": 128_000,
+        "output_limit": 16_000,
+        "sliding_window": False,
+        "total_limit": 128_000,
+        "input_cost_per_1k": 0.00015,
+        "output_cost_per_1k": 0.0006,
+        "tokenizer": "o200k_base",
+    },
+    "openrouter/anthropic/claude-sonnet-4.5": {
+        "input_limit": 200_000,
+        "output_limit": 64_000,
+        "sliding_window": False,
+        "total_limit": 200_000,
+        "input_cost_per_1k": 0.003,
+        "output_cost_per_1k": 0.015,
+        "tokenizer": "cl100k_base",
     },
 
     # -------------------------------------------------------------------------
@@ -204,6 +229,10 @@ def get_model_config(model_name: str) -> Dict[str, Any]:
     if model_name.startswith("groq:"):
         alias = "groq/" + model_name.split(":", 1)[1]
         return dict(MODEL_COSTS.get(alias, {}))
+
+    if model_name.startswith("openrouter/"):
+        # Already the canonical key form; no alternate needed.
+        return {}
 
     return {}
 

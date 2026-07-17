@@ -39,6 +39,8 @@ class TruncatingLLMWrapper:
                 return dict(cfg)
             if self._model_name.startswith("openai/"):
                 return dict(MODEL_COSTS.get(self._model_name, {}) or {})
+            if self._model_name.startswith("openrouter/"):
+                return dict(MODEL_COSTS.get(self._model_name, {}) or {})
             if self._model_name.startswith("groq:"):
                 alias = "groq/" + self._model_name.split(":", 1)[1]
                 return dict(MODEL_COSTS.get(alias, {}) or {})

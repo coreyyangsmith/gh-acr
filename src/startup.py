@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 try:  # optional dependency
     from dotenv import find_dotenv, load_dotenv  # type: ignore
@@ -181,13 +182,18 @@ def _run_startup_once() -> None:
         return
     _STARTUP_HAS_RUN = True
 
-    # Load environment variables from .env (best-effort)
+    # Load environment variables from .env (best-effort).
+    # Prefer an explicit repo-root `.env` so keys live next to `.env.example`.
     try:
-        env_path = find_dotenv(usecwd=True) or find_dotenv(usecwd=False)
-        if env_path:
-            load_dotenv(env_path)
+        root_env = Path(__file__).resolve().parents[1] / ".env"
+        if root_env.is_file():
+            load_dotenv(root_env)
         else:
-            load_dotenv()
+            env_path = find_dotenv(usecwd=True) or find_dotenv(usecwd=False)
+            if env_path:
+                load_dotenv(env_path)
+            else:
+                load_dotenv()
     except Exception:
         pass
 

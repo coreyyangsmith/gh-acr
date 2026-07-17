@@ -10,25 +10,30 @@ Main Functions
 
 Supported Model Schemes
 -----------------------
-1. **openai/<model>**: OpenAI API via `langchain_openai.ChatOpenAI`
+1. **openai/<model>**: OpenAI API via `OpenAIHandler`
    - Requires OPENAI_API_KEY environment variable
    - Examples: "openai/gpt-4o-mini", "openai/gpt-4.1-nano-2025-04-14"
 
-2. **groq:<model>**: Groq API via `langchain_groq.ChatGroq`
+2. **openrouter/<provider>/<model>**: OpenRouter (OpenAI-compatible API)
+   - Requires OPENROUTER_API_KEY environment variable
+   - Examples: "openrouter/anthropic/claude-sonnet-4.5"
+
+3. **groq:<model>**: Groq API via `GroqHandler`
    - Requires GROQ_API_KEY environment variable
    - Examples: "groq:llama-3.1-8b-instant", "groq:qwen/qwen3-32b"
 
-3. **local:<path>**: Locally loaded transformers model (CPU/GPU)
+4. **local:<path>**: Locally loaded transformers model (CPU/GPU)
    - No API key required, runs inference locally
    - Examples: "local:meta-llama/Llama-3.2-1B", "local:Qwen/Qwen3-8B"
 
 Architecture
 ------------
-The module uses a caching strategy (@lru_cache) to avoid redundant model loading.
-Each backend is wrapped with:
+Provider-specific logic lives in ``src.agents.handlers``. This module
+resolves a handler via the registry, then wraps the result with:
 1. **TruncatingLLMWrapper**: Clips over-long prompts to model limits
 2. **RateLimitAndCostHandler**: Enforces rate limits and logs token costs
 3. **_ThreadSafeLLMWrapper**: Prevents tokenizer concurrency issues
+Results are cached with @lru_cache to avoid redundant model loading.
 
 Example Usage
 -------------
@@ -45,14 +50,10 @@ import threading
 from functools import lru_cache
 from typing import Any, Optional, Tuple
 
-from langchain_core.messages import AIMessage
-from langchain_core.runnables import Runnable
-
-from .backends import create_groq_backend, create_local_backend, create_openai_backend
 from .callbacks import RateLimitAndCostHandler
+from .handlers import create_backend
 from .token_utils import count_tokens, tiktoken_encoder
 from .truncation_wrapper import TruncatingLLMWrapper
-from ..config.model_costs import MODEL_COSTS
 
 
 logger = logging.getLogger(__name__)
@@ -102,6 +103,7 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:
     model_name
         A URI-like model identifier:
         - "openai/<model>" for OpenAI models
+        - "openrouter/<provider>/<model>" for OpenRouter models
         - "groq:<model>" for Groq models
         - "local:<path>" for local HuggingFace models
 
@@ -125,25 +127,8 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:
     >>> result = llm.invoke("What is 2+2?")
     >>> print(result.content)
     """
-    raw_llm: Optional[Any] = None
-    enc: Optional[Any] = None
-
-    # Route to appropriate backend based on model scheme
-    if model_name.startswith("openai/"):
-        enc, raw_llm = create_openai_backend(model_name)
-
-    elif model_name.startswith("groq:"):
-        logger.info("[groq] Using Groq backend: model=%s", model_name)
-        enc, raw_llm = create_groq_backend(model_name)
-
-    elif model_name.startswith("local:"):
-        logger.info("[local] Using local Transformers backend: model=%s", model_name)
-        enc, raw_llm = create_local_backend(model_name)
-
-    else:
-        msg = f"Unknown model_name scheme: {model_name!r}. Expected openai/, groq:, or local:"
-        logger.error(msg)
-        raise ValueError(msg)
+    logger.info("[get_backend] Resolving handler for model=%s", model_name)
+    enc, raw_llm = create_backend(model_name)
 
     if raw_llm is None:
         msg = f"Failed to initialize LLM backend for model_name={model_name}"
