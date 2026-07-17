@@ -1,0 +1,1101 @@
+sample_id,file_count,simplicity_files,complexity_files,complexity_preference_files,both_preference_labels_files,dominant_preference,source_file
+103656426411,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+106151546310,3,0,2,2,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+107501480065,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+115058474542,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+118214162527,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+125568505545,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+126658010330,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+127442621803,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+134296232550,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+135757895111,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+136304482098,3,1,2,3,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+141616630456,3,2,1,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+147440192254,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+153867800458,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+157321321819,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+157961687120,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+160767656621,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+164866621823,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+165342132729,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+172409570361,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+173479270170,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+173524980836,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+181756214525,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+18212518336,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+192668479653,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+192974181015,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+193733771823,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+195941536019,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+199378705901,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+20234665134,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+202587321267,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+203339145749,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+206266701606,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+207238523129,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+221307964536,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+223868938267,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+225336541252,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+231040798896,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+236822274021,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+239379983732,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+240107024706,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+240343331150,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+247272567499,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+247402917526,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+255106664924,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+257344572820,3,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+258610168409,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+260153519765,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+26064677954,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+263056810,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+27785054052,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+285547976270,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+288458015299,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+289830531066,3,2,1,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+291724734374,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+293493941862,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+294497416859,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+29794561326,4,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+299612273952,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+300283092576,3,2,1,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+304231110873,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+31104414942,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+311713717407,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+319938361487,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+320227862460,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+325089916934,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+326847022784,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+327844608780,10,4,6,10,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+330249272931,3,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+33086999729,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+334522083487,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+335757919983,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+343704493553,2,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+347639123651,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+34764634804,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+35571962588,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+356744499920,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+366654765884,6,0,5,5,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+369786533796,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+371824998441,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+377849635108,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+380378091414,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+383851257846,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+387387732626,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+39763624666,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+398726730431,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+403639451004,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+409327940943,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+410944372777,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+412536199125,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+413716776851,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+414324359168,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+416581719268,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+416634263862,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+416718946157,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+41736855244,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+418296772343,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+426139487356,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+428709047342,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+431213158576,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+431914205617,2,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+434933580719,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+435705564173,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+43632899249,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+436366465098,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+443254717292,2,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+447829790275,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+45020413971,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+45123200806,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+453683683380,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+455519918518,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+457742052412,2,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+464900646413,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+465076645771,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+465318928594,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+469334552230,2,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+471473055317,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+471979962580,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+472663786750,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+472873765214,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+475948833413,2,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+484078980058,2,0,2,2,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+487745008256,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+488112880526,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+492094294886,8,3,3,6,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+495583195657,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+506396780306,2,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+511088739143,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+511196211160,4,0,2,2,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+511600122325,2,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+514749726947,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+514967041401,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+516357586965,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+519281069297,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+530425607472,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+532004246108,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+532071276310,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+532784401343,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+533140668739,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+534740447932,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+535144797436,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+535354647515,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+537970847603,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+54373966743,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+548700815296,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+552143295550,4,4,0,4,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+560535484520,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+565830903795,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+569274523594,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+575884605337,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+585789884320,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+591583863134,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+592539767353,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+593078780227,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+594353169005,6,1,2,3,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+597032650655,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+607976624665,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+609571880024,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+610166884431,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+61514164703,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+615959405420,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+623723613625,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+625741132951,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+629642901831,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+632809182375,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+635498437105,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+644391574614,2,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+646490606670,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+647710087674,3,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+651031498269,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+663221431289,3,2,1,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+663957355663,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+664190296136,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+671638652582,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+673047778423,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+673559769890,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+673955933836,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+675921593113,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+678168735747,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+681409393008,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+682118651221,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+691128606145,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+703586668030,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+707608676459,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+707880098889,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+70855665513,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+714623862778,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+715487243634,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+717165363979,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+722989476529,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+731412667487,3,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+731677227344,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+734603544380,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+735231114446,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+735879312643,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+738093286140,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+740269697209,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+744222733865,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+744412747774,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+744790156574,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+745011378403,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+753991249289,3,3,0,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+757497039796,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+758024463737,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+758171840124,2,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+760531777836,14,6,3,9,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+763264056063,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+764566398366,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+767230921903,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+771840893862,4,4,0,4,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+772159538212,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+775788536799,5,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+778418369842,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+780836304186,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+783289052658,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+784518178277,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+785366207525,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+787944817684,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+788190794177,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+789753888745,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+790659170151,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+794687372331,2,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+802604061177,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+809670489924,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+813663433969,3,2,1,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+813848322160,5,5,0,5,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+818605577439,13,1,3,4,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+820296913979,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+82032698342,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+823672850127,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+831394978257,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+831842541379,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+838393602727,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+846833881465,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+849984213250,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+850065405582,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+851165947685,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+853894369870,5,3,1,4,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+854418523194,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+85667584588,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+861045220386,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+864915051134,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+86811399170,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+875339766147,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+879341243018,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+880669871854,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+885802345950,5,5,0,5,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+887454276560,3,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+888355842122,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+889155854283,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+89582342552,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+900822826659,5,3,2,5,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+902212975621,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+904238908888,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+904562058207,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+905126134507,3,0,2,2,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+906108155094,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+91018899649,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+910673739950,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+911925353872,4,1,3,4,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+912411629049,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+912666015156,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+923023936419,2,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+924088283913,3,2,1,3,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+925594200960,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+927112591243,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+928799450478,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+936511886051,3,1,2,3,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+939240923914,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+947550465599,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+959479366750,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+964336776848,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+965325250429,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+968032133756,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+968687634347,2,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+97321414157,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+973399694447,3,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+977322491634,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+977417744289,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+979223868068,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+986150056849,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+133313355306,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+140532355399,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+192421305001,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+237229484642,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+26340290741,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+283771574796,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+331306179534,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+409702885303,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+426624007482,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+50897849942,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+522196544727,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+542594122866,3,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+555381121741,2,0,2,2,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+575333688393,2,1,1,2,0,tie (ambiguous),2025-11-09-gpt5nano-failure-classifications
+59244557910,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+62583018238,2,2,0,2,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+633246057513,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+640504300320,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+719279406899,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+731986363195,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+783844654434,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+791503251376,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+791684313047,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+846237170206,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+873013605380,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+883129389234,1,1,0,1,0,favored simplicity,2025-11-09-gpt5nano-failure-classifications
+8911998967,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+995639086955,2,0,2,2,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+334950146121,1,0,1,1,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+526181689064,1,0,0,0,0,neither,2025-11-09-gpt5nano-failure-classifications
+771909458032,2,0,2,2,0,favored complexity,2025-11-09-gpt5nano-failure-classifications
+110606214242,3,0,3,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+111549708192,2,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+112177815245,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+126300906186,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+128880763285,8,1,5,6,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+139754256322,6,2,0,2,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+150759969909,2,2,0,2,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+156461963067,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+156891706841,6,2,4,6,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+164353380250,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+164791755641,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+173529495030,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+184491340872,2,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+19494670087,2,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+203965744358,1,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+20517112572,5,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+210922017947,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+211841636747,2,1,1,2,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+219250483082,1,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+220102821649,2,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+233897411715,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+238292551428,3,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+246442576932,3,1,2,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+256863197619,2,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+25764051800,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+264841662615,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+267252009234,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+268999482638,1,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+280725884319,2,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+289090664580,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+297554581599,2,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+298747295667,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+301020949221,2,1,1,2,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+306886657625,5,2,3,5,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+308257511116,1,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+313864474780,5,1,4,5,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+318891865679,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+331185676281,5,1,4,5,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+345971295844,2,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+35906434848,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+362431974993,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+371015791792,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+39207980038,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+393438257861,3,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+395695899302,2,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+397314445398,3,1,1,2,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+400273830246,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+420939304922,3,2,0,2,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+438987608117,3,0,3,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+444606339331,3,1,2,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+451363994106,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+45626539229,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+456666028139,1,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+46282597280,3,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+46568911574,8,3,3,6,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+4886326609,3,0,3,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+508630874783,6,2,2,4,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+521682576584,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+526012981031,4,0,3,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+548379081725,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+549297201996,11,7,4,11,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+567935925978,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+579233834964,2,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+588781189110,2,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+598327271439,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+623700412408,1,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+627553864039,2,2,0,2,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+639786970653,2,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+642118282606,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+660647692663,3,1,1,2,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+660673792076,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+681966318271,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+710066445413,10,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+71222375962,7,0,7,7,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+715387869971,2,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+722274889380,6,2,1,3,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+735341233792,6,0,6,6,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+737333157458,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+74198421728,5,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+74343481119,2,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+753347001855,1,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+757793917295,2,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+784967056668,2,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+78890468565,5,4,0,4,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+789952760466,2,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+810893186987,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+833417936828,2,1,0,1,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+861987333005,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+863458841911,6,3,2,5,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+865573084915,2,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+870389664851,2,1,1,2,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+880678931366,6,3,3,6,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+881115112368,5,1,2,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+886040393559,2,2,0,2,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+896303410886,3,3,0,3,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+897965791838,3,0,3,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+900001676680,3,0,3,3,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+90998825390,9,4,1,5,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+917426426510,2,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+920866924059,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+922038930101,1,1,1,1,1,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+927346118635,5,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+929248875870,2,2,0,2,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+930100752068,1,0,0,0,0,neither,2025-11-11-gpt5nano-pass-classifications
+93141973279,2,1,1,2,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+939726392597,9,1,3,4,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+962289186455,3,0,2,2,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+966173677419,2,1,1,2,0,tie (ambiguous),2025-11-11-gpt5nano-pass-classifications
+974016557855,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+982308398779,15,7,4,11,0,favored simplicity,2025-11-11-gpt5nano-pass-classifications
+983415352415,6,2,3,5,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+997882935345,1,0,1,1,0,favored complexity,2025-11-11-gpt5nano-pass-classifications
+102729026392,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+104567777563,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+105038906426,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+105354636072,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+106151546310,3,2,1,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+106986943940,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+107501480065,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+112872124646,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+113404845952,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+122070957868,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+12459398132,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+128217118808,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+129797159042,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+130376795108,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+133728812294,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+134296232550,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+134972618836,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+137067530791,3,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+139406595292,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+140532355399,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+143627738161,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+147998253852,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+153290721917,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+153728985754,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+154304387807,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+158845296408,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+159827835820,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+160166433373,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+160767656621,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+163540612069,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+164866621823,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+18212518336,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+182290594342,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+18238994042,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+187092660972,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+190161517636,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+190169307042,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+192974181015,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+199378705901,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+200212032116,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+20234665134,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+203339145749,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+203539966931,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+215066829348,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+215713840268,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+220662483217,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+229330283794,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+229663657615,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+230582573383,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+231040798896,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+238938177304,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+241210066237,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+242047917745,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+244282362208,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+245264511134,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+252422476788,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+256935289958,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+257165184357,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+259932261229,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+260077154096,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+260555716717,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+261277312749,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+264841662615,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+271644581749,5,1,4,5,0,favored complexity,2025-11-23-qwen3-failure-classifications
+281665466056,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+283345365426,3,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+283771574796,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+287055261251,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+290925640723,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+291724734374,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+294960502166,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+296110151635,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+301718436761,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+305882271106,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+306886657625,5,4,1,5,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+31104414942,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+311713717407,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+313524151518,2,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+314720251225,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+319760109779,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+319938361487,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+322278514313,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+325089916934,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+325759721270,6,2,3,5,0,favored complexity,2025-11-23-qwen3-failure-classifications
+327055077106,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+328365962760,7,0,7,7,0,favored complexity,2025-11-23-qwen3-failure-classifications
+329674785520,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+33643660825,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+336659335134,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+343616822280,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+348340642168,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+349315126282,2,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+35316595041,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+35906434848,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+360406191090,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+361947815328,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+362431974993,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+366312584498,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+371824998441,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+373785372782,4,0,3,3,0,favored complexity,2025-11-23-qwen3-failure-classifications
+377849635108,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+38024136375,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+383851257846,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+385293859278,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+387387732626,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+407456856588,4,2,1,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+415774755217,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+41671245706,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+41736855244,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+418296772343,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+420939304922,3,2,1,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+421221587258,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+422033800664,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+422834859112,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+423295065596,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+426624007482,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+426971991110,3,2,1,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+435413083392,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+435447084255,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+440358227523,5,2,1,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+442687046824,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+44880586067,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+449657747662,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+45020413971,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+45553492800,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+459620958343,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+465076645771,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+466328562579,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+471533701156,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+471979962580,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+479397692370,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+479641026771,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+48141443196,3,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+494106425711,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+49472848586,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+498621285432,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+499168659155,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+501663061875,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+502518642995,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+503065687569,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+504386040040,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+506112998075,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+506791745103,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+509639870939,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+510444017991,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+514749726947,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+516437819195,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+521808026958,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+523448359969,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+523613345648,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+52916896984,5,0,3,3,0,favored complexity,2025-11-23-qwen3-failure-classifications
+534740447932,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+535144797436,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+540858922209,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+543704006397,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+546907284725,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+547094754328,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+547640584307,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+548683854532,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+549980692765,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+550198980616,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+554737929809,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+555866941928,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+558916203435,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+560535484520,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+565259960336,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+565480322436,4,1,2,3,0,favored complexity,2025-11-23-qwen3-failure-classifications
+568854254076,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+569274523594,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+569349300917,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+569799787608,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+572378182939,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+573684811854,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+575333688393,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+576835630666,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+578982595950,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+590958933601,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+594353169005,6,1,3,4,0,favored complexity,2025-11-23-qwen3-failure-classifications
+598639147742,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+60581983439,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+606461807621,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+615947221682,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+624665049832,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+625741132951,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+630196795468,3,2,1,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+630830314887,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+632809182375,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+635028748796,5,2,1,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+635498437105,3,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+635627844153,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+636880880015,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+637076674869,4,2,2,4,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+645631419829,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+646490606670,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+651031498269,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+651033380113,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+660673792076,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+663221431289,3,1,2,3,0,favored complexity,2025-11-23-qwen3-failure-classifications
+663957355663,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+665074721362,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+666955903726,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+670624314505,5,4,1,5,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+673559769890,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+673955933836,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+682745660010,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+683978809180,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+701715138159,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+704509286922,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+70855665513,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+711174513486,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+715977394123,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+716044946624,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+723878921736,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+724173441755,5,4,0,4,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+727878654500,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+743229358793,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+744222733865,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+744412747774,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+748358347750,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+752285151573,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+753991249289,3,3,0,3,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+757497039796,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+758024463737,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+758742228984,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+759480577751,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+762826378804,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+76308015488,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+765099915043,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+77792755679,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+784967056668,2,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+785366207525,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+786124670697,2,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+786473783191,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+787713977720,4,1,2,3,0,favored complexity,2025-11-23-qwen3-failure-classifications
+788216460043,3,0,3,3,0,favored complexity,2025-11-23-qwen3-failure-classifications
+789511319434,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+791684313047,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+793362714398,6,2,4,6,0,favored complexity,2025-11-23-qwen3-failure-classifications
+794687372331,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+798158155287,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+803581039998,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+810893186987,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+811202524573,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+823701492337,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+827456040353,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+830125785168,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+83024680479,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+831481074061,6,4,1,5,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+833417936828,2,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+840047219771,2,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+840974593127,10,1,6,7,0,favored complexity,2025-11-23-qwen3-failure-classifications
+846712784006,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+847142063317,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+850385692556,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+854918006643,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+866555028051,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+86811399170,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+868169215507,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+871680425454,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+873013605380,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+875146196630,6,4,2,6,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+879998518222,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+884710479881,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+884805918649,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+887262333435,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+887886114976,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+891933334155,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+894953225979,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+89582342552,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+900920123775,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+903520681515,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+903850840581,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+906108155094,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+911193036416,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+911949672703,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+91318994359,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+914404621863,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+916307846393,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+918843417252,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+920866924059,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+921353513292,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+921632145612,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+923603651407,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+923720796086,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+927552173488,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+930100752068,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+936446629389,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+941579677998,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+944644445469,4,3,1,4,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+952993521396,2,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+95852485835,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+960908518071,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+964336776848,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+964581034856,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+967714143883,2,2,0,2,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+968687634347,2,1,1,2,0,tie (ambiguous),2025-11-23-qwen3-failure-classifications
+970886661544,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+972012203252,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+973399694447,3,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+974016557855,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+974376897942,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+977389554850,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+977757240705,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+979223995082,1,0,0,0,0,neither,2025-11-23-qwen3-failure-classifications
+979769281315,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+985925381859,2,0,2,2,0,favored complexity,2025-11-23-qwen3-failure-classifications
+987081529487,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+991833018332,1,1,0,1,0,favored simplicity,2025-11-23-qwen3-failure-classifications
+994695454241,1,0,1,1,0,favored complexity,2025-11-23-qwen3-failure-classifications
+103174421845,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+103436751760,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+112177815245,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+118865208997,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+120506932938,3,3,0,3,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+124226477194,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+125683199024,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+128300989248,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+131781923267,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+131898172532,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+134797539444,5,3,2,5,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+143142204719,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+146020521474,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+1506393014,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+156461963067,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+156850059734,4,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+156891706841,6,2,3,5,0,favored complexity,2025-12-03-qwen3-pass-classifications
+164353380250,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+164791755641,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+178104428619,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+18238461500,2,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+187284243675,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+192668479653,3,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+194262099708,5,3,1,4,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+198338418271,3,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+203044651594,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+203965744358,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+20517112572,5,1,4,5,0,favored complexity,2025-12-03-qwen3-pass-classifications
+210792438769,5,3,0,3,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+211841636747,2,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+215446707250,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+224247888380,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+225336541252,3,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+225963265278,9,2,2,4,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+237088721185,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+244616072462,6,2,4,6,0,favored complexity,2025-12-03-qwen3-pass-classifications
+244949141056,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+261401508580,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+267252009234,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+269602862582,5,0,4,4,0,favored complexity,2025-12-03-qwen3-pass-classifications
+274346483862,3,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+27727737447,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+29257980436,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+294548097682,5,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+301670073212,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+30535717363,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+308257511116,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+312813664286,6,2,1,3,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+317394731630,3,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+321367039584,5,2,3,5,0,favored complexity,2025-12-03-qwen3-pass-classifications
+335674275872,3,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+335757919983,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+339104788355,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+344627870147,3,1,2,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+345971295844,2,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+353945844563,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+367291325779,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+372317095679,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+378025367584,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+378868780282,2,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+39531423584,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+402397190052,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+408097521578,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+414708677549,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+416185060925,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+421117117299,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+437910407439,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+455519918518,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+45626539229,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+460745724041,7,3,3,6,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+463396529884,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+46568911574,8,2,5,7,0,favored complexity,2025-12-03-qwen3-pass-classifications
+469334552230,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+479334250816,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+479520977008,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+482981666910,3,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+486405002518,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+4886326609,3,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+496345544359,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+499864541374,4,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+508212420122,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+510255085246,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+523598922540,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+526012981031,4,4,0,4,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+533140668739,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+533767129588,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+541544326408,3,1,2,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+547355197520,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+547965125010,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+552143295550,4,0,4,4,0,favored complexity,2025-12-03-qwen3-pass-classifications
+553889074834,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+555381121741,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+563318247714,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+567935925978,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+581971532076,4,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+595252553967,3,2,0,2,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+595433270831,5,2,2,4,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+614017873084,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+624697055065,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+630710949027,4,2,1,3,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+636414164571,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+643530119233,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+654399575579,3,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+657549377257,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+660647692663,3,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+666983660830,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+676470357278,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+679116021620,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+682086026826,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+682118651221,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+689359574943,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+691128606145,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+699354904206,2,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+71222375962,7,5,2,7,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+725621805577,3,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+731677227344,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+73567426006,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+74343481119,2,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+746106492868,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+749744302881,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+752856441164,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+753347001855,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+757793917295,2,2,0,2,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+767144623221,3,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+773109441061,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+775788536799,5,0,4,4,0,favored complexity,2025-12-03-qwen3-pass-classifications
+78890468565,5,2,0,2,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+791503251376,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+795115689640,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+796457589760,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+796804316249,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+80135965120,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+802604061177,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+804718277370,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+807318569422,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+807337690904,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+809992357823,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+812562829138,2,2,0,2,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+813398586551,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+822687353565,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+831842541379,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+838757145915,3,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+846490432248,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+851976000694,3,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+860953185272,3,0,3,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+865824106633,4,1,2,3,0,favored complexity,2025-12-03-qwen3-pass-classifications
+866672974975,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+867907731861,8,2,3,5,0,favored complexity,2025-12-03-qwen3-pass-classifications
+875863749916,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+881098065430,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+885802345950,5,0,5,5,0,favored complexity,2025-12-03-qwen3-pass-classifications
+886040393559,2,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+887364641960,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+895272203029,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+896303410886,3,3,0,3,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+897976472360,3,2,1,3,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+900001676680,3,3,0,3,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+900111114273,7,2,3,5,0,favored complexity,2025-12-03-qwen3-pass-classifications
+90998825390,9,4,3,7,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+911766458251,3,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+917426426510,2,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+922038930101,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+923952906245,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+928331411848,1,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+929248875870,2,2,0,2,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+93141973279,2,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+933396705737,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+935544991465,3,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+936753285532,2,0,2,2,0,favored complexity,2025-12-03-qwen3-pass-classifications
+939726392597,9,6,1,7,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+941394185344,6,0,6,6,0,favored complexity,2025-12-03-qwen3-pass-classifications
+945029853918,2,1,0,1,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+948959488177,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+961702553023,2,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+966060305144,1,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+966173677419,2,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+972312520673,6,0,6,6,0,favored complexity,2025-12-03-qwen3-pass-classifications
+97414753272,2,1,1,2,0,tie (ambiguous),2025-12-03-qwen3-pass-classifications
+981856617340,2,0,1,1,0,favored complexity,2025-12-03-qwen3-pass-classifications
+983415352415,6,3,1,4,0,favored simplicity,2025-12-03-qwen3-pass-classifications
+997967155543,1,0,0,0,0,neither,2025-12-03-qwen3-pass-classifications
+110210585948,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+115057678072,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+121217912607,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+124226477194,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+131898172532,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+133728812294,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+134797539444,5,2,2,4,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+139754256322,6,2,2,4,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+140035184561,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+146020521474,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+150759969909,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+151547044082,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+153054958748,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+156461963067,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+156850059734,4,0,4,4,0,favored complexity,2026-01-23-llama-pass-classifications
+16130294178,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+164791755641,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+167753101075,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+172881523060,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+18238461500,2,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+185122201628,8,1,6,7,0,favored complexity,2026-01-23-llama-pass-classifications
+187284243675,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+187891328019,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+192421305001,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+192668479653,3,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+194262099708,5,4,1,5,0,favored simplicity,2026-01-23-llama-pass-classifications
+197006748592,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+198338418271,3,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+210922017947,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+211841636747,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+215446707250,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+217512180114,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+220102821649,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+225336541252,3,1,2,3,0,favored complexity,2026-01-23-llama-pass-classifications
+225963265278,9,7,2,9,0,favored simplicity,2026-01-23-llama-pass-classifications
+22924018001,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+233897411715,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+238292551428,3,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+238600390342,6,0,6,6,0,favored complexity,2026-01-23-llama-pass-classifications
+247671127480,9,3,3,6,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+249060269671,4,4,0,4,0,favored simplicity,2026-01-23-llama-pass-classifications
+256863197619,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+261401508580,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+267252009234,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+27198332737,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+272340717131,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+273617180463,2,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+285547976270,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+293257957212,3,1,2,3,0,favored complexity,2026-01-23-llama-pass-classifications
+298747295667,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+307416445107,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+308257511116,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+309870345904,3,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+313864474780,5,1,4,5,0,favored complexity,2026-01-23-llama-pass-classifications
+314048431397,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+314641429474,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+317394731630,3,1,2,3,0,favored complexity,2026-01-23-llama-pass-classifications
+321367039584,5,2,3,5,0,favored complexity,2026-01-23-llama-pass-classifications
+339104788355,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+343522719498,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+345971295844,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+349315126282,2,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+378868780282,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+393294903439,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+393438257861,3,2,1,3,0,favored simplicity,2026-01-23-llama-pass-classifications
+397314445398,3,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+400273830246,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+402397190052,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+408097521578,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+414708677549,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+437910407439,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+440358227523,5,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+446901941937,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+447829790275,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+456666028139,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+458326496157,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+469334552230,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+472873765214,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+482981666910,3,0,3,3,0,favored complexity,2026-01-23-llama-pass-classifications
+484604872581,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+4886326609,3,1,2,3,0,favored complexity,2026-01-23-llama-pass-classifications
+492139350012,2,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+506396780306,2,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+508630874783,6,2,3,5,0,favored complexity,2026-01-23-llama-pass-classifications
+511196211160,4,1,3,4,0,favored complexity,2026-01-23-llama-pass-classifications
+51348011552,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+517899874303,8,4,4,8,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+519680728963,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+521808026958,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+526012981031,4,1,3,4,0,favored complexity,2026-01-23-llama-pass-classifications
+530598542251,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+531931975772,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+536304816897,5,0,5,5,0,favored complexity,2026-01-23-llama-pass-classifications
+542594518977,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+547355197520,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+553889074834,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+555290919346,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+555381121741,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+557765626847,2,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+557911204763,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+565480322436,4,2,1,3,0,favored simplicity,2026-01-23-llama-pass-classifications
+581971532076,4,4,0,4,0,favored simplicity,2026-01-23-llama-pass-classifications
+588151195551,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+594875293547,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+595433270831,5,2,3,5,0,favored complexity,2026-01-23-llama-pass-classifications
+598327271439,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+601783641769,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+614017873084,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+616198966979,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+617363168053,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+617717979505,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+6184185624,8,0,7,7,0,favored complexity,2026-01-23-llama-pass-classifications
+624697055065,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+630710949027,4,3,1,4,0,favored simplicity,2026-01-23-llama-pass-classifications
+639786970653,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+640784729255,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+644391574614,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+652758502101,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+654089349285,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+660647692663,3,0,3,3,0,favored complexity,2026-01-23-llama-pass-classifications
+66806366616,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+679116021620,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+689359574943,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+695599908844,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+695966602227,5,0,5,5,0,favored complexity,2026-01-23-llama-pass-classifications
+699354904206,2,2,0,2,0,favored simplicity,2026-01-23-llama-pass-classifications
+704064103392,4,0,4,4,0,favored complexity,2026-01-23-llama-pass-classifications
+708664933281,9,2,6,8,0,favored complexity,2026-01-23-llama-pass-classifications
+710066445413,10,5,4,9,0,favored simplicity,2026-01-23-llama-pass-classifications
+717455631464,8,3,5,8,0,favored complexity,2026-01-23-llama-pass-classifications
+72456172364,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+731677227344,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+735341233792,6,0,6,6,0,favored complexity,2026-01-23-llama-pass-classifications
+737333157458,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+74343481119,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+746106492868,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+753347001855,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+759480577751,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+773109441061,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+784967056668,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+786449541166,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+78890468565,5,2,3,5,0,favored complexity,2026-01-23-llama-pass-classifications
+791503251376,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+795115689640,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+796804316249,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+797133169666,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+802604061177,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+802843381626,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+807337690904,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+809992357823,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+81878376947,3,2,1,3,0,favored simplicity,2026-01-23-llama-pass-classifications
+823245019634,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+825096066117,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+838386290601,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+838757145915,3,2,1,3,0,favored simplicity,2026-01-23-llama-pass-classifications
+839091243336,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+849927950896,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+857012001082,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+861987333005,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+864000062415,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+865620130171,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+870389664851,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+875863749916,2,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+881115112368,5,5,0,5,0,favored simplicity,2026-01-23-llama-pass-classifications
+883062358536,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+883067272382,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+887364641960,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+891134878759,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+897976472360,3,3,0,3,0,favored simplicity,2026-01-23-llama-pass-classifications
+900001676680,3,3,0,3,0,favored simplicity,2026-01-23-llama-pass-classifications
+905153760554,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+911271203201,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+911766458251,3,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+912411629049,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications
+922682733904,4,1,2,3,0,favored complexity,2026-01-23-llama-pass-classifications
+923952906245,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+926525919272,1,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+936455278776,6,3,3,6,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+936753285532,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+945029853918,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+958670475085,2,0,2,2,0,favored complexity,2026-01-23-llama-pass-classifications
+961702553023,2,1,1,2,0,tie (ambiguous),2026-01-23-llama-pass-classifications
+972312520673,6,0,6,6,0,favored complexity,2026-01-23-llama-pass-classifications
+973399694447,3,1,0,1,0,favored simplicity,2026-01-23-llama-pass-classifications
+974016557855,1,0,0,0,0,neither,2026-01-23-llama-pass-classifications
+997882935345,1,0,1,1,0,favored complexity,2026-01-23-llama-pass-classifications

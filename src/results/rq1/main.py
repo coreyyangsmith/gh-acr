@@ -27,6 +27,8 @@ from .data import (
     compute_all_methods_metrics,
     aggregate_to_instance_level,
     GranularityType,
+    compute_paired_delta_statistics,
+    common_agent_bypass_ids,
 )
 from .dumbbell_chart import render_dumbbell_chart, render_grouped_bar_chart, render_all_methods_comparison
 from .scatter_plot import render_scatter_plot, render_scatter_plot_by_model
@@ -429,6 +431,42 @@ def generate_all_rq1_figures(
                 all_methods_instance_df.to_csv(path, index=False)
                 outputs["all_methods_instance_csv"] = path
                 logger.info(f"  Saved: {path}")
+
+            # Paired delta statistics (common agent/bypass IDs across all models)
+            logger.info("  Computing paired delta statistics (common set)...")
+            common = common_agent_bypass_ids(df)
+            if common:
+                df_common = df[df["id"].astype(str).isin(common)].copy()
+                paired_stats = compute_paired_delta_statistics(
+                    df_common, config, granularity="instance"
+                )
+                if paired_stats:
+                    ps_rows = []
+                    for ps in paired_stats:
+                        ps_rows.append(
+                            {
+                                "model_name": ps.model_name,
+                                "metric": ps.metric,
+                                "granularity": ps.granularity,
+                                "n_common_instances": ps.n_pairs,
+                                "mean_delta": ps.mean_delta,
+                                "mean_delta_ci_low": ps.ci_low,
+                                "mean_delta_ci_high": ps.ci_high,
+                                "p_value": ps.p_value,
+                                "test": ps.test,
+                                "wins": ps.wins,
+                                "ties": ps.ties,
+                                "losses": ps.losses,
+                                "n_discordant": ps.n_discordant,
+                            }
+                        )
+                    ps_df = pd.DataFrame(ps_rows)
+                    path = output_path / "rq1_paired_delta_stats_per_instance.csv"
+                    ps_df.to_csv(path, index=False)
+                    outputs["paired_delta_stats_instance_csv"] = path
+                    logger.info(f"  Saved: {path}")
+            else:
+                logger.warning("  Could not compute common agent/bypass ID set for paired deltas")
         else:
             logger.warning("  No 'id' column found - skipping per-instance metrics")
 

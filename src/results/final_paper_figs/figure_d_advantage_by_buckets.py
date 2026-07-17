@@ -53,6 +53,17 @@ except ImportError:
 
 
 FIG_D_MODEL_ORDER = ["LLaMA-3.1-8B", "Qwen3-32B", "GPT-5-nano"]
+FIG_D_FIGSIZE = (13, 5.0)
+
+# Figure D local text sizing. Adjust these values to tune this figure without
+# changing the shared style used by other final-paper outputs.
+FIG_D_TITLE_FONTSIZE = 12
+FIG_D_AXIS_LABEL_FONTSIZE = 12
+FIG_D_TICK_LABEL_FONTSIZE = 11
+FIG_D_EM_LABEL_FONTSIZE = 9
+FIG_D_SIM_LABEL_FONTSIZE = 9
+FIG_D_ROW_LABEL_FONTSIZE = 12
+FIG_D_LEGEND_FONTSIZE = 10
 
 
 def _display_model_name(model: str) -> str:
@@ -140,8 +151,8 @@ def generate_figure_d(
                     "Category": str(c),
                     "Model": _display_model_name(model),
                     "n": n,
-                    "EM_Advantage": round(em_adv, 4) if not np.isnan(em_adv) else "",
-                    "Similarity_Advantage": round(sim_adv, 4) if not np.isnan(sim_adv) else "",
+                    "EM_Advantage": round(em_adv, 2) if not np.isnan(em_adv) else "",
+                    "Similarity_Advantage": round(sim_adv, 2) if not np.isnan(sim_adv) else "",
                 })
 
     table_df = pd.DataFrame(table_rows)
@@ -165,7 +176,7 @@ def generate_figure_d(
             # Fallback color for unknown models
             model_colors[model] = "#7f7f7f"
 
-    fig, axes = plt.subplots(2, 3, figsize=(13, 4.5))
+    fig, axes = plt.subplots(2, 3, figsize=FIG_D_FIGSIZE)
 
     em_lo, em_hi = -0.03, 0.22
     sim_lo, sim_hi = -0.1, 0.55
@@ -188,9 +199,13 @@ def generate_figure_d(
             em_vals = [v if not np.isnan(v) else 0 for v in em_vals]
             sim_vals = [v if not np.isnan(v) else 0 for v in sim_vals]
 
+            # Round values to 2 decimal places for plotting and labels
+            em_vals_rounded = [round(v, 2) for v in em_vals]
+            sim_vals_rounded = [round(v, 2) for v in sim_vals]
+
             bars = ax.bar(
                 x,
-                em_vals,
+                em_vals_rounded,
                 0.55,
                 color=model_colors[model],
                 alpha=0.8,
@@ -198,15 +213,15 @@ def generate_figure_d(
                 linewidth=0.5,
             )
             # EM bar labels: always above bar, centered
-            for bar, v in zip(bars, em_vals):
+            for bar, v in zip(bars, em_vals_rounded):
                 ax.annotate(
-                    f"{v:+.3f}",
+                    f"{v:+.2f}",
                     xy=(bar.get_x() + bar.get_width() / 2, max(v, 0)),
                     xytext=(0, 3),
                     textcoords="offset points",
                     ha="center",
                     va="bottom",
-                    fontsize=6.2,
+                    fontsize=FIG_D_EM_LABEL_FONTSIZE,
                     zorder=5,
                     bbox=dict(
                         boxstyle="round,pad=0.15",
@@ -219,7 +234,7 @@ def generate_figure_d(
             ax2 = ax.twinx()
             ax2.plot(
                 x,
-                sim_vals,
+                sim_vals_rounded,
                 "s-",
                 color="darkred",
                 markersize=5,
@@ -231,8 +246,8 @@ def generate_figure_d(
             # so we can detect visual proximity.
             em_range = em_hi - em_lo
             sim_range = sim_hi - sim_lo
-            for i, v in enumerate(sim_vals):
-                em_norm = (em_vals[i] - em_lo) / em_range
+            for i, v in enumerate(sim_vals_rounded):
+                em_norm = (em_vals_rounded[i] - em_lo) / em_range
                 sim_norm = (v - sim_lo) / sim_range
                 # If the sim marker is visually close to the EM bar top,
                 # push the label below the marker instead of above.
@@ -243,11 +258,11 @@ def generate_figure_d(
                     y_shift = 8
                     va_lbl = "bottom"
                 ax2.annotate(
-                    f"{v:+.3f}",
+                    f"{v:+.2f}",
                     (x[i], v),
                     textcoords="offset points",
                     xytext=(0, y_shift),
-                    fontsize=6.0,
+                    fontsize=FIG_D_SIM_LABEL_FONTSIZE,
                     color="darkred",
                     ha="center",
                     va=va_lbl,
@@ -262,16 +277,35 @@ def generate_figure_d(
 
             ax.axhline(0, color="gray", linestyle="--", linewidth=0.8)
             ax.set_xticks(x)
-            ax.set_xticklabels(categories)
+            ax.set_xticklabels(categories, fontsize=FIG_D_TICK_LABEL_FONTSIZE)
+            ax.tick_params(axis="y", labelsize=FIG_D_TICK_LABEL_FONTSIZE)
+            ax2.tick_params(axis="y", labelsize=FIG_D_TICK_LABEL_FONTSIZE)
             if row_idx == 1:
-                ax.set_xlabel(xlabel, fontweight="bold")
-            ax.set_ylabel("EM Advantage" if col_idx == 0 else "", fontweight="bold")
+                ax.set_xlabel(
+                    xlabel,
+                    fontweight="bold",
+                    fontsize=FIG_D_AXIS_LABEL_FONTSIZE,
+                )
+            ax.set_ylabel(
+                "EM Advantage" if col_idx == 0 else "",
+                fontweight="bold",
+                fontsize=FIG_D_AXIS_LABEL_FONTSIZE,
+            )
             if col_idx == len(FIG_D_MODEL_ORDER) - 1:
-                ax2.set_ylabel("Similarity Advantage", color="darkred", fontweight="bold")
+                ax2.set_ylabel(
+                    "Similarity Advantage",
+                    color="darkred",
+                    fontweight="bold",
+                    fontsize=FIG_D_AXIS_LABEL_FONTSIZE,
+                )
             else:
                 ax2.set_yticklabels([])
             if row_idx == 0:
-                ax.set_title(_display_model_name(model), fontweight="bold")
+                ax.set_title(
+                    _display_model_name(model),
+                    fontweight="bold",
+                    fontsize=FIG_D_TITLE_FONTSIZE,
+                )
 
             ax.set_ylim(em_lo, em_hi)
             ax2.set_ylim(sim_lo, sim_hi)
@@ -288,7 +322,7 @@ def generate_figure_d(
         "By Difficulty",
         xy=(-0.27, 0.5),
         xycoords="axes fraction",
-        fontsize=11,
+        fontsize=FIG_D_ROW_LABEL_FONTSIZE,
         fontweight="bold",
         rotation=90,
         va="center",
@@ -297,7 +331,7 @@ def generate_figure_d(
     #     "By Conflict Count",
     #     xy=(-0.25, 0.5),
     #     xycoords="axes fraction",
-    #     fontsize=11,
+    #     fontsize=FIG_D_ROW_LABEL_FONTSIZE,
     #     fontweight="bold",
     #     rotation=90,
     #     va="center",
@@ -306,7 +340,7 @@ def generate_figure_d(
         "By Project Size",
         xy=(-0.27, 0.5),
         xycoords="axes fraction",
-        fontsize=11,
+        fontsize=FIG_D_ROW_LABEL_FONTSIZE,
         fontweight="bold",
         rotation=90,
         va="center",
@@ -329,7 +363,7 @@ def generate_figure_d(
         handles=legend_elements,
         loc="lower center",
         ncol=2,
-        fontsize=9,
+        fontsize=FIG_D_LEGEND_FONTSIZE,
         bbox_to_anchor=(0.5, 0.02),
     )
 

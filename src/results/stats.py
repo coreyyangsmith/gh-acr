@@ -68,6 +68,67 @@ def paired_wilcoxon(delta: pd.Series) -> tuple[float, float]:
     return (float(stat), float(p))
 
 
+def paired_bootstrap_mean_ci(
+    deltas: np.ndarray | pd.Series,
+    *,
+    n_boot: int = 2000,
+    ci: float = 0.95,
+    random_state: int = 42,
+) -> tuple[float, float]:
+    """Bootstrap percentile CI for the mean of paired deltas (instances resampled with replacement)."""
+    arr = np.asarray(deltas, dtype=float).ravel()
+    arr = arr[~np.isnan(arr)]
+    if arr.size == 0:
+        return (float("nan"), float("nan"))
+    rng = np.random.default_rng(random_state)
+    boot_means = np.empty(n_boot, dtype=float)
+    n = arr.size
+    for i in range(n_boot):
+        sample = arr[rng.integers(0, n, size=n)]
+        boot_means[i] = float(np.mean(sample))
+    alpha = (1 - ci) / 2
+    return (float(np.quantile(boot_means, alpha)), float(np.quantile(boot_means, 1 - alpha)))
+
+
+def p_value_binomial_sign_test_two_sided(wins: int, losses: int) -> float:
+    """Two-sided exact binomial test H0: P(bypass wins | discordant pair) = 0.5.
+
+    Used for paired exact-match deltas (wins = multi better, losses = multi worse).
+    """
+    n = int(wins) + int(losses)
+    if n == 0:
+        return float("nan")
+    try:
+        from scipy.stats import binomtest
+    except Exception:
+        return float("nan")
+    res = binomtest(int(wins), n, p=0.5, alternative="two-sided")
+    return float(res.pvalue)
+
+
+def p_value_wilcoxon_signed_rank(delta: np.ndarray | pd.Series) -> float:
+    """Two-sided Wilcoxon signed-rank p-value for paired continuous deltas."""
+    arr = np.asarray(delta, dtype=float).ravel()
+    arr = arr[~np.isnan(arr)]
+    if arr.size < 1:
+        return float("nan")
+    try:
+        from scipy.stats import wilcoxon
+    except Exception:
+        return float("nan")
+    try:
+        _, p = wilcoxon(
+            arr,
+            zero_method="pratt",
+            alternative="two-sided",
+            correction=False,
+            mode="approx",
+        )
+        return float(p)
+    except Exception:
+        return float("nan")
+
+
 def cliffs_delta(x: pd.Series, y: pd.Series) -> float:
     """Compute Cliff's delta effect size for paired samples `x` and `y`.
 

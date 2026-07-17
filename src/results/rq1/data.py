@@ -17,10 +17,30 @@ from typing import Optional, Literal
 import numpy as np
 import pandas as pd
 
-from .config import RQ1Config, DEFAULT_CONFIG, ALL_METHODS_ORDER
+from ..stats import (
+    paired_bootstrap_mean_ci,
+    p_value_binomial_sign_test_two_sided,
+    p_value_wilcoxon_signed_rank,
+)
+from .config import RQ1Config, DEFAULT_CONFIG
 
 # Type alias for granularity
 GranularityType = Literal["file", "instance"]
+
+
+def common_agent_bypass_ids(df: pd.DataFrame) -> set[str]:
+    """Scenario IDs present for both ``agent`` and ``bypass7`` for every ``model_name``.
+
+    Matches the common-set definition used in final paper figures.
+    """
+    if "id" not in df.columns or "eval_method" not in df.columns or "model_name" not in df.columns:
+        return set()
+    ab = df[df["eval_method"].isin(["agent", "bypass7"])]
+    models = ab["model_name"].dropna().unique()
+    if len(models) == 0:
+        return set()
+    per_model = {m: set(ab[ab["model_name"] == m]["id"].astype(str).unique()) for m in models}
+    return set.intersection(*per_model.values())
 
 
 @dataclass
@@ -74,6 +94,25 @@ class ModelMetrics:
     multi_agent: dict[str, float]
     single_agent_ci: dict[str, tuple[float, float]]
     multi_agent_ci: dict[str, tuple[float, float]]
+
+
+@dataclass
+class PairedDeltaStats:
+    """Paired single-agent vs multi-agent delta statistics for one model and metric."""
+
+    model_name: str
+    metric: str
+    granularity: GranularityType
+    n_pairs: int
+    mean_delta: float
+    ci_low: float
+    ci_high: float
+    p_value: float
+    test: str
+    wins: int
+    ties: int
+    losses: int
+    n_discordant: int
 
 
 def _build_scenario_key(df: pd.DataFrame) -> pd.Series:
@@ -296,6 +335,127 @@ def prepare_paired_data(
         multi_method=config.multi_agent_method,
         model_name=model_name,
     )
+
+
+def compute_paired_delta_statistics(
+    df: pd.DataFrame,
+    config: RQ1Config = DEFAULT_CONFIG,
+    granularity: GranularityType = "instance",
+    *,
+    tolerance: float = 1e-6,
+) -> list[PairedDeltaStats]:
+    """Paired (multi - single) delta per instance/file with bootstrap CI and significance.
+
+    - Mean delta and 95% bootstrap CI resample paired rows (same granularity as RQ1).
+    - ``exact_match``: two-sided exact binomial test on discordant pairs (McNemar-style).
+    - Continuous metrics: two-sided Wilcoxon signed-rank on paired deltas.
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Results with ``eval_method``, metrics, and ``model_name`` (unless unknown).
+    config : RQ1Config
+        Single vs multi method ids and bootstrap settings.
+    granularity : {"file", "instance"}
+        Match RQ1 aggregation: instance uses ``aggregate_to_instance_level``.
+    tolerance : float
+        Win/tie/loss tie band for continuous metrics.
+    """
+    if "eval_method" not in df.columns:
+        raise ValueError("DataFrame must have 'eval_method' column")
+
+    if granularity == "instance":
+        if "id" not in df.columns:
+            raise ValueError("DataFrame must have 'id' column for instance-level granularity")
+        work = aggregate_to_instance_level(df, config)
+    else:
+        work = df.copy()
+
+    methods = {config.single_agent_method, config.multi_agent_method}
+    work = work[work["eval_method"].isin(methods)]
+
+    if work.empty:
+        return []
+
+    if "exact_match" in work.columns:
+        work["exact_match"] = _coerce_bool_metric(work["exact_match"])
+
+    if "model_name" in work.columns:
+        models = work["model_name"].dropna().unique().tolist()
+    else:
+        models = ["unknown"]
+        work["model_name"] = "unknown"
+
+    out: list[PairedDeltaStats] = []
+
+    for model in sorted(models):
+        model_df = work[work["model_name"] == model]
+        paired = prepare_paired_data(model_df, config, model_name=model)
+        pwide = paired.dataframe
+        if pwide.empty:
+            continue
+
+        for metric in config.metrics:
+            sc = f"{config.single_agent_method}_{metric}"
+            mc = f"{config.multi_agent_method}_{metric}"
+            if sc not in pwide.columns or mc not in pwide.columns:
+                continue
+
+            sub = pwide[[sc, mc]].dropna()
+            if sub.empty:
+                continue
+
+            single_vals = pd.to_numeric(sub[sc], errors="coerce").to_numpy(dtype=float)
+            multi_vals = pd.to_numeric(sub[mc], errors="coerce").to_numpy(dtype=float)
+            valid = ~(np.isnan(single_vals) | np.isnan(multi_vals))
+            single_vals = single_vals[valid]
+            multi_vals = multi_vals[valid]
+            if single_vals.size == 0:
+                continue
+
+            delta = multi_vals - single_vals
+            mean_delta = float(np.mean(delta))
+
+            ci_low, ci_high = paired_bootstrap_mean_ci(
+                delta,
+                n_boot=config.n_bootstrap,
+                ci=config.ci_level,
+                random_state=config.random_state,
+            )
+
+            tol = 1e-9 if metric == "exact_match" else tolerance
+            wins = int(np.sum(delta > tol))
+            losses = int(np.sum(delta < -tol))
+            ties = int(np.sum(np.abs(delta) <= tol))
+            n_pairs = int(wins + ties + losses)
+            n_discordant = int(wins + losses)
+
+            if metric == "exact_match":
+                p_val = p_value_binomial_sign_test_two_sided(wins, losses)
+                test_name = "binomial_discordant"
+            else:
+                p_val = p_value_wilcoxon_signed_rank(delta)
+                test_name = "wilcoxon_signed_rank"
+
+            out.append(
+                PairedDeltaStats(
+                    model_name=str(model),
+                    metric=metric,
+                    granularity=granularity,
+                    n_pairs=n_pairs,
+                    mean_delta=mean_delta,
+                    ci_low=ci_low,
+                    ci_high=ci_high,
+                    p_value=p_val,
+                    test=test_name,
+                    wins=wins,
+                    ties=ties,
+                    losses=losses,
+                    n_discordant=n_discordant,
+                )
+            )
+
+    return out
 
 
 def _bootstrap_ci(

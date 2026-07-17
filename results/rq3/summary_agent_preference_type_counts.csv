@@ -1,0 +1,51 @@
+scope,change_type,selected_parent_count,rejected_parent_count,selected_minus_rejected
+file_level,addition,5993,7952,-1959
+file_level,additional,1,0,1
+file_level,analysis,1,2,-1
+file_level,assertion,0,1,-1
+file_level,boolean,0,1,-1
+file_level,class rename,0,3,-3
+file_level,comment,0,1,-1
+file_level,commentary,0,1,-1
+file_level,deprecation,0,3,-3
+file_level,import,2,1,1
+file_level,intent,0,1,-1
+file_level,json object,1,0,1
+file_level,likely intent,5,17,-12
+file_level,metaclass introduction,0,1,-1
+file_level,modification,10309,9357,952
+file_level,note,1,2,-1
+file_level,refactor,1,1,0
+file_level,reformatting,1,0,1
+file_level,removal,524,565,-41
+file_level,renaming,1,6,-5
+file_level,reordering,0,2,-2
+file_level,reorganization,1,0,1
+file_level,replacement,0,3,-3
+file_level,summary,1,0,1
+file_level,unknown,491,482,9
+instance_level,addition,5993,7952,-1959
+instance_level,additional,1,0,1
+instance_level,analysis,1,2,-1
+instance_level,assertion,0,1,-1
+instance_level,boolean,0,1,-1
+instance_level,class rename,0,3,-3
+instance_level,comment,0,1,-1
+instance_level,commentary,0,1,-1
+instance_level,deprecation,0,3,-3
+instance_level,import,2,1,1
+instance_level,intent,0,1,-1
+instance_level,json object,1,0,1
+instance_level,likely intent,5,17,-12
+instance_level,metaclass introduction,0,1,-1
+instance_level,modification,10309,9357,952
+instance_level,note,1,2,-1
+instance_level,refactor,1,1,0
+instance_level,reformatting,1,0,1
+instance_level,removal,524,565,-41
+instance_level,renaming,1,6,-5
+instance_level,reordering,0,2,-2
+instance_level,reorganization,1,0,1
+instance_level,replacement,0,3,-3
+instance_level,summary,1,0,1
+instance_level,unknown,491,482,9

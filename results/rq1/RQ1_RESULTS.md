@@ -6,13 +6,15 @@ We evaluate whether a multi-agent approach—where the system can select Parent 
 
 **Experimental Design:** We align all methods to the same set of **1,888 merge conflict instances** (comprising 3,272 files across 342 repositories) present across all evaluation conditions. We report **per-instance metrics** as our primary measure: a merge conflict is considered resolved only when *all* constituent files are correctly resolved.
 
-**Key Finding:** Multi-agent consistently improves exact match rates over single-agent across all models (+1.7 to +11.9 percentage points). However, the improvement is entirely driven by *parent selection* rather than novel merge generation. Models exhibit strong biases toward selecting Parent A, and only Llama-3.1-8B demonstrates any positive intelligent selection capability.
+**Statistical inference (paired, common set):** For each coding model we pair single-agent (`agent`) and multi-agent (`bypass7`) on the **same** instance IDs (the intersection of instances available for every model). We summarize the paired difference (multi − single) using a **95% bootstrap confidence interval for the mean paired delta** (2,000 instance resamples; seed 42) and a two-sided **exact binomial test on discordant pairs** for exact match (wins vs losses among instances where EM differs) or **Wilcoxon signed-rank** for similarity, BLEU-3, and ROUGE-L. Full numeric output: [`rq1_paired_delta_stats_per_instance.csv`](rq1_paired_delta_stats_per_instance.csv). Final-paper Table IV uses the same paired deltas with CI and significance stars: [`../final_paper_figs/Table_IV_performance_metrics.csv`](../final_paper_figs/Table_IV_performance_metrics.csv).
+
+**Key Finding:** Multi-agent improves mean exact match over single-agent on this paired common set for all three models (+1.7 to +11.9 percentage points); each EM lift is statistically distinguishable from zero at α=0.05 under the binomial discordant-pair test. However, the improvement is entirely driven by *parent selection* rather than novel merge generation. Models exhibit strong biases toward selecting Parent A, and only Llama-3.1-8B demonstrates any positive intelligent selection capability.
 
 ---
 
 ## 1. Overall Performance Comparison
 
-All results reported at the **per-instance level** (n = 1,888 merge conflicts). For exact match, an instance is correct only if ALL files within that conflict are resolved correctly. Soft metrics are averaged across files within each instance.
+All results reported at the **per-instance level** (n = 1,888 merge conflicts on the **common ID set** used for paired inference and final-paper tables). For exact match, an instance is correct only if ALL files within that conflict are resolved correctly. Soft metrics are averaged across files within each instance.
 
 ### 1.1 Exact Match Results
 
@@ -21,11 +23,13 @@ All results reported at the **per-instance level** (n = 1,888 merge conflicts). 
 | **Base A** | 213 | 11.3% |
 | **Base B** | 192 | 10.2% |
 
-| Model | Single-Agent EM | Multi-Agent EM | Δ EM |
-|-------|-----------------|----------------|------|
-| Qwen3-32B | 0.0% | 11.3% | +11.3pp |
-| Llama-3.1-8B | 0.0% | 11.9% | +11.9pp |
-| GPT-5-nano | 5.2% | 6.9% | +1.7pp |
+| Model | Single-Agent EM | Multi-Agent EM | Δ EM (paired mean) |
+|-------|-----------------|----------------|---------------------|
+| Qwen3-32B | 0.0% | 11.3% | +11.3pp *** |
+| Llama-3.1-8B | 0.0% | 11.9% | +11.9pp *** |
+| GPT-5-nano | 5.2% | 6.9% | +1.7pp * |
+
+**GPT-5-nano EM inference:** 95% paired bootstrap CI for the mean Δ EM (multi − single) on the common set: **+0.37pp to +3.13pp**; two-sided exact binomial on discordant pairs *p*≈0.016 (105 vs 72 among 177 discordant instances). **Qwen / Llama:** *** *p*\<10⁻⁴⁸ (see [`rq1_paired_delta_stats_per_instance.csv`](rq1_paired_delta_stats_per_instance.csv)).
 
 **Key Observations:**
 
@@ -37,11 +41,13 @@ All results reported at the **per-instance level** (n = 1,888 merge conflicts). 
 
 | Model | Single Sim | Multi Sim | Δ Sim | Single BLEU-3 | Multi BLEU-3 | Single ROUGE-L | Multi ROUGE-L |
 |-------|------------|-----------|-------|---------------|--------------|----------------|---------------|
-| Qwen3-32B | 0.587 | 0.905 | +54.2% | 0.616 | 0.911 | 0.654 | 0.933 |
-| Llama-3.1-8B | 0.516 | 0.901 | +74.6% | 0.460 | 0.906 | 0.614 | 0.928 |
-| GPT-5-nano | 0.872 | 0.859 | **−1.5%** | 0.894 | 0.865 | 0.912 | 0.897 |
+| Qwen3-32B | 0.587 | 0.905 | +54.2% *** | 0.616 | 0.911 | 0.654 | 0.933 |
+| Llama-3.1-8B | 0.516 | 0.901 | +74.6% *** | 0.460 | 0.906 | 0.614 | 0.928 |
+| GPT-5-nano | 0.872 | 0.859 | **−1.5%** ns | 0.894 | 0.865 | 0.912 | 0.897 |
 
-**Critical Observation:** While open-weight models (Qwen, Llama) show substantial similarity improvements, GPT-5-nano exhibits a *decrease* in similarity under multi-agent (−1.5%). This suggests that when GPT-5-nano generates its own merge (single-agent), it produces outputs closer to ground truth than when selecting parents via bypass.
+Paired inference on the same 1,888 instances: *** Wilcoxon *p*\<10⁻²⁴⁸ for Qwen/Llama on similarity, BLEU-3, and ROUGE-L (see CSV). For **GPT-5-nano**, mean paired Δ similarity = **−0.013** (95% bootstrap CI **−0.022 to −0.004**) but Wilcoxon *p*≈**0.66** (not significant at α=0.05)—consistent with many small-magnitude moves and a near-even win/loss split. Mean paired Δ BLEU-3 = **−0.029** (CI **−0.039 to −0.020**; *** *p*≈4×10⁻¹³). Mean paired Δ ROUGE-L = **−0.015** (CI **−0.023 to −0.007**; Wilcoxon *p*≈**0.35**, ns).
+
+**Critical observation:** Open-weight models show large, highly significant soft-metric gains under multi-agent. GPT-5-nano shows a small **mean** similarity decrease with a CI that excludes zero, but the signed-rank test does not reject a null shift at α=0.05; BLEU-3 decreases are clearer (significant). This nuance matters when interpreting the headline “−1.5%” relative similarity change versus distributional symmetry in win/loss counts.
 
 ### 1.3 Comparison with Baselines
 
@@ -150,7 +156,7 @@ This suggests that GPT-5-nano's own merge generation is often superior to either
 
 ## 5. Conclusion
 
-Multi-agent approaches improve exact match rates over single-agent across all models. Analyzing 1,888 merge conflict instances across 342 repositories, we find:
+Multi-agent approaches improve **mean** exact match rates over single-agent on the paired common set for all models, with EM lifts statistically distinguishable from chance at α=0.05 for each model under the discordant-pair binomial test. Analyzing 1,888 merge conflict instances across 342 repositories, we find:
 
 1. **Improvement is entirely bypass-driven**: Models select parents rather than generate novel merges (<0.3% MIX usage)
 2. **Qwen completely collapses to Base A**: 99.85% A-selection with no intelligent selection value
@@ -237,6 +243,7 @@ For multi-file conflicts, perfect resolution requires all files correct. With pe
 |------|-------------|
 | `rq1_model_summary_per_instance.csv` | Per-instance model metrics with 95% CI (primary) |
 | `rq1_win_tie_loss_per_instance.csv` | Per-instance win/tie/loss analysis (primary) |
+| `rq1_paired_delta_stats_per_instance.csv` | Paired multi−single mean deltas, 95% bootstrap CIs, and *p*-values (common set) |
 | `rq1_all_methods_per_instance.csv` | All methods comparison at instance level |
 | `rq1_model_summary.csv` | Per-file model metrics with 95% CI (supplementary) |
 | `rq1_win_tie_loss.csv` | Per-file win/tie/loss analysis (supplementary) |

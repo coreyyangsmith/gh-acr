@@ -1,0 +1,10 @@
+id,file_name,artifacts_found,n_plan_files,n_resolution_files,n_review_files,n_feedback_history_files,hit_review_loop_cap_proxy,trace_paths,trace_caveat,partial_merge,plan_compliance,missing_parent_edit,minimality,completeness
+15863986603,torchrl/data/map/tree.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+112937595172,src/crewai/llm.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+810893186987,src/crewai/__init__.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+492143690495,llmfoundry/command_utils/data_prep/convert_delta_to_json.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+442137388430,openhands/agenthub/__init__.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+226595983323,tests/runtime/conftest.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+226595983323,tests/runtime/test_bash.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+226595983323,tests/runtime/test_browsing.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False
+226595983323,tests/runtime/test_mcp_action.py,False,0,0,0,0,False,,No persisted trace artifacts found in checkout; regenerate or locate archived run outputs.,False,False,False,False,False

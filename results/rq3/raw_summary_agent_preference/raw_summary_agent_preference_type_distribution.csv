@@ -1,0 +1,217 @@
+scope,grain,change_type,a_parent_count,b_parent_count,a_minus_b,total_count
+all,file_level,addition,23396,21049,2347,44445
+all,file_level,additional,1,0,1,1
+all,file_level,analysis,1,3,-2,4
+all,file_level,assertion,1,0,1,1
+all,file_level,boolean,0,1,-1,1
+all,file_level,change,5,0,5,5
+all,file_level,class rename,0,3,-3,3
+all,file_level,cleanup,1,0,1,1
+all,file_level,comment,0,2,-2,2
+all,file_level,commentary,0,1,-1,1
+all,file_level,commit message,0,1,-1,1
+all,file_level,dataclass,2,0,2,2
+all,file_level,deprecation,0,7,-7,7
+all,file_level,documentation,3,3,0,6
+all,file_level,documentation change,0,1,-1,1
+all,file_level,exception,1,0,1,1
+all,file_level,fix,3,0,3,3
+all,file_level,formatting,0,1,-1,1
+all,file_level,function,1,0,1,1
+all,file_level,import,5,4,1,9
+all,file_level,import change,4,1,3,5
+all,file_level,informational,0,1,-1,1
+all,file_level,intent,6,1,5,7
+all,file_level,intent change,0,1,-1,1
+all,file_level,intention,3,0,3,3
+all,file_level,json object,2,1,1,3
+all,file_level,likely intent,61,58,3,119
+all,file_level,likely intent change,0,1,-1,1
+all,file_level,logic,2,0,2,2
+all,file_level,metaclass introduction,0,1,-1,1
+all,file_level,minor,1,0,1,1
+all,file_level,misc,1,0,1,1
+all,file_level,modification,48039,34544,13495,82583
+all,file_level,move,0,1,-1,1
+all,file_level,movement,0,1,-1,1
+all,file_level,note,3,4,-1,7
+all,file_level,object,0,1,-1,1
+all,file_level,overall,1,1,0,2
+all,file_level,patch,1,0,1,1
+all,file_level,refactor,12,9,3,21
+all,file_level,reformatting,1,3,-2,4
+all,file_level,relocation,0,6,-6,6
+all,file_level,removal,2598,2754,-156,5352
+all,file_level,removal/addition,0,1,-1,1
+all,file_level,renaming,2,8,-6,10
+all,file_level,reorder imports,1,0,1,1
+all,file_level,reordering,1,6,-5,7
+all,file_level,reorganization,1,0,1,1
+all,file_level,replacement,11,3,8,14
+all,file_level,reposition,1,0,1,1
+all,file_level,risk,3,1,2,4
+all,file_level,summary,1,2,-1,3
+all,file_level,summary change,1,0,1,1
+all,file_level,unknown,1918,1853,65,3771
+failures_only,file_level,addition,21054,19942,1112,40996
+failures_only,file_level,additional,1,0,1,1
+failures_only,file_level,analysis,1,3,-2,4
+failures_only,file_level,assertion,1,0,1,1
+failures_only,file_level,boolean,0,1,-1,1
+failures_only,file_level,change,5,0,5,5
+failures_only,file_level,class rename,0,3,-3,3
+failures_only,file_level,cleanup,1,0,1,1
+failures_only,file_level,comment,0,2,-2,2
+failures_only,file_level,commentary,0,1,-1,1
+failures_only,file_level,commit message,0,1,-1,1
+failures_only,file_level,dataclass,2,0,2,2
+failures_only,file_level,deprecation,0,7,-7,7
+failures_only,file_level,documentation,3,3,0,6
+failures_only,file_level,documentation change,0,1,-1,1
+failures_only,file_level,exception,1,0,1,1
+failures_only,file_level,fix,3,0,3,3
+failures_only,file_level,formatting,0,1,-1,1
+failures_only,file_level,function,1,0,1,1
+failures_only,file_level,import,4,4,0,8
+failures_only,file_level,import change,4,1,3,5
+failures_only,file_level,informational,0,1,-1,1
+failures_only,file_level,intent,6,1,5,7
+failures_only,file_level,intent change,0,1,-1,1
+failures_only,file_level,intention,3,0,3,3
+failures_only,file_level,json object,2,1,1,3
+failures_only,file_level,likely intent,57,51,6,108
+failures_only,file_level,likely intent change,0,1,-1,1
+failures_only,file_level,logic,2,0,2,2
+failures_only,file_level,metaclass introduction,0,1,-1,1
+failures_only,file_level,minor,1,0,1,1
+failures_only,file_level,misc,1,0,1,1
+failures_only,file_level,modification,44530,33185,11345,77715
+failures_only,file_level,move,0,1,-1,1
+failures_only,file_level,movement,0,1,-1,1
+failures_only,file_level,note,3,4,-1,7
+failures_only,file_level,object,0,1,-1,1
+failures_only,file_level,overall,1,1,0,2
+failures_only,file_level,patch,1,0,1,1
+failures_only,file_level,refactor,12,9,3,21
+failures_only,file_level,reformatting,1,3,-2,4
+failures_only,file_level,relocation,0,6,-6,6
+failures_only,file_level,removal,2327,2516,-189,4843
+failures_only,file_level,removal/addition,0,1,-1,1
+failures_only,file_level,renaming,2,8,-6,10
+failures_only,file_level,reorder imports,1,0,1,1
+failures_only,file_level,reordering,1,6,-5,7
+failures_only,file_level,reorganization,1,0,1,1
+failures_only,file_level,replacement,11,3,8,14
+failures_only,file_level,reposition,1,0,1,1
+failures_only,file_level,risk,3,1,2,4
+failures_only,file_level,summary,1,2,-1,3
+failures_only,file_level,summary change,1,0,1,1
+failures_only,file_level,unknown,1780,1728,52,3508
+all,instance_level,addition,23396,21049,2347,44445
+all,instance_level,additional,1,0,1,1
+all,instance_level,analysis,1,3,-2,4
+all,instance_level,assertion,1,0,1,1
+all,instance_level,boolean,0,1,-1,1
+all,instance_level,change,5,0,5,5
+all,instance_level,class rename,0,3,-3,3
+all,instance_level,cleanup,1,0,1,1
+all,instance_level,comment,0,2,-2,2
+all,instance_level,commentary,0,1,-1,1
+all,instance_level,commit message,0,1,-1,1
+all,instance_level,dataclass,2,0,2,2
+all,instance_level,deprecation,0,7,-7,7
+all,instance_level,documentation,3,3,0,6
+all,instance_level,documentation change,0,1,-1,1
+all,instance_level,exception,1,0,1,1
+all,instance_level,fix,3,0,3,3
+all,instance_level,formatting,0,1,-1,1
+all,instance_level,function,1,0,1,1
+all,instance_level,import,5,4,1,9
+all,instance_level,import change,4,1,3,5
+all,instance_level,informational,0,1,-1,1
+all,instance_level,intent,6,1,5,7
+all,instance_level,intent change,0,1,-1,1
+all,instance_level,intention,3,0,3,3
+all,instance_level,json object,2,1,1,3
+all,instance_level,likely intent,61,58,3,119
+all,instance_level,likely intent change,0,1,-1,1
+all,instance_level,logic,2,0,2,2
+all,instance_level,metaclass introduction,0,1,-1,1
+all,instance_level,minor,1,0,1,1
+all,instance_level,misc,1,0,1,1
+all,instance_level,modification,48039,34544,13495,82583
+all,instance_level,move,0,1,-1,1
+all,instance_level,movement,0,1,-1,1
+all,instance_level,note,3,4,-1,7
+all,instance_level,object,0,1,-1,1
+all,instance_level,overall,1,1,0,2
+all,instance_level,patch,1,0,1,1
+all,instance_level,refactor,12,9,3,21
+all,instance_level,reformatting,1,3,-2,4
+all,instance_level,relocation,0,6,-6,6
+all,instance_level,removal,2598,2754,-156,5352
+all,instance_level,removal/addition,0,1,-1,1
+all,instance_level,renaming,2,8,-6,10
+all,instance_level,reorder imports,1,0,1,1
+all,instance_level,reordering,1,6,-5,7
+all,instance_level,reorganization,1,0,1,1
+all,instance_level,replacement,11,3,8,14
+all,instance_level,reposition,1,0,1,1
+all,instance_level,risk,3,1,2,4
+all,instance_level,summary,1,2,-1,3
+all,instance_level,summary change,1,0,1,1
+all,instance_level,unknown,1918,1853,65,3771
+failures_only,instance_level,addition,21054,19942,1112,40996
+failures_only,instance_level,additional,1,0,1,1
+failures_only,instance_level,analysis,1,3,-2,4
+failures_only,instance_level,assertion,1,0,1,1
+failures_only,instance_level,boolean,0,1,-1,1
+failures_only,instance_level,change,5,0,5,5
+failures_only,instance_level,class rename,0,3,-3,3
+failures_only,instance_level,cleanup,1,0,1,1
+failures_only,instance_level,comment,0,2,-2,2
+failures_only,instance_level,commentary,0,1,-1,1
+failures_only,instance_level,commit message,0,1,-1,1
+failures_only,instance_level,dataclass,2,0,2,2
+failures_only,instance_level,deprecation,0,7,-7,7
+failures_only,instance_level,documentation,3,3,0,6
+failures_only,instance_level,documentation change,0,1,-1,1
+failures_only,instance_level,exception,1,0,1,1
+failures_only,instance_level,fix,3,0,3,3
+failures_only,instance_level,formatting,0,1,-1,1
+failures_only,instance_level,function,1,0,1,1
+failures_only,instance_level,import,4,4,0,8
+failures_only,instance_level,import change,4,1,3,5
+failures_only,instance_level,informational,0,1,-1,1
+failures_only,instance_level,intent,6,1,5,7
+failures_only,instance_level,intent change,0,1,-1,1
+failures_only,instance_level,intention,3,0,3,3
+failures_only,instance_level,json object,2,1,1,3
+failures_only,instance_level,likely intent,57,51,6,108
+failures_only,instance_level,likely intent change,0,1,-1,1
+failures_only,instance_level,logic,2,0,2,2
+failures_only,instance_level,metaclass introduction,0,1,-1,1
+failures_only,instance_level,minor,1,0,1,1
+failures_only,instance_level,misc,1,0,1,1
+failures_only,instance_level,modification,44530,33185,11345,77715
+failures_only,instance_level,move,0,1,-1,1
+failures_only,instance_level,movement,0,1,-1,1
+failures_only,instance_level,note,3,4,-1,7
+failures_only,instance_level,object,0,1,-1,1
+failures_only,instance_level,overall,1,1,0,2
+failures_only,instance_level,patch,1,0,1,1
+failures_only,instance_level,refactor,12,9,3,21
+failures_only,instance_level,reformatting,1,3,-2,4
+failures_only,instance_level,relocation,0,6,-6,6
+failures_only,instance_level,removal,2327,2516,-189,4843
+failures_only,instance_level,removal/addition,0,1,-1,1
+failures_only,instance_level,renaming,2,8,-6,10
+failures_only,instance_level,reorder imports,1,0,1,1
+failures_only,instance_level,reordering,1,6,-5,7
+failures_only,instance_level,reorganization,1,0,1,1
+failures_only,instance_level,replacement,11,3,8,14
+failures_only,instance_level,reposition,1,0,1,1
+failures_only,instance_level,risk,3,1,2,4
+failures_only,instance_level,summary,1,2,-1,3
+failures_only,instance_level,summary change,1,0,1,1
+failures_only,instance_level,unknown,1780,1728,52,3508

@@ -1,0 +1,5 @@
+dominant_project_size,repo_count,evaluated_row_count,evaluated_instance_count,benchmark_scenario_count,stargazers_median,stargazers_total,forks_median,forks_total,commits_median,commits_total,contributors_median,contributors_total,code_lines_median,code_lines_total
+medium,201,16218,1100,1100,2851.0,1179592,360.0,137823,1254.0,333771,48.0,15010,38887.0,8621351
+large,93,10332,606,606,5369.0,916664,723.0,122850,3174.0,481370,128.0,15048,196943.0,23644950
+small,40,1504,103,103,2176.5,246230,230.5,24954,300.0,25656,19.0,1290,5487.0,221258
+huge,9,1382,100,100,2830.0,216271,369.0,39719,2267.0,54554,97.0,1533,1354862.0,14050797

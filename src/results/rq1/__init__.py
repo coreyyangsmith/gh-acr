@@ -37,7 +37,13 @@ from .config import (
     MODEL_DISPLAY_NAMES,
     get_short_model_name,
 )
-from .data import prepare_paired_data, compute_model_metrics, compute_all_methods_metrics
+from .data import (
+    prepare_paired_data,
+    compute_model_metrics,
+    compute_all_methods_metrics,
+    compute_paired_delta_statistics,
+    common_agent_bypass_ids,
+)
 from .dumbbell_chart import render_dumbbell_chart, render_grouped_bar_chart, render_all_methods_comparison
 from .scatter_plot import render_scatter_plot
 from .win_tie_loss import render_win_tie_loss_chart
@@ -60,6 +66,8 @@ __all__ = [
     "prepare_paired_data",
     "compute_model_metrics",
     "compute_all_methods_metrics",
+    "compute_paired_delta_statistics",
+    "common_agent_bypass_ids",
     # Visualizations
     "render_dumbbell_chart",
     "render_grouped_bar_chart",

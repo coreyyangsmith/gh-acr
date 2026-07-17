@@ -1,0 +1,3 @@
+grain,rows,rows_with_selected_parent,selected_parent_coverage_pct,rows_with_exact_match_metadata,exact_match_metadata_coverage_pct,failure_rows,non_failure_rows_with_metadata
+file_level,9866,9854,99.87837016014596,9863,99.96959254003649,9106,757
+instance_level,5625,5618,99.87555555555555,5624,99.98222222222222,5052,572
