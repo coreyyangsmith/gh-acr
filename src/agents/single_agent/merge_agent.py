@@ -18,6 +18,7 @@ import tiktoken  # type: ignore
 
 # Updated import location per latest LangChain split
 from ..llm_base import get_backend, count_tokens
+from ..resilient_invoke import resilient_invoke
 
 load_dotenv()
 
@@ -156,7 +157,17 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
         )
         
         logger.debug("Invoking LLM for file: %s", path)
-        result = runnable.invoke(prompt_text)  # type: ignore[attr-defined]
+        result = resilient_invoke(
+            runnable,
+            prompt_text,
+            context={
+                "scenario_id": state.get("scenario_id"),
+                "eval_method": state.get("eval_method", "agent"),
+                "node": "resolve_conflict_agent",
+                "file_path": path,
+                "model_name": model_name,
+            },
+        )
 
         merged_content = result.content if hasattr(result, "content") else str(result)
         merged_clean = merged_content.strip("\n")

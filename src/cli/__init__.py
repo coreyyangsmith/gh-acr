@@ -14,7 +14,7 @@ Entry Points
 The primary entry point is `run_all.main()`, which can be invoked via:
 
 ```bash
-python -m src.cli.run_all --max-scenarios 10 --methods bypass7
+uv run python -m src.cli.run_all --max-scenarios 10 --methods bypass7
 ```
 
 Or with tyro CLI parsing:
@@ -42,13 +42,13 @@ Results are written to:
 Example Usage
 -------------
 >>> # Run all evaluation methods on 10 scenarios
->>> python -m src.cli.run_all --max-scenarios 10
+>>> uv run python -m src.cli.run_all --max-scenarios 10
 
 >>> # Run only bypass7 with a specific model
->>> python -m src.cli.run_all --methods bypass7 --model-name openai/gpt-4o-mini
+>>> uv run python -m src.cli.run_all --methods bypass7 --model-name openai/gpt-4o-mini
 
 >>> # Sample by difficulty
->>> python -m src.cli.run_all --n-easy 5 --n-medium 5 --n-hard 5
+>>> uv run python -m src.cli.run_all --n-easy 5 --n-medium 5 --n-hard 5
 """
 
 from .runner import run_and_save_report, RESULTS_SCHEMA_COLUMNS
@@ -59,6 +59,3 @@ __all__ = [
     "RESULTS_SCHEMA_COLUMNS",
     "main",
 ]
-
-
-

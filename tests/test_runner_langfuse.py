@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from src.agents.observability import clear_run_context, get_run_context
+from src.agents.observability import langfuse_tracing as lt
 from src.cli.runner import run_and_save_report
 
 
@@ -101,6 +102,83 @@ def test_runner_sets_context_during_ainvoke(tmp_path: Path, method: str):
     assert isinstance(rows, list)
     assert rows
     assert rows[0]["eval_method"] == method
+
+
+@pytest.mark.parametrize("method", ["agent", "bypass7", "force_mix"])
+def test_runner_ainvoke_config_includes_langfuse_trace_name(
+    tmp_path: Path, method: str, monkeypatch: pytest.MonkeyPatch
+):
+    """When LangFuse is enabled, graph ainvoke gets method-named langfuse_trace_name."""
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.delenv("LANGFUSE_TRACING_ENABLED", raising=False)
+
+    captured_config: dict = {}
+    fake_handler = object()
+    fake_cls = MagicMock(return_value=fake_handler)
+
+    async def _ainvoke(state, config=None):
+        captured_config.update(config or {})
+        return _minimal_success_result(scenario_id="99", eval_method=method)
+
+    app = MagicMock()
+    app.ainvoke = _ainvoke
+
+    with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        asyncio.run(
+            run_and_save_report(
+                app,
+                "99",
+                tmp_path,
+                eval_method=method,
+                model_name="openai/gpt-4o-mini",
+                write_prep=False,
+            )
+        )
+
+    expected = f"{method}-scenario-99"
+    assert captured_config["run_name"] == expected
+    assert captured_config["metadata"]["langfuse_trace_name"] == expected
+    assert captured_config["metadata"]["eval_method"] == method
+    assert method in captured_config["tags"]
+    assert fake_handler in captured_config["callbacks"]
+    # One shared handler per scenario (created once in set_run_context)
+    assert fake_cls.call_count == 1
+
+
+def test_runner_enters_scenario_observation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    from contextlib import contextmanager
+
+    monkeypatch.setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+    monkeypatch.setenv("LANGFUSE_SECRET_KEY", "sk-test")
+    monkeypatch.delenv("LANGFUSE_TRACING_ENABLED", raising=False)
+
+    app = MagicMock()
+    app.ainvoke = AsyncMock(return_value=_minimal_success_result(scenario_id="42"))
+    entered: dict = {"count": 0}
+
+    @contextmanager
+    def _fake_obs(name: str):
+        entered["count"] += 1
+        entered["name"] = name
+        yield
+
+    with patch.object(lt, "_import_callback_handler", return_value=MagicMock(return_value=object())):
+        # Local import inside run_and_save_report resolves this package attribute at call time
+        with patch("src.agents.observability.scenario_observation", _fake_obs):
+            asyncio.run(
+                run_and_save_report(
+                    app,
+                    "42",
+                    tmp_path,
+                    eval_method="bypass7",
+                    model_name="openai/x",
+                    write_prep=False,
+                )
+            )
+
+    assert entered["count"] == 1
+    assert entered["name"] == "bypass7-scenario-42"
 
 
 def test_runner_clears_context_and_flushes_on_failure(tmp_path: Path):

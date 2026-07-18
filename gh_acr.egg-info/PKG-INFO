@@ -1,3 +1,124 @@
+Metadata-Version: 2.4
+Name: gh-acr
+Version: 0.1.0
+Summary: GitHub Auto Conflict Resolver — LLM merge-conflict evaluation on GitGoodBench
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: aiohappyeyeballs==2.6.1
+Requires-Dist: aiohttp==3.12.13
+Requires-Dist: aiosignal==1.4.0
+Requires-Dist: annotated-types==0.7.0
+Requires-Dist: anyio==4.9.0
+Requires-Dist: attrs==25.3.0
+Requires-Dist: certifi==2025.7.14
+Requires-Dist: charset-normalizer==3.4.2
+Requires-Dist: colorama==0.4.6
+Requires-Dist: contourpy==1.3.1
+Requires-Dist: cycler==0.12.1
+Requires-Dist: dataclasses-json==0.6.7
+Requires-Dist: distro==1.9.0
+Requires-Dist: docstring_parser==0.17.0
+Requires-Dist: fonttools==4.59.0
+Requires-Dist: frozenlist==1.7.0
+Requires-Dist: gitdb==4.0.12
+Requires-Dist: GitPython==3.1.45
+Requires-Dist: googleapis-common-protos==1.70.0
+Requires-Dist: greenlet==3.2.3
+Requires-Dist: grpcio==1.73.0
+Requires-Dist: h11==0.16.0
+Requires-Dist: httpcore==1.0.9
+Requires-Dist: httpx==0.28.1
+Requires-Dist: httpx-sse==0.4.1
+Requires-Dist: idna==3.10
+Requires-Dist: importlib_metadata==8.7.0
+Requires-Dist: jiter==0.6.1
+Requires-Dist: jsonpatch==1.33
+Requires-Dist: jsonpointer==3.0.0
+Requires-Dist: kiwisolver==1.4.8
+Requires-Dist: langchain==0.3.27
+Requires-Dist: langchain-community==0.3.27
+Requires-Dist: langchain-core<0.4,>=0.3
+Requires-Dist: langchain-openai==0.3.28
+Requires-Dist: langchain-groq==0.2.3
+Requires-Dist: langchain-text-splitters==0.3.9
+Requires-Dist: langfuse>=2.0.0
+Requires-Dist: langgraph>=0.5.4
+Requires-Dist: langgraph-checkpoint==2.1.1
+Requires-Dist: langgraph-prebuilt
+Requires-Dist: langgraph-sdk
+Requires-Dist: Jinja2==3.1.4
+Requires-Dist: markdown-it-py==3.0.0
+Requires-Dist: marshmallow==3.26.1
+Requires-Dist: matplotlib==3.10.1
+Requires-Dist: mdurl==0.1.2
+Requires-Dist: multidict==6.6.3
+Requires-Dist: mypy_extensions==1.1.0
+Requires-Dist: numpy
+Requires-Dist: openai==1.97.1
+Requires-Dist: orjson<3.10.17,>=3.9.7
+Requires-Dist: ormsgpack==1.10.0
+Requires-Dist: packaging
+Requires-Dist: pandas
+Requires-Dist: pillow==11.1.0
+Requires-Dist: propcache==0.3.2
+Requires-Dist: protobuf==6.31.1
+Requires-Dist: pydantic==2.11.7
+Requires-Dist: pydantic-settings==2.10.1
+Requires-Dist: pydantic_core==2.33.2
+Requires-Dist: Pygments==2.19.2
+Requires-Dist: pyparsing==3.2.3
+Requires-Dist: python-dateutil==2.9.0.post0
+Requires-Dist: python-dotenv==1.1.1
+Requires-Dist: pytz==2025.2
+Requires-Dist: PyYAML==6.0.2
+Requires-Dist: regex==2024.11.6
+Requires-Dist: requests==2.32.4
+Requires-Dist: requests-toolbelt==1.0.0
+Requires-Dist: rich==14.1.0
+Requires-Dist: seaborn==0.13.2
+Requires-Dist: scipy
+Requires-Dist: setuptools==78.1.1
+Requires-Dist: shtab==1.7.2
+Requires-Dist: six==1.17.0
+Requires-Dist: smmap==5.0.2
+Requires-Dist: sniffio==1.3.1
+Requires-Dist: SQLAlchemy==2.0.41
+Requires-Dist: tenacity==9.1.2
+Requires-Dist: tiktoken==0.9.0
+Requires-Dist: tqdm==4.67.1
+Requires-Dist: typeguard==4.4.4
+Requires-Dist: typing-inspect==0.9.0
+Requires-Dist: typing-inspection==0.4.1
+Requires-Dist: typing_extensions==4.14.1
+Requires-Dist: tyro==0.9.26
+Requires-Dist: tzdata==2025.2
+Requires-Dist: urllib3==2.5.0
+Requires-Dist: wheel==0.45.1
+Requires-Dist: wrapt==1.17.2
+Requires-Dist: xxhash==3.5.0
+Requires-Dist: yarl==1.20.1
+Requires-Dist: zipp==3.23.0
+Requires-Dist: zstandard==0.23.0
+Requires-Dist: rouge-score==0.1.2
+Requires-Dist: sacrebleu==2.4.3
+Requires-Dist: rapidfuzz==3.13.0
+Requires-Dist: pytest>=8
+Provides-Extra: analysis
+Requires-Dist: plotly==5.24.1; extra == "analysis"
+Requires-Dist: dash==2.18.2; extra == "analysis"
+Requires-Dist: matplotlib-venn==0.11.10; extra == "analysis"
+Requires-Dist: radon>=6.0.1; extra == "analysis"
+Provides-Extra: local-llm
+Requires-Dist: transformers==4.56.1; extra == "local-llm"
+Requires-Dist: tokenizers==0.22.0; extra == "local-llm"
+Requires-Dist: huggingface_hub==0.34.4; extra == "local-llm"
+Requires-Dist: safetensors==0.5.3; extra == "local-llm"
+Requires-Dist: accelerate==1.10.1; extra == "local-llm"
+Requires-Dist: torch==2.7.1; extra == "local-llm"
+Provides-Extra: dev
+Requires-Dist: gh-acr[analysis,local-llm]; extra == "dev"
+Requires-Dist: pytest-cov>=5; extra == "dev"
+
 # GH-ACR: GitHub Auto Conflict Resolver
 
 Merge conflict resolution pipeline for evaluating LLM-based and baseline methods on the [GitGoodBench](https://github.com/JetBrains-Research/git-good-bench) dataset.

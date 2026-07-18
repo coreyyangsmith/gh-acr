@@ -152,6 +152,7 @@ def test_build_config_when_handler_ctor_raises_returns_existing(langfuse_keys):
         raise RuntimeError("ctor failed")
 
     with patch.object(lt, "_import_callback_handler", return_value=_boom):
+        set_run_context(eval_method="agent", scenario_id="1")
         assert build_langfuse_invoke_config(existing) is existing
 
 
@@ -159,9 +160,8 @@ def test_build_config_enabled_sets_method_trace_name(langfuse_keys):
     fake_handler = MagicMock(name="CallbackHandler")
     fake_cls = MagicMock(return_value=fake_handler)
 
-    set_run_context(eval_method="bypass7", scenario_id="7", model_name="openai/gpt-4o-mini")
-
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="bypass7", scenario_id="7", model_name="openai/gpt-4o-mini")
         config = build_langfuse_invoke_config({"callbacks": []}, model_name="openai/gpt-4o-mini")
 
     assert config["run_name"] == "bypass7-scenario-7"
@@ -174,13 +174,41 @@ def test_build_config_enabled_sets_method_trace_name(langfuse_keys):
     fake_cls.assert_called_once_with()
 
 
-def test_build_config_preserves_existing_callbacks_and_metadata(langfuse_keys):
-    prior_cb = object()
-    set_run_context(eval_method="agent", scenario_id="1")
+def test_build_config_reuses_shared_handler_across_calls(langfuse_keys):
     fake_handler = object()
     fake_cls = MagicMock(return_value=fake_handler)
 
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="bypass7", scenario_id="7")
+        c1 = build_langfuse_invoke_config({})
+        c2 = build_langfuse_invoke_config({})
+
+    assert c1["callbacks"][0] is fake_handler
+    assert c2["callbacks"][0] is fake_handler
+    assert c1["callbacks"][0] is c2["callbacks"][0]
+    assert fake_cls.call_count == 1
+
+
+def test_build_config_uses_node_as_run_name_keeps_trace_name(langfuse_keys):
+    fake_cls = MagicMock(return_value=object())
+    with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="bypass7", scenario_id="7")
+        lt.set_llm_node("summarizer_agent")
+        config = build_langfuse_invoke_config({}, observation_name="summarizer_agent")
+
+    assert config["run_name"] == "summarizer_agent"
+    assert config["metadata"]["langfuse_trace_name"] == "bypass7-scenario-7"
+    assert config["metadata"]["llm_node"] == "summarizer_agent"
+    assert "summarizer_agent" in config["tags"]
+
+
+def test_build_config_preserves_existing_callbacks_and_metadata(langfuse_keys):
+    prior_cb = object()
+    fake_handler = object()
+    fake_cls = MagicMock(return_value=fake_handler)
+
+    with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="agent", scenario_id="1")
         config = build_langfuse_invoke_config(
             {
                 "callbacks": [prior_cb],
@@ -199,25 +227,25 @@ def test_build_config_preserves_existing_callbacks_and_metadata(langfuse_keys):
 
 
 def test_build_config_does_not_duplicate_method_tag(langfuse_keys):
-    set_run_context(eval_method="agent", scenario_id="1")
     fake_cls = MagicMock(return_value=object())
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="agent", scenario_id="1")
         config = build_langfuse_invoke_config({"tags": ["agent"]}, model_name="m")
     assert config["tags"].count("agent") == 1
 
 
 def test_build_config_uses_context_model_when_arg_omitted(langfuse_keys):
-    set_run_context(eval_method="agent", scenario_id="1", model_name="from-context")
     fake_cls = MagicMock(return_value=object())
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="agent", scenario_id="1", model_name="from-context")
         config = build_langfuse_invoke_config({})
     assert config["metadata"]["model_name"] == "from-context"
 
 
 def test_build_config_prefers_explicit_model_over_context(langfuse_keys):
-    set_run_context(eval_method="agent", scenario_id="1", model_name="from-context")
     fake_cls = MagicMock(return_value=object())
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="agent", scenario_id="1", model_name="from-context")
         config = build_langfuse_invoke_config({}, model_name="explicit")
     assert config["metadata"]["model_name"] == "explicit"
 
@@ -241,9 +269,9 @@ def test_build_config_non_dict_unconvertible_passthrough(langfuse_keys):
 
 @pytest.mark.parametrize("method", ["base_a", "base_b", "agent", "bypass7", "force_mix"])
 def test_build_config_trace_name_includes_each_method(langfuse_keys, method: str):
-    set_run_context(eval_method=method, scenario_id="sid")
     fake_cls = MagicMock(return_value=object())
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method=method, scenario_id="sid")
         config = build_langfuse_invoke_config({})
     assert config["run_name"] == f"{method}-scenario-sid"
     assert config["metadata"]["langfuse_trace_name"] == f"{method}-scenario-sid"
@@ -259,11 +287,10 @@ def test_langfuse_wrapper_forwards_merged_config(langfuse_keys):
     inner.invoke.return_value = MagicMock(content="ok")
     fake_handler = object()
     fake_cls = MagicMock(return_value=fake_handler)
-
-    set_run_context(eval_method="agent", scenario_id="1", model_name="openai/gpt-4o-mini")
     wrapper = LangfuseLLMWrapper(inner, model_name="openai/gpt-4o-mini")
 
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="agent", scenario_id="1", model_name="openai/gpt-4o-mini")
         result = wrapper.invoke("hello prompt")
 
     assert getattr(result, "content", None) == "ok"
@@ -319,10 +346,10 @@ def test_langfuse_wrapper_ainvoke_uses_inner_ainvoke(langfuse_keys):
 
     inner = Inner()
     wrapper = LangfuseLLMWrapper(inner, model_name="m")
-    set_run_context(eval_method="bypass7", scenario_id="2")
     fake_cls = MagicMock(return_value=object())
 
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
+        set_run_context(eval_method="bypass7", scenario_id="2")
         result = asyncio.run(wrapper.ainvoke("prompt", config={"tags": ["t"]}))
 
     assert result.content == "async-ok"
@@ -428,12 +455,66 @@ def test_observability_package_exports():
 
     for name in (
         "LangfuseLLMWrapper",
+        "append_llm_call",
         "build_langfuse_invoke_config",
+        "clear_llm_node",
         "clear_run_context",
         "flush_langfuse",
+        "get_llm_calls",
+        "get_llm_node",
         "get_run_context",
+        "get_shared_handler",
         "is_langfuse_enabled",
         "make_trace_name",
+        "scenario_observation",
+        "set_llm_node",
         "set_run_context",
     ):
         assert hasattr(obs, name)
+
+
+# ---------------------------------------------------------------------------
+# llm_calls ledger helpers
+# ---------------------------------------------------------------------------
+
+
+def test_append_and_get_llm_calls_survive_clear():
+    set_run_context(eval_method="agent", scenario_id="1")
+    lt.append_llm_call(
+        {
+            "node": "summarizer_agent",
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+        }
+    )
+    assert len(lt.get_llm_calls()) == 1
+    clear_run_context()
+    # Snapshot survives clear so the run ledger can still read it
+    calls = lt.get_llm_calls()
+    assert len(calls) == 1
+    assert calls[0]["prompt_tokens"] == 10
+    assert calls[0]["completion_tokens"] == 5
+
+
+def test_scenario_observation_noop_when_disabled(no_langfuse_keys):
+    entered = False
+    with lt.scenario_observation("agent-scenario-1"):
+        entered = True
+    assert entered is True
+
+
+def test_scenario_observation_uses_langfuse_client(langfuse_keys):
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=None)
+    cm.__exit__ = MagicMock(return_value=False)
+    client = MagicMock()
+    client.start_as_current_observation.return_value = cm
+
+    with patch("langfuse.get_client", return_value=client, create=True):
+        with lt.scenario_observation("bypass7-scenario-9"):
+            pass
+
+    client.start_as_current_observation.assert_called_once()
+    kwargs = client.start_as_current_observation.call_args.kwargs
+    assert kwargs.get("name") == "bypass7-scenario-9"

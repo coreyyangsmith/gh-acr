@@ -1,7 +1,8 @@
 # Dependencies moved to the repository root.
 # Prefer:
-#   pip install -e .
-#   pip install -e ".[analysis,local-llm]"
+#   uv sync
+#   uv sync --extra analysis
+#   uv sync --extra local-llm
+#   uv sync --extra dev
 #
 # See ../pyproject.toml and ../requirements.txt
--e ..[dev]

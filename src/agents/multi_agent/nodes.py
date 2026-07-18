@@ -28,6 +28,7 @@ from pathlib import Path
 from typing import Any, Callable, Dict, Literal
 
 from ..llm_base import get_backend, count_tokens
+from ..resilient_invoke import resilient_invoke
 from ..utils import render_template, extract_text_content, scenario_file_list
 from ...utils.logger import logger
 
@@ -108,6 +109,17 @@ def _get_model_name(state: Dict[str, Any]) -> str:
     return state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
 
 
+def _invoke_context(state: Dict[str, Any], *, node: str, file_path: str | None = None) -> Dict[str, Any]:
+    """Build shared metadata for resilient_invoke failure traces."""
+    return {
+        "scenario_id": state.get("scenario_id"),
+        "eval_method": state.get("eval_method"),
+        "node": node,
+        "file_path": file_path,
+        "model_name": _get_model_name(state),
+    }
+
+
 def _init_token_counts(state: Dict[str, Any], path: str) -> Dict[str, int]:
     """Initialize or retrieve token count dict for a file path."""
     return state.setdefault("token_counts", {}).setdefault(
@@ -175,7 +187,13 @@ def create_summarizer_node(prompt_variant: PromptVariant) -> NodeFunc:
                         prompt_str,
                         {"original_code": original_text, "patch": diff_text},
                     )
-                    result = llm.invoke(prompt_text)
+                    result = resilient_invoke(
+                        llm,
+                        prompt_text,
+                        context=_invoke_context(
+                            state, node="summarizer_agent", file_path=path
+                        ),
+                    )
                     content = extract_text_content(result)
                     summary_pair[f"summary_{parent_label.lower()}"] = content.strip()
 
@@ -258,7 +276,11 @@ def create_conflict_analyzer_node(prompt_variant: PromptVariant) -> NodeFunc:
                 a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff
             )
 
-            result = llm.invoke(prompt_text)
+            result = resilient_invoke(
+                llm,
+                prompt_text,
+                context=_invoke_context(state, node="conflict_analyzer"),
+            )
             content = extract_text_content(result)
             raw_output = content.strip()
             decision = _normalize_decision_standard(raw_output)
@@ -323,7 +345,11 @@ def create_conflict_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
                 prompt_str,
                 {"a_diff": a_diff, "a_summary": a_sum, "b_diff": b_diff, "b_summary": b_sum},
             )
-            result = llm.invoke(prompt_text)
+            result = resilient_invoke(
+                llm,
+                prompt_text,
+                context=_invoke_context(state, node="conflict_agent"),
+            )
             content = extract_text_content(result)
             try:
                 plan = json.loads(content)
@@ -429,7 +455,13 @@ def create_resolution_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
                     "review_feedback": feedback_text,
                 },
             )
-            result = llm.invoke(prompt_text)
+            result = resilient_invoke(
+                llm,
+                prompt_text,
+                context=_invoke_context(
+                    state, node="resolution_agent", file_path=path
+                ),
+            )
             content = extract_text_content(result)
             merged_text = content.strip("\n")
             resolved[path] = merged_text
@@ -502,7 +534,11 @@ def create_review_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
                 continue
 
             prompt_text = render_template(prompt_str, {"generated_code": content})
-            res = llm.invoke(prompt_text)
+            res = resilient_invoke(
+                llm,
+                prompt_text,
+                context=_invoke_context(state, node="review_agent", file_path=path),
+            )
             text = extract_text_content(res)
             reviews[path] = text
             review_history.setdefault(path, []).append(text)

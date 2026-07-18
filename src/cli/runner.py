@@ -196,17 +196,15 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
     logger.info("Starting scenario %s with method=%s", scenario_id, eval_method)
     logger.info("=" * 60)
     
-    invoke_cfg: Dict[str, Any] = {
-        "configurable": {"thread_id": f"scn-{scenario_id}"},
-        "run_name": f"{eval_method}-scenario-{scenario_id}",
-    }
-
     # Log initial state diagnostics
     _log_pipeline_diagnostics(logger, "PRE-INVOKE", init_state)
 
     from src.agents.observability import (
+        build_langfuse_invoke_config,
         clear_run_context,
         flush_langfuse,
+        make_trace_name,
+        scenario_observation,
         set_run_context,
     )
 
@@ -215,8 +213,18 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         scenario_id=str(scenario_id),
         model_name=model_name,
     )
+    # Attach LangFuse CallbackHandler + langfuse_trace_name so the graph root
+    # trace is named "{eval_method}-scenario-{id}" (passthrough when disabled).
+    invoke_cfg = build_langfuse_invoke_config(
+        {
+            "configurable": {"thread_id": f"scn-{scenario_id}"},
+            "run_name": make_trace_name(eval_method, str(scenario_id)),
+        },
+        model_name=model_name,
+    )
     try:
-        result = await app.ainvoke(init_state, config=invoke_cfg)
+        with scenario_observation(make_trace_name(eval_method, str(scenario_id))):
+            result = await app.ainvoke(init_state, config=invoke_cfg)
     except Exception as e:
         elapsed_sec = time.perf_counter() - start_ts
         logger.error(

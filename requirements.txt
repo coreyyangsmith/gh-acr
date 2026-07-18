@@ -1,9 +1,9 @@
-# Install the project (and optional extras) from pyproject.toml:
-#   pip install -e .
-#   pip install -e ".[analysis]"
-#   pip install -e ".[local-llm]"
-#   pip install -e ".[dev]"
+# Dependencies are managed with uv from pyproject.toml (see uv.lock).
+# Install:
+#   uv sync
+#   uv sync --extra analysis
+#   uv sync --extra local-llm
+#   uv sync --extra dev
 #
-# For a pinned freeze of the previous src/requirements.txt set, use:
-#   pip install -e ".[dev]"
--e .
+# Run scripts:
+#   uv run python -m src.cli.run_all --help

@@ -1,5 +1,4 @@
 param(
-    [string]$PythonExe = "python",
     [string]$ResultsCsv = "data/2026_01_results_final.csv",
     [string]$DatasetCsv = "data/git_good_bench_merge_commits_all.csv",
     [string]$OutputDir = "results/final_paper_figs"
@@ -18,4 +17,4 @@ generate_figure_d(
 )
 "@
 
-& $PythonExe -c $code
+uv run python -c $code

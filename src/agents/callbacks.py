@@ -106,22 +106,62 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
         except Exception:
             pass
 
-        logger.info(
-            "LLM call to %s completed.\n  *  Tokens: %d prompt, %d completion (%d total)\n  *  Cost:   $%.4f%s",
-            self._backend_name(),
-            prompt_tokens,
-            completion_tokens,
-            total_tokens,
-            total_cost,
-            " (estimated)" if not (input_cost_per_1k or output_cost_per_1k) else "",
-        )
+        # Structured per-call token record for the run ledger
+        node = ""
+        try:
+            from .observability import append_llm_call, get_llm_node, get_run_context
+
+            ctx = get_run_context()
+            node = get_llm_node()
+            append_llm_call(
+                {
+                    "node": node or None,
+                    "scenario_id": ctx.get("scenario_id") or None,
+                    "eval_method": ctx.get("eval_method") or None,
+                    "model_name": self.model_name,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": total_tokens,
+                }
+            )
+        except Exception:
+            pass
+
+        if node:
+            logger.info(
+                "LLM call to %s completed (node=%s).\n  *  Tokens: %d prompt, %d completion (%d total)\n  *  Cost:   $%.4f%s",
+                self._backend_name(),
+                node,
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                total_cost,
+                " (estimated)" if not (input_cost_per_1k or output_cost_per_1k) else "",
+            )
+        else:
+            logger.info(
+                "LLM call to %s completed.\n  *  Tokens: %d prompt, %d completion (%d total)\n  *  Cost:   $%.4f%s",
+                self._backend_name(),
+                prompt_tokens,
+                completion_tokens,
+                total_tokens,
+                total_cost,
+                " (estimated)" if not (input_cost_per_1k or output_cost_per_1k) else "",
+            )
 
     def on_llm_error(self, error: BaseException, *, run_id: Any, **kwargs: Any) -> None:  # type: ignore[override]
         info = self._reservations.pop(run_id, None)
+        logger.error(
+            "LLM call to %s failed: %s: %s",
+            self._backend_name(),
+            type(error).__name__,
+            error,
+        )
         if info is None:
             return
         try:
             self._limiter.adjust(actual_tokens=0, reserved_tokens=int(info.get("reserved", 0)))
+            self._limiter.last_error = f"{type(error).__name__}: {error}"
         except Exception:
             pass
 

@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, Literal
 
 from langgraph.graph import END, StateGraph
 
+from ..observability import build_langfuse_invoke_config, make_trace_name
 from .nodes import (
     create_summarizer_node,
     create_conflict_analyzer_node,
@@ -28,6 +29,11 @@ from .nodes import (
 
 # Type alias for resolver functions
 ResolverFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
+
+
+def _nested_langfuse_config() -> Dict[str, Any] | None:
+    """Build invoke config so nested multi-agent roots are method-named in LangFuse."""
+    return build_langfuse_invoke_config({"run_name": make_trace_name()})
 
 
 def _route_after_review(state: Dict[str, Any]) -> str:
@@ -268,7 +274,7 @@ def build_bypass_graph(prompt_variant: PromptVariant = "bypass") -> ResolverFunc
         if "_review_iter" not in state:
             state["_review_iter"] = 0
 
-        return sub_app.invoke(state)
+        return sub_app.invoke(state, config=_nested_langfuse_config())
 
     return resolver_function
 
@@ -345,7 +351,7 @@ def build_force_mix_graph(prompt_variant: PromptVariant = "force_mix") -> Resolv
         if "_review_iter" not in state:
             state["_review_iter"] = 0
 
-        return sub_app.invoke(state)
+        return sub_app.invoke(state, config=_nested_langfuse_config())
 
     return resolver_function
 
