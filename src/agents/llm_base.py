@@ -32,7 +32,8 @@ Provider-specific logic lives in ``src.agents.handlers``. This module
 resolves a handler via the registry, then wraps the result with:
 1. **TruncatingLLMWrapper**: Clips over-long prompts to model limits
 2. **RateLimitAndCostHandler**: Enforces rate limits and logs token costs
-3. **_ThreadSafeLLMWrapper**: Prevents tokenizer concurrency issues
+3. **LangfuseLLMWrapper**: Injects LangFuse callbacks when credentials are set
+4. **_ThreadSafeLLMWrapper**: Prevents tokenizer concurrency issues
 Results are cached with @lru_cache to avoid redundant model loading.
 
 Example Usage
@@ -52,6 +53,7 @@ from typing import Any, Optional, Tuple
 
 from .callbacks import RateLimitAndCostHandler
 from .handlers import create_backend
+from .observability import LangfuseLLMWrapper
 from .token_utils import count_tokens, tiktoken_encoder
 from .truncation_wrapper import TruncatingLLMWrapper
 
@@ -145,6 +147,12 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:
     handler = RateLimitAndCostHandler(encoder=enc, model_name=model_name)
     try:
         raw_llm = raw_llm.with_config({"callbacks": [handler]})
+    except Exception:
+        pass
+
+    # Inject LangFuse callbacks on every invoke (soft-disabled without credentials)
+    try:
+        raw_llm = LangfuseLLMWrapper(raw_llm, model_name=model_name)
     except Exception:
         pass
 

@@ -71,6 +71,14 @@ def _log_environment_diagnostics(logger) -> None:
     for var in truncation_vars:
         val = os.getenv(var, "<not set>")
         logger.info("  %s = %s", var, val)
+
+    # LangFuse (presence only; never log secret values)
+    logger.info("--- LangFuse Configuration ---")
+    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL", "LANGFUSE_TRACING_ENABLED"):
+        val = os.getenv(var, "<not set>")
+        if var.endswith("_KEY") and val != "<not set>":
+            val = val[:4] + "****" if len(val) > 4 else "****"
+        logger.info("  %s = %s", var, val)
     
     # HuggingFace configuration
     hf_vars = [
@@ -183,11 +191,11 @@ def _run_startup_once() -> None:
     _STARTUP_HAS_RUN = True
 
     # Load environment variables from .env (best-effort).
-    # Prefer an explicit repo-root `.env` so keys live next to `.env.example`.
+    # Prefer `src/.env` (next to `src/.env.example`); fall back to find_dotenv.
     try:
-        root_env = Path(__file__).resolve().parents[1] / ".env"
-        if root_env.is_file():
-            load_dotenv(root_env)
+        src_env = Path(__file__).resolve().parent / ".env"
+        if src_env.is_file():
+            load_dotenv(src_env)
         else:
             env_path = find_dotenv(usecwd=True) or find_dotenv(usecwd=False)
             if env_path:

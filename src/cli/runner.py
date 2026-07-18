@@ -122,6 +122,7 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         "status": "start",
         "logs": [],
         "model_name": model_name,
+        "eval_method": eval_method,
     }
 
     # ---------------------------------------------------------------------------
@@ -202,7 +203,18 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
 
     # Log initial state diagnostics
     _log_pipeline_diagnostics(logger, "PRE-INVOKE", init_state)
-    
+
+    from src.agents.observability import (
+        clear_run_context,
+        flush_langfuse,
+        set_run_context,
+    )
+
+    set_run_context(
+        eval_method=eval_method,
+        scenario_id=str(scenario_id),
+        model_name=model_name,
+    )
     try:
         result = await app.ainvoke(init_state, config=invoke_cfg)
     except Exception as e:
@@ -213,6 +225,9 @@ async def run_and_save_report(app, scenario_id: str, output_root: Path, *, eval_
         )
         logger.error("Traceback:\n%s", traceback.format_exc())
         raise
+    finally:
+        clear_run_context()
+        flush_langfuse()
 
     elapsed_sec = time.perf_counter() - start_ts
     

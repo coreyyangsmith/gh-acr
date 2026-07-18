@@ -80,3 +80,71 @@ def test_create_respects_base_url_and_headers(monkeypatch, clear_api_keys):
     headers = captured.get("default_headers") or {}
     assert headers.get("HTTP-Referer") == "https://gh-acr.example"
     assert headers.get("X-OpenRouter-Title") == "GH-ACR"
+
+
+def test_http_referer_fallback_env(monkeypatch, clear_api_keys):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-test")
+    monkeypatch.setenv("HTTP_REFERER", "https://via-http-referer.example")
+    captured: dict = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    with (
+        patch("langchain_openai.ChatOpenAI", FakeChatOpenAI),
+        patch(
+            "src.agents.handlers.openrouter_handler.tiktoken_encoder",
+            return_value=None,
+        ),
+    ):
+        OpenRouterHandler().create("openrouter/anthropic/claude-sonnet-4.5")
+
+    headers = captured.get("default_headers") or {}
+    assert headers.get("HTTP-Referer") == "https://via-http-referer.example"
+
+
+def test_empty_base_url_falls_back_to_default(monkeypatch, clear_api_keys):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-test")
+    monkeypatch.setenv("OPENROUTER_BASE_URL", "   ")
+    captured: dict = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    with (
+        patch("langchain_openai.ChatOpenAI", FakeChatOpenAI),
+        patch(
+            "src.agents.handlers.openrouter_handler.tiktoken_encoder",
+            return_value=None,
+        ),
+    ):
+        OpenRouterHandler().create("openrouter/openai/gpt-4o-mini")
+
+    assert captured.get("base_url") == DEFAULT_OPENROUTER_BASE_URL
+
+
+def test_passes_max_tokens_from_model_costs(monkeypatch, clear_api_keys):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-test")
+    captured: dict = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    with (
+        patch("langchain_openai.ChatOpenAI", FakeChatOpenAI),
+        patch(
+            "src.agents.handlers.openrouter_handler.tiktoken_encoder",
+            return_value=None,
+        ),
+    ):
+        OpenRouterHandler().create("openrouter/openai/gpt-4o-mini")
+
+    assert captured.get("max_tokens") == 16_000
+
+
+def test_empty_model_id_raises():
+    with pytest.raises(ValueError, match="requires a model id"):
+        OpenRouterHandler().parse_model_id("openrouter/")

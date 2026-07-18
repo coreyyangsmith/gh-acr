@@ -42,3 +42,15 @@ def test_create_passes_model(monkeypatch):
     assert captured.get("model") == "llama-3.1-8b-instant"
     assert captured.get("temperature") == 0
     assert captured.get("groq_api_key") == "gsk-test"
+    # MODEL_COSTS entry has output_limit 128_000
+    assert captured.get("max_tokens") == 128_000
+
+
+def test_parse_rejects_wrong_scheme():
+    with pytest.raises(ValueError, match="does not match scheme"):
+        GroqHandler().parse_model_id("openai/gpt-4o-mini")
+
+
+def test_empty_model_id_raises():
+    with pytest.raises(ValueError, match="requires a model id"):
+        GroqHandler().parse_model_id("groq:")

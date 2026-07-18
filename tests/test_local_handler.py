@@ -38,3 +38,20 @@ def test_create_delegates_to_local_backend():
         result = LocalHandler().create("local:gpt2")
     mock_create.assert_called_once_with("local:gpt2")
     assert result is sentinel
+
+
+def test_create_validates_before_loading():
+    """Empty id must fail in LocalHandler before calling local_backend."""
+    with patch(
+        "src.agents.backends.local_backend.create_local_backend"
+    ) as mock_create:
+        with pytest.raises(ValueError, match="requires a model id"):
+            LocalHandler().create("local:")
+    mock_create.assert_not_called()
+
+
+def test_does_not_match_openai_or_openrouter():
+    h = LocalHandler()
+    assert not h.matches("openai/gpt-4o-mini")
+    assert not h.matches("openrouter/meta-llama/Llama-3.1-8B")
+    assert not h.matches("local")
