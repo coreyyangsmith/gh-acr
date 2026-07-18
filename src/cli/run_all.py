@@ -45,7 +45,7 @@ def main(
     mode
         Processing mode: "clone" (defaults to "clone").
     methods
-        Subset of evaluation methods to run. Defaults to all: ["base_a", "base_b", "agent", "multi", "bypass_multi"].
+        Subset of evaluation methods to run. Defaults to all: ["base_a", "base_b", "agent", "bypass7", "force_mix"].
     model_name
         Optional model override for LLM-based methods.
     n_easy / n_medium / n_hard

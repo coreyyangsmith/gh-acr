@@ -16,7 +16,7 @@ from typing import Optional
 import pandas as pd
 import numpy as np
 import tyro
-from .loader import load_benchmark
+from ..loader import load_benchmark
 
 
 def _normalize_percent_tag(percent: float) -> str:

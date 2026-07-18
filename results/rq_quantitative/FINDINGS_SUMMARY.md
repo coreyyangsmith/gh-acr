@@ -3,7 +3,7 @@
 **Generated**: 2026-02-07  
 **Dataset**: 1,078 unique merge conflict scenarios (3 models × pass/fail, from GitGoodBench)  
 **Models**: GPT-5-nano, Qwen3-32B, LLaMA-3.1-8B  
-**Module**: `src/results/quantitative/`
+**Module**: `src/analysis/quantitative/`
 
 ---
 
@@ -48,7 +48,7 @@ All 6 JSON files under `data/labeled/`:
 ### Execution Command
 
 ```bash
-python -m src.results.quantitative.main \
+python -m src.analysis.quantitative.main \
     --case-folders \
         "data/labeled/2025-11-09-gpt5nano-failure-cases" \
         "data/labeled/2025-11-11-gpt5nano-pass-cases" \
@@ -367,10 +367,10 @@ From the ground truth metrics by difficulty:
 
 | File | Purpose |
 |------|---------|
-| `src/results/quantitative/__init__.py` | Module exports |
-| `src/results/quantitative/config.py` | Constants, metric definitions, `QuantConfig` dataclass |
-| `src/results/quantitative/metrics.py` | Core computation: diff parsing, LOC/SLOC, commit counting |
-| `src/results/quantitative/loader.py` | Data loading from case folders, batch processing, aggregation |
-| `src/results/quantitative/correlations.py` | Correlation analysis (Spearman, Pearson, Mann-Whitney U) |
-| `src/results/quantitative/plots.py` | All visualization functions |
-| `src/results/quantitative/main.py` | 8-step orchestrator pipeline with CLI (`tyro`) |
+| `src/analysis/quantitative/__init__.py` | Module exports |
+| `src/analysis/quantitative/config.py` | Constants, metric definitions, `QuantConfig` dataclass |
+| `src/analysis/quantitative/metrics.py` | Core computation: diff parsing, LOC/SLOC, commit counting |
+| `src/analysis/quantitative/loader.py` | Data loading from case folders, batch processing, aggregation |
+| `src/analysis/quantitative/correlations.py` | Correlation analysis (Spearman, Pearson, Mann-Whitney U) |
+| `src/analysis/quantitative/plots.py` | All visualization functions |
+| `src/analysis/quantitative/main.py` | 8-step orchestrator pipeline with CLI (`tyro`) |

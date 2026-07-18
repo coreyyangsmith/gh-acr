@@ -32,7 +32,7 @@ def test_require_api_key_not_supported():
 def test_create_delegates_to_local_backend():
     sentinel = (object(), object())
     with patch(
-        "src.agents.backends.local_backend.create_local_backend",
+        "src.agents.handlers.local_backend.create_local_backend",
         return_value=sentinel,
     ) as mock_create:
         result = LocalHandler().create("local:gpt2")
@@ -43,7 +43,7 @@ def test_create_delegates_to_local_backend():
 def test_create_validates_before_loading():
     """Empty id must fail in LocalHandler before calling local_backend."""
     with patch(
-        "src.agents.backends.local_backend.create_local_backend"
+        "src.agents.handlers.local_backend.create_local_backend"
     ) as mock_create:
         with pytest.raises(ValueError, match="requires a model id"):
             LocalHandler().create("local:")

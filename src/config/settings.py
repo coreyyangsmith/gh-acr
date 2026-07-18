@@ -67,8 +67,11 @@ and suitable for development; production runs may use 10-50.
 # Dataset Configuration
 # -----------------------------------------------------------------------------
 
-# Default dataset path - can be overridden via DATASET_CSV environment variable
-_default_data_path = Path(__file__).resolve().parents[2] / "data" / "2026-01-02_llama_combined_remaining.csv"
+# Default dataset path - can be overridden via DATASET_CSV environment variable.
+# Prefer setting DATASET_CSV explicitly; the default is the full merge-commits extract.
+_default_data_path = (
+    Path(__file__).resolve().parents[2] / "data" / "git_good_bench_merge_commits_all.csv"
+)
 _env_data_path = os.getenv("DATASET_CSV")
 DATA_PATH: Path = Path(_env_data_path) if _env_data_path else _default_data_path
 """Default path to the benchmark dataset CSV.
@@ -77,10 +80,9 @@ This is the input file containing merge conflict scenarios to process.
 The CSV should have columns including 'id', 'name' (repo slug), and
 'scenario' (JSON with conflict metadata).
 
-Common dataset files:
-- git_good_bench_merge_commits_subset_10pc.csv (10% sample)
-- single.csv (single scenario for testing)
-- 2025_10_13_llama_remaining.csv (current default)
+Override with the DATASET_CSV environment variable. Common dataset files:
+- git_good_bench_merge_commits_all.csv (full extract; default)
+- git_good_bench_merge_commits_all_subset_10_seed42.csv (10% sample)
 """
 
 

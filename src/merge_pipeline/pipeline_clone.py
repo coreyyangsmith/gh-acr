@@ -31,7 +31,7 @@ from ..agents.base_agent import (
     resolve_conflict_base_a_node,
     resolve_conflict_base_b_node,
 )
-from ..agents.agent import resolve_conflict_agent_node
+from ..agents.single_agent import resolve_conflict_agent_node
 from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
 from ..agents.force_mix import resolve_conflict_force_mix_node
 

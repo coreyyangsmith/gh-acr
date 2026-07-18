@@ -6,7 +6,7 @@ import logging
 
 from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline, set_seed  # type: ignore
 
-from .backends.hf_utils import (
+from .handlers.hf_utils import (
     DEFAULT_HF_CACHE_DIR,
     DEFAULT_LOCAL_MODEL_ID,
     HF_LOCAL_ONLY,

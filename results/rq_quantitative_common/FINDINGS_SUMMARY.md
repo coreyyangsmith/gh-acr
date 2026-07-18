@@ -182,7 +182,7 @@ Results CSV (29,436 rows)
 ### Script
 
 ```bash
-python -m src.results.quantitative.common_set_analysis \
+python -m src.analysis.quantitative.common_set_analysis \
     --results-csv data/2026_01_results_final.csv \
     --dataset-csv data/git_good_bench_merge_commits_all.csv \
     --output-dir results/rq_quantitative_common

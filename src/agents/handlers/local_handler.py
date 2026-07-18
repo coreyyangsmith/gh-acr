@@ -10,7 +10,7 @@ from .base import BaseLLMHandler
 class LocalHandler(BaseLLMHandler):
     """HuggingFace transformers backend for local / cluster runs.
 
-    Heavy loading logic lives in ``backends.local_backend``; this handler
+    Heavy loading logic lives in ``handlers.local_backend``; this handler
     owns scheme matching and is the registry entry point.
     """
 
@@ -28,7 +28,7 @@ class LocalHandler(BaseLLMHandler):
         # Validate scheme / non-empty id before loading weights
         self.parse_model_id(model_name)
         # Deferred import keeps handlers importable without torch at collection time
-        from ..backends.local_backend import create_local_backend
+        from .local_backend import create_local_backend
 
         return create_local_backend(model_name)
 

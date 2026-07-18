@@ -5,11 +5,12 @@ conflicts using Large Language Models.
 
 Package Structure
 -----------------
-- **agent/**: Single-turn LLM-based resolver (simple prompt → merged output)
+- **single_agent/**: Single-turn LLM-based resolver (simple prompt → merged output)
 - **base_agent/**: Deterministic baselines (always select Parent A or B)
 - **bypass7/**: Multi-agent with bypass analyzer and tuned prompts
+- **force_mix/**: Multi-agent that always takes the mix path
 - **multi_agent/**: Consolidated implementation shared by bypass variants
-- **backends/**: LLM backend implementations (OpenAI, Groq, local)
+- **handlers/**: LLM provider adapters (OpenAI, Groq, OpenRouter, local)
 
 Key Modules
 -----------
@@ -35,6 +36,8 @@ Resolution Strategies
    - Planner: Create per-file merge strategy
    - Resolver: Apply the plan to produce merged code
    - Reviewer: Check quality with retry loop
+
+4. **force_mix**: Multi-agent pipeline that always mixes (no analyzer)
 
 Example Usage
 -------------

@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 import tyro
 
-from .loader import load_benchmark, DATA_PATH
+from ..loader import load_benchmark, DATA_PATH
 
 __all__ = ["split_by_difficulty"]
 

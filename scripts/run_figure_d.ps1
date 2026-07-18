@@ -9,7 +9,7 @@ $ErrorActionPreference = "Stop"
 
 $code = @"
 from pathlib import Path
-from src.results.final_paper_figs.figure_d_advantage_by_buckets import generate_figure_d
+from src.analysis.final_paper_figs.figure_d_advantage_by_buckets import generate_figure_d
 
 generate_figure_d(
     results_csv=Path(r'$ResultsCsv'),

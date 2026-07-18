@@ -191,10 +191,14 @@ def _run_startup_once() -> None:
     _STARTUP_HAS_RUN = True
 
     # Load environment variables from .env (best-effort).
-    # Prefer `src/.env` (next to `src/.env.example`); fall back to find_dotenv.
+    # Prefer repo-root `.env`; fall back to `src/.env`, then find_dotenv.
     try:
+        repo_root = Path(__file__).resolve().parents[1]
+        root_env = repo_root / ".env"
         src_env = Path(__file__).resolve().parent / ".env"
-        if src_env.is_file():
+        if root_env.is_file():
+            load_dotenv(root_env)
+        elif src_env.is_file():
             load_dotenv(src_env)
         else:
             env_path = find_dotenv(usecwd=True) or find_dotenv(usecwd=False)

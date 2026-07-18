@@ -47,4 +47,9 @@ class OpenAIHandler(BaseLLMHandler):
         return enc, raw_llm
 
 
-__all__ = ["OpenAIHandler"]
+def create_openai_backend(model_name: str) -> Tuple[Optional[Any], Any]:
+    """Initialize OpenAI chat backend for model_name (openai/<model>)."""
+    return OpenAIHandler().create(model_name)
+
+
+__all__ = ["OpenAIHandler", "create_openai_backend"]

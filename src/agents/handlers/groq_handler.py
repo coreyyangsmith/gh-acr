@@ -44,4 +44,9 @@ class GroqHandler(BaseLLMHandler):
         return None, raw_llm
 
 
-__all__ = ["GroqHandler"]
+def create_groq_backend(model_name: str) -> Tuple[Optional[Any], Any]:
+    """Initialize Groq chat backend for model_name (groq:<model>)."""
+    return GroqHandler().create(model_name)
+
+
+__all__ = ["GroqHandler", "create_groq_backend"]

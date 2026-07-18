@@ -25,7 +25,7 @@ import pandas as pd
 import numpy as np
 import tyro
 
-from .loader import load_benchmark, DATA_PATH
+from ..loader import load_benchmark, DATA_PATH
 
 
 def _resolve_csv_path(value: Optional[str], *, base_dir: Path, default_path: Path, require_exists: bool) -> Path:

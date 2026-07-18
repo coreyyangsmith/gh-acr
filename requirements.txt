@@ -1,0 +1,9 @@
+# Install the project (and optional extras) from pyproject.toml:
+#   pip install -e .
+#   pip install -e ".[analysis]"
+#   pip install -e ".[local-llm]"
+#   pip install -e ".[dev]"
+#
+# For a pinned freeze of the previous src/requirements.txt set, use:
+#   pip install -e ".[dev]"
+-e .

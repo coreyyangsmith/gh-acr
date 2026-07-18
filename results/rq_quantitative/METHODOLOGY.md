@@ -231,7 +231,7 @@ flowchart TD
 ## Source Code Architecture
 
 ```
-src/results/quantitative/
+src/analysis/quantitative/
 ├── __init__.py           # Exports: generate_all_quantitative, QuantFlags
 ├── config.py             # Constants, QuantConfig dataclass
 │   ├── VERSIONS, VERSION_DISPLAY_NAMES, VERSION_COLORS

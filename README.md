@@ -12,11 +12,11 @@ Merge conflict resolution pipeline for evaluating LLM-based and baseline methods
 4. **Analyze** results with built-in tools
 
 ```bash
-# Run all methods (base_a, base_b, agent, bypass7) on up to 10 scenarios
+# Run all methods (base_a, base_b, agent, bypass7, force_mix) on up to 10 scenarios
 python -m src.cli.run_all --mode clone --max-scenarios 10
 
 # Analyze results (uses most recent data/*_results_all.csv by default)
-python -m src.results.compare_methods
+python -m src.analysis.compare_methods
 ```
 
 ---
@@ -27,7 +27,7 @@ python -m src.results.compare_methods
 - `OPENAI_API_KEY` (or other LLM API key) for agent-based methods
 - `GITHUB_TOKEN` for cloning repositories
 
-Copy `src/.env.example` to `src/.env` and fill in your API keys.
+Copy `.env.example` to `.env` at the repository root and fill in your API keys.
 
 ---
 
@@ -46,7 +46,7 @@ python -m src.dataset.processing.extract_merge_scenario_from_ggb --input-csv dat
 **Remove duplicates** (by `merge_commit_hash`):
 
 ```bash
-python -m src.results.utils.remove_duplicates data/git_good_bench_merge_commits.csv
+python -m src.analysis.utils.remove_duplicates data/git_good_bench_merge_commits.csv
 ```
 
 Output defaults to `data/uniques.csv` unless `--output-csv` is specified.
@@ -79,7 +79,7 @@ Output is written next to the input with a suffix like `_subset_10_seed42.csv`.
 The pipeline loads scenarios from a CSV whose path is set by:
 
 - **Environment variable** `DATASET_CSV` (overrides default), or
-- **Default path** in `src/config/settings.py` (e.g. `data/2026-01-02_llama_combined_remaining.csv`)
+- **Default path** in `src/config/settings.py` (e.g. `data/git_good_bench_merge_commits_all.csv`)
 
 ```bash
 # PowerShell
@@ -107,13 +107,14 @@ python -m src.cli.run_all --mode clone [options]
 - `base_b` – Baseline: always select Parent B
 - `agent` – Single-turn LLM resolver
 - `bypass7` – Multi-agent resolver with bypass/merge decisions
+- `force_mix` – Multi-agent resolver that always takes the mix path
 
 ### Main parameters
 
 | Parameter | Description |
 |-----------|-------------|
 | `--mode` | `clone` (default) – clone repos locally |
-| `--methods` | Space-separated list of methods (default: all four) |
+| `--methods` | Space-separated list of methods (default: all five) |
 | `--max-scenarios N` | Limit total scenarios |
 | `--n-easy N --n-medium M --n-hard K` | Sample by difficulty instead |
 | `--model-name` | LLM override (see below) |
@@ -157,19 +158,19 @@ python -m src.cli.run_all --mode clone --methods base_a base_b agent bypass7 --m
 
 ```bash
 # Uses most recent data/*_results_all.csv
-python -m src.results.compare_methods
+python -m src.analysis.compare_methods
 
 # Specify a results file
-python -m src.results.compare_methods --results-csv data/2025_09_30_llama.csv
+python -m src.analysis.compare_methods --results-csv data/2025_09_30_llama.csv
 
 # Optional: filter by difficulty or file name
-python -m src.results.compare_methods --results-csv data/results.csv --difficulty easy,medium
+python -m src.analysis.compare_methods --results-csv data/results.csv --difficulty easy,medium
 ```
 
 **Tables and plots** (Pareto, cost vs quality, leaderboards):
 
 ```bash
-python -m src.results.main --results-csv data/YYYY_MM_DD_results_all.csv
+python -m src.analysis.main --results-csv data/YYYY_MM_DD_results_all.csv
 ```
 
 Outputs go to `results/` by default.
