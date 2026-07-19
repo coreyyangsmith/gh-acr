@@ -58,6 +58,9 @@ def _result_row(scenario_id: str, eval_method: str = "base_a") -> dict:
         "processing_time_s": 0.0,
         "difficulty": "easy",
         "project_size": "small",
+        "trace_replay_enabled": False,
+        "trace_replay_strategy": "",
+        "trace_replay_fallback": "",
     }
 
 
@@ -78,6 +81,7 @@ def _run_kwargs(**overrides):
         concurrency=1,
         method_concurrency=1,
         resume=False,
+        trace_replay=False,
     )
     base.update(overrides)
     return base

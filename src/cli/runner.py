@@ -108,6 +108,9 @@ RESULTS_SCHEMA_COLUMNS = [
     "processing_time_s",
     "difficulty",
     "project_size",
+    "trace_replay_enabled",
+    "trace_replay_strategy",
+    "trace_replay_fallback",
 ]
 
 async def run_and_save_report(
@@ -120,6 +123,8 @@ async def run_and_save_report(
     process_mode: str | None = None,
     write_prep: bool = True,
     prepared_state: Dict[str, Any] | None = None,
+    trace_replay: bool = False,
+    trace_replay_source: str = "better_judge",
 ):
     """Run the pipeline for one scenario and save its report to disk.
 
@@ -127,6 +132,10 @@ async def run_and_save_report(
     ``ensure_prepared``), it is merged into the graph init state and the
     redundant prep clone is skipped. Shared conflict input files under
     ``data/<model>/<id>/`` are written only if missing.
+
+    When ``trace_replay`` is True and ``eval_method`` is a ``bj_*`` ablation,
+    the resolver hydrates reusable stages from a canonical
+    ``better_judge`` snapshot (same-run or existing on disk).
     """
 
     logger = setup_logger(__name__)
@@ -146,6 +155,7 @@ async def run_and_save_report(
         artifact_root = scenario_dir / eval_method
         artifact_root.mkdir(parents=True, exist_ok=True)
 
+    source_root = scenario_dir / (trace_replay_source or "better_judge")
     init_state: Dict[str, Any] = {
         "scenario_id": scenario_id,
         "status": "start",
@@ -153,6 +163,11 @@ async def run_and_save_report(
         "model_name": model_name,
         "eval_method": eval_method,
         "artifact_root": str(artifact_root) if artifact_root is not None else None,
+        "trace_replay": {
+            "enabled": bool(trace_replay),
+            "source_method": trace_replay_source or "better_judge",
+            "source_root": str(source_root),
+        },
     }
     if prepared_state:
         # Prefer caller-prepared context; keep run-specific keys above.
@@ -245,6 +260,10 @@ async def run_and_save_report(
                     "total_cost": 0.0,
                     "processing_time_s": round(prep_elapsed, 3),
                     "difficulty": difficulty,
+                    "project_size": sample.get("project_size", ""),
+                    "trace_replay_enabled": False,
+                    "trace_replay_strategy": "",
+                    "trace_replay_fallback": "",
                 }
         except Exception:
             # Best-effort: prep failures shouldn't block main processing
@@ -312,6 +331,23 @@ async def run_and_save_report(
                 total_cost=c_tot,
                 model_name=model_name,
             )
+            # Persist a versioned replay snapshot after a successful better_judge run
+            # so same-run and future ablation replays can hydrate from it.
+            if eval_method == "better_judge":
+                try:
+                    from src.agents.trace_replay import save_snapshot_from_state
+
+                    save_snapshot_from_state(
+                        result,
+                        source_root=artifact_root or source_root,
+                    )
+                except Exception as snap_exc:  # pragma: no cover – best-effort
+                    logger.warning(
+                        "[%s] Failed to write replay snapshot for %s: %s",
+                        eval_method,
+                        scenario_id,
+                        snap_exc,
+                    )
     except Exception as e:
         elapsed_sec = time.perf_counter() - start_ts
         logger.error(
@@ -555,6 +591,17 @@ async def run_and_save_report(
             "processing_time_s": round(elapsed_sec, 3),
             "difficulty": difficulty,
             "project_size": sample_row.get("project_size", ""),
+            "trace_replay_enabled": bool(
+                (result.get("trace_replay_provenance") or {}).get("enabled")
+                or (trace_replay and eval_method.startswith("bj_"))
+            ),
+            "trace_replay_strategy": (
+                (result.get("trace_replay_provenance") or {}).get("strategy") or ""
+            ),
+            "trace_replay_fallback": (
+                (result.get("trace_replay_provenance") or {}).get("fallback_reason")
+                or ""
+            ),
         })
 
     # If we recorded a prep item, prepend it so it's written before file rows

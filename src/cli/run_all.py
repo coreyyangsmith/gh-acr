@@ -114,6 +114,7 @@ def main(
     concurrency: int | None = None,
     method_concurrency: int | None = None,
     resume: bool = False,
+    trace_replay: bool = False,
 ):
     """Run the full benchmark across all evaluation methods.
 
@@ -154,6 +155,12 @@ def main(
         If True, keep existing results CSV / run ledger / failures log and skip
         ``(scenario_id, eval_method)`` units already recorded as success.
         Failures, degradations, and never-attempted units are re-run.
+    trace_replay
+        If True, ``bj_*`` ablations reuse a canonical ``better_judge`` trace
+        (same-run snapshot or existing on-disk artifacts) and only execute the
+        stages the ablation changes. Schedules ``better_judge`` before ablations
+        within each scenario. Provenance is written to artifact metadata, the
+        run ledger, and results CSV columns.
 
     Notes
     -----
@@ -180,6 +187,7 @@ def main(
             concurrency=concurrency,
             method_concurrency=method_concurrency,
             resume=resume,
+            trace_replay=trace_replay,
         )
     )
 
@@ -201,6 +209,7 @@ async def _run_all(
     concurrency: int | None = None,
     method_concurrency: int | None = None,
     resume: bool = False,
+    trace_replay: bool = False,
 ):
     # Configure root logger so all modules propagate here
     logger = setup_logger()
@@ -228,6 +237,7 @@ async def _run_all(
         workers * method_workers,
     )
     logger.info("  resume: %s", resume)
+    logger.info("  trace_replay: %s", trace_replay)
     logger.info("  wall_clock_start: %.6f (perf_counter)", run_t0)
     logger.info("=" * 70)
 
@@ -422,6 +432,7 @@ async def _run_all(
                             process_mode=mode,
                             write_prep=False,
                             prepared_state=copy.deepcopy(prepared),
+                            trace_replay=trace_replay,
                         )
                         elapsed = time.perf_counter() - row_start
                         data_rows = [
@@ -448,9 +459,28 @@ async def _run_all(
                         completion_total = sum(
                             int(c.get("completion_tokens") or 0) for c in llm_calls
                         )
+                        # Replay provenance from first data row (scenario-level)
+                        replay_meta = {
+                            "trace_replay_enabled": bool(
+                                data_rows[0].get("trace_replay_enabled")
+                            )
+                            if data_rows
+                            else bool(trace_replay),
+                            "trace_replay_strategy": (
+                                data_rows[0].get("trace_replay_strategy") or ""
+                            )
+                            if data_rows
+                            else "",
+                            "trace_replay_fallback": (
+                                data_rows[0].get("trace_replay_fallback") or ""
+                            )
+                            if data_rows
+                            else "",
+                        }
                         logger.info(
                             "[run_all] scenario=%s method=%s llm_calls=%d "
-                            "prompt_tokens=%d completion_tokens=%d processing_time_s=%.3f",
+                            "prompt_tokens=%d completion_tokens=%d processing_time_s=%.3f "
+                            "trace_replay=%s strategy=%s",
                             scenario_key,
                             method,
                             len(llm_calls),
@@ -459,6 +489,8 @@ async def _run_all(
                             float(processing_time)
                             if processing_time is not None
                             else elapsed,
+                            replay_meta["trace_replay_enabled"],
+                            replay_meta["trace_replay_strategy"] or "-",
                         )
                         if has_degradations():
                             events = get_degradations()
@@ -483,6 +515,7 @@ async def _run_all(
                                 num_files=len(data_rows),
                                 exact_match_overall=exact_overall,
                                 captured_logs=list(captured),
+                                **replay_meta,
                             )
                             progress.mark_done(worker_id, ok=False, elapsed_s=elapsed)
                             return []
@@ -497,6 +530,7 @@ async def _run_all(
                             exact_match_overall=exact_overall,
                             processing_time_s=processing_time,
                             llm_calls=llm_calls,
+                            **replay_meta,
                         )
                         progress.mark_done(worker_id, ok=True, elapsed_s=elapsed)
                         return per_file_results or []
@@ -520,6 +554,7 @@ async def _run_all(
                             processing_time_s=round(elapsed, 3),
                             failure_trace_path=getattr(exc, "failure_trace_path", None),
                             llm_calls=llm_calls,
+                            trace_replay_enabled=bool(trace_replay),
                         )
                         progress.mark_done(worker_id, ok=False, elapsed_s=elapsed)
                         if classify_failure(exc) == "credits":
@@ -600,47 +635,90 @@ async def _run_all(
                     return []
 
                 out: list = []
-                if method_workers <= 1 or len(pending_methods) <= 1:
-                    for method in pending_methods:
-                        if credits_abort.is_set():
-                            break
-                        rows = await process_method(
-                            scenario_key=scenario_key,
-                            repo_slug=repo_slug,
-                            method=method,
-                            prepared=prepared,
-                        )
-                        if rows:
-                            out.extend(rows)
-                    return out
 
-                def _run_method_sync(method: str):
-                    if credits_abort.is_set():
-                        return []
-                    return asyncio.run(
-                        process_method(
-                            scenario_key=scenario_key,
-                            repo_slug=repo_slug,
-                            method=method,
-                            prepared=prepared,
-                        )
-                    )
+                def _partition_methods_for_replay(
+                    pending: list[str],
+                ) -> tuple[list[str], list[str]]:
+                    """When trace_replay is on, run better_judge before bj_* ablations."""
+                    if not trace_replay:
+                        return list(pending), []
+                    from src.agents.trace_replay import BJ_ABLATION_METHODS
 
-                pool_size = min(method_workers, len(pending_methods))
-                with ThreadPoolExecutor(max_workers=pool_size) as pool:
-                    futures = [
-                        pool.submit(_run_method_sync, method)
-                        for method in pending_methods
+                    canonical = [m for m in pending if m == "better_judge"]
+                    ablations = [m for m in pending if m in BJ_ABLATION_METHODS]
+                    others = [
+                        m
+                        for m in pending
+                        if m != "better_judge" and m not in BJ_ABLATION_METHODS
                     ]
-                    for fut in as_completed(futures):
-                        try:
-                            rows = fut.result()
-                        except CreditsExhaustedAbort:
-                            for other in futures:
-                                other.cancel()
-                            raise
-                        if rows:
-                            out.extend(rows)
+                    # Phase 1: non-ablation methods including better_judge (canonical first)
+                    phase1 = canonical + others
+                    return phase1, ablations
+
+                phase1_methods, ablation_methods = _partition_methods_for_replay(
+                    pending_methods
+                )
+
+                async def _run_method_list(methods_list: list[str]) -> list:
+                    local_out: list = []
+                    if not methods_list:
+                        return local_out
+                    if method_workers <= 1 or len(methods_list) <= 1:
+                        for method in methods_list:
+                            if credits_abort.is_set():
+                                break
+                            rows = await process_method(
+                                scenario_key=scenario_key,
+                                repo_slug=repo_slug,
+                                method=method,
+                                prepared=prepared,
+                            )
+                            if rows:
+                                local_out.extend(rows)
+                        return local_out
+
+                    def _run_method_sync(method: str):
+                        if credits_abort.is_set():
+                            return []
+                        return asyncio.run(
+                            process_method(
+                                scenario_key=scenario_key,
+                                repo_slug=repo_slug,
+                                method=method,
+                                prepared=prepared,
+                            )
+                        )
+
+                    pool_size = min(method_workers, len(methods_list))
+                    with ThreadPoolExecutor(max_workers=pool_size) as pool:
+                        futures = [
+                            pool.submit(_run_method_sync, method)
+                            for method in methods_list
+                        ]
+                        for fut in as_completed(futures):
+                            try:
+                                rows = fut.result()
+                            except CreditsExhaustedAbort:
+                                for other in futures:
+                                    other.cancel()
+                                raise
+                            if rows:
+                                local_out.extend(rows)
+                    return local_out
+
+                if trace_replay and ablation_methods:
+                    logger.info(
+                        "Scenario %s: trace_replay scheduling phase1=%s then ablations=%s",
+                        scenario_key,
+                        phase1_methods,
+                        ablation_methods,
+                    )
+                phase1_rows = await _run_method_list(phase1_methods)
+                if phase1_rows:
+                    out.extend(phase1_rows)
+                ablation_rows = await _run_method_list(ablation_methods)
+                if ablation_rows:
+                    out.extend(ablation_rows)
                 return out
 
             if credits_abort.is_set():
@@ -717,6 +795,7 @@ async def _run_all(
             total_scenarios=total,
             methods=list(methods_to_run),
             model_name=model_name,
+            trace_replay=trace_replay,
         )
         run_elapsed = time.perf_counter() - run_t0
         logger.info("%s", progress.summary_line())

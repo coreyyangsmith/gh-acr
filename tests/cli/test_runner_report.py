@@ -37,6 +37,9 @@ EXPECTED_SCHEMA = [
     "processing_time_s",
     "difficulty",
     "project_size",
+    "trace_replay_enabled",
+    "trace_replay_strategy",
+    "trace_replay_fallback",
 ]
 
 

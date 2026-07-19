@@ -160,9 +160,96 @@ def base_metadata(
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "llm_used": llm_used,
     }
+    # Attach conditional-trace-replay provenance when present on state.
+    prov = state.get("trace_replay_provenance")
+    if isinstance(prov, Mapping):
+        meta["trace_replay_enabled"] = bool(prov.get("enabled"))
+        if prov.get("strategy") is not None:
+            meta["trace_replay_strategy"] = prov.get("strategy")
+        if prov.get("source_path") is not None:
+            meta["trace_replay_source_path"] = prov.get("source_path")
+        if prov.get("source_method") is not None:
+            meta["trace_replay_source_method"] = prov.get("source_method")
+        if prov.get("fallback_reason") is not None:
+            meta["trace_replay_fallback_reason"] = prov.get("fallback_reason")
+        if prov.get("reused_nodes") is not None:
+            meta["trace_replay_reused_nodes"] = list(prov.get("reused_nodes") or [])
+        if prov.get("executed_nodes") is not None:
+            meta["trace_replay_executed_nodes"] = list(prov.get("executed_nodes") or [])
+    elif state.get("trace_replay"):
+        cfg = state.get("trace_replay") or {}
+        meta["trace_replay_enabled"] = bool(cfg.get("enabled"))
     if extra:
         meta.update(dict(extra))
     return meta
+
+
+def read_agent_output(
+    artifact_root: Path | str | None,
+    *,
+    agent: str,
+    file_slug: str | None = None,
+    call_id: str | None = None,
+) -> str | None:
+    """Read ``output.txt`` for an agent call directory, if present."""
+    call_dir = agent_call_dir(
+        artifact_root, agent=agent, file_slug=file_slug, call_id=call_id
+    )
+    if call_dir is None:
+        return None
+    path = Path(call_dir) / "output.txt"
+    try:
+        if path.is_file():
+            return path.read_text(encoding="utf-8")
+    except OSError as exc:
+        logger.warning("Failed to read agent output at %s: %s", path, exc)
+    return None
+
+
+def read_agent_metadata(
+    artifact_root: Path | str | None,
+    *,
+    agent: str,
+    file_slug: str | None = None,
+    call_id: str | None = None,
+) -> dict[str, Any] | None:
+    """Read ``metadata.json`` for an agent call directory, if present."""
+    call_dir = agent_call_dir(
+        artifact_root, agent=agent, file_slug=file_slug, call_id=call_id
+    )
+    if call_dir is None:
+        return None
+    path = Path(call_dir) / "metadata.json"
+    try:
+        if path.is_file():
+            return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        logger.warning("Failed to read agent metadata at %s: %s", path, exc)
+    return None
+
+
+def list_resolver_attempts(
+    artifact_root: Path | str | None,
+    *,
+    file_slug: str,
+) -> list[int]:
+    """Return sorted resolver attempt numbers under ``<slug>/resolver/``."""
+    if artifact_root is None:
+        return []
+    parent = Path(artifact_root) / file_slug / "resolver"
+    if not parent.is_dir():
+        return []
+    attempts: list[int] = []
+    for child in parent.iterdir():
+        if not child.is_dir():
+            continue
+        name = child.name
+        if name.startswith("attempt_"):
+            try:
+                attempts.append(int(name.split("_", 1)[1]))
+            except ValueError:
+                continue
+    return sorted(attempts)
 
 
 __all__ = [
@@ -170,6 +257,9 @@ __all__ = [
     "base_metadata",
     "file_path_to_slug",
     "get_artifact_root",
+    "list_resolver_attempts",
+    "read_agent_metadata",
+    "read_agent_output",
     "safe_slug",
     "write_agent_call",
     "write_final_artifacts",

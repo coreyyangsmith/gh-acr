@@ -22,6 +22,16 @@ from .nodes import (
     create_review_agent_node,
     PromptVariant,
 )
+from ..trace_replay import (
+    NODE_ANALYZE,
+    NODE_PATCH,
+    NODE_PLAN,
+    NODE_REVIEW,
+    NODE_SUMMARISE,
+    apply_trace_replay,
+    wrap_node_with_replay_skip,
+    write_method_replay_metadata,
+)
 
 
 # Type alias for resolver functions
@@ -418,39 +428,72 @@ def build_configured_graph(config: BypassGraphConfig) -> ResolverFunc:
     """Build a multi-agent resolver from topology flags.
 
     See :class:`BypassGraphConfig` for the meaning of each flag.
+
+    When ``state["trace_replay"]["enabled"]`` is set, hydrated stages from a
+    canonical ``better_judge`` snapshot are skipped (see ``src.agents.trace_replay``).
     """
     prompt_variant = config.prompt_variant
 
-    summarizer = (
+    summarizer_raw = (
         create_summarizer_node(prompt_variant)
         if config.include_summarizer
         else _create_seed_raw_summaries_node()
     )
+    summarizer = wrap_node_with_replay_skip(
+        summarizer_raw,
+        NODE_SUMMARISE if config.include_summarizer else "seed_raw_summaries",
+    )
     analyzer = (
-        create_conflict_analyzer_node(prompt_variant)
+        wrap_node_with_replay_skip(
+            create_conflict_analyzer_node(prompt_variant), NODE_ANALYZE
+        )
         if config.include_analyzer
         else None
     )
     force_mix_marker = (
-        _create_force_mix_marker_node() if not config.include_analyzer else None
+        wrap_node_with_replay_skip(
+            _create_force_mix_marker_node(), "force_mix_marker"
+        )
+        if not config.include_analyzer
+        else None
     )
-    planner = (
+    planner_raw = (
         create_conflict_agent_node(prompt_variant)
         if config.include_planner
         else _create_all_merge_plan_node()
     )
-    resolver = create_resolution_agent_node(prompt_variant)
-    reviewer = (
-        create_review_agent_node(prompt_variant) if config.include_reviewer else None
+    planner = wrap_node_with_replay_skip(
+        planner_raw,
+        NODE_PLAN if config.include_planner else "all_merge_plan",
     )
-    bypass_select = _create_bypass_select_node() if config.include_analyzer else None
+    resolver = wrap_node_with_replay_skip(
+        create_resolution_agent_node(prompt_variant), NODE_PATCH
+    )
+    reviewer = (
+        wrap_node_with_replay_skip(
+            create_review_agent_node(prompt_variant), NODE_REVIEW
+        )
+        if config.include_reviewer
+        else None
+    )
+    bypass_select = (
+        wrap_node_with_replay_skip(_create_bypass_select_node(), "bypass")
+        if config.include_analyzer
+        else None
+    )
     finalize = _create_finalize_node()
 
     def feedback_node(state: Dict[str, Any]) -> Dict[str, Any]:
+        if "feedback" in (state.get("_replay_skip_nodes") or set()):
+            return state
         return _prepare_feedback_for_retry(state)
 
     def resolver_function(state: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the configured multi-agent workflow."""
+        # Conditional trace replay: hydrate prefix / skip markers before invoke.
+        state, provenance = apply_trace_replay(state)
+        write_method_replay_metadata(state.get("artifact_root"), provenance)
+
         sg = StateGraph(dict)
 
         # Entry: summarise (LLM) or seed_raw_summaries

@@ -191,6 +191,19 @@ MODEL_COSTS: Dict[str, Dict[str, Any]] = {
         "output_cost_per_1k": 0,
         "tokenizer": "qwen",
     },
+    # Same checkpoint used via the OpenRouter API ("qwen/qwen3-32b"), run
+    # locally through transformers. Native context is 32,768 tokens (extendable
+    # to 131,072 with YARN via QWEN3_ENABLE_YARN=1); we budget to the native
+    # window to stay safe without rope scaling. No API cost (self-hosted).
+    "local:Qwen/Qwen3-32B": {
+        "input_limit": 32_000,
+        "output_limit": 32_000,
+        "sliding_window": False,
+        "total_limit": 32_768,
+        "input_cost_per_1k": 0,
+        "output_cost_per_1k": 0,
+        "tokenizer": "qwen",
+    },
     "local:google/codegemma-7b-it": {
         "input_limit": 8192,
         "output_limit": 8192,
