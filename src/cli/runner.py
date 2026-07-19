@@ -111,6 +111,9 @@ RESULTS_SCHEMA_COLUMNS = [
     "trace_replay_enabled",
     "trace_replay_strategy",
     "trace_replay_fallback",
+    "soft_degraded",
+    "degradation_category",
+    "num_degradations",
 ]
 
 async def run_and_save_report(
@@ -264,6 +267,9 @@ async def run_and_save_report(
                     "trace_replay_enabled": False,
                     "trace_replay_strategy": "",
                     "trace_replay_fallback": "",
+                    "soft_degraded": False,
+                    "degradation_category": "",
+                    "num_degradations": 0,
                 }
         except Exception:
             # Best-effort: prep failures shouldn't block main processing
@@ -602,6 +608,10 @@ async def run_and_save_report(
                 (result.get("trace_replay_provenance") or {}).get("fallback_reason")
                 or ""
             ),
+            # Defaults; run_all overwrites when soft degradations are recorded.
+            "soft_degraded": False,
+            "degradation_category": "",
+            "num_degradations": 0,
         })
 
     # If we recorded a prep item, prepend it so it's written before file rows

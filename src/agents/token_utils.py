@@ -134,13 +134,23 @@ def _load_hf_tokenizer(repo_id: str) -> Any:
             f"Native tokenizer for {repo_id!r} requires the 'transformers' package. "
             "Install with: uv sync --extra local-llm"
         ) from exc
+    # Lazy import avoids circular deps at module load; parity with local_backend.
+    from .handlers.hf_utils import get_hf_token
+
+    hf_token = get_hf_token()
     try:
-        return AutoTokenizer.from_pretrained(repo_id, trust_remote_code=True)
+        return AutoTokenizer.from_pretrained(
+            repo_id,
+            trust_remote_code=True,
+            token=hf_token,
+        )
     except Exception as exc:
         raise RuntimeError(
             f"Failed to load Hugging Face tokenizer {repo_id!r} for token counting. "
             "Ensure the model is cached locally or set HF_TOKEN for gated repos "
-            "(e.g. meta-llama/*). Install tokenizers via: uv sync --extra local-llm"
+            "(e.g. meta-llama/*), and accept the model license on Hugging Face if "
+            f"required. Underlying error: {exc}. "
+            "Install tokenizers via: uv sync --extra local-llm"
         ) from exc
 
 

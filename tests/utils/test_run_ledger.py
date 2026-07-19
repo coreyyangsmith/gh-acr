@@ -37,8 +37,9 @@ def test_load_successful_units_mixed(tmp_path: Path):
         ("s1", "agent"),
         ("s2", "agent"),
         ("s2", "bj_no_plan"),
+        ("s4", "agent"),
     }
-    assert ("s4", "agent") not in done
+    assert ("s1", "better_judge") not in done
 
 
 def test_load_successful_units_missing_file(tmp_path: Path):

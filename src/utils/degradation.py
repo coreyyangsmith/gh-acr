@@ -1,10 +1,11 @@
 """ContextVar-backed tracker for soft pipeline degradations.
 
 Soft degradations (prompt truncation, JSON/heuristic fallbacks, unclear
-verdicts) complete without raising, but should not count as clean successes.
-Call ``record_degradation`` at fallback sites; ``run_all`` checks
-``has_degradations`` after each method unit and records a ledger/failures
-entry instead of appending to the results CSV.
+verdicts) complete without raising. Call ``record_degradation`` at fallback
+sites; ``run_all`` checks ``has_degradations`` after each method unit, records
+a ledger/failures entry, stamps identifiable flags on CSV rows
+(``soft_degraded``, ``degradation_category``, ``num_degradations``), and still
+writes those rows. Only hard exceptions omit CSV rows.
 """
 
 from __future__ import annotations

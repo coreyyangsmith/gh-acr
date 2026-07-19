@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from src.agents import token_utils
 from src.agents.token_utils import (
     count_tokens,
     hf_repo_for_model,
@@ -109,3 +110,43 @@ def test_resolve_encoder_propagates_native_tokenizer_failure():
     ):
         with pytest.raises(RuntimeError, match="transformers"):
             resolve_encoder("openrouter/qwen/qwen3-32b")
+
+
+def test_load_hf_tokenizer_forwards_hf_token(monkeypatch: pytest.MonkeyPatch):
+    token_utils._load_hf_tokenizer.cache_clear()
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token_abc")
+
+    fake_tok = MagicMock(name="CachedTokenizer")
+    transformers_mod = MagicMock()
+    transformers_mod.AutoTokenizer.from_pretrained = MagicMock(return_value=fake_tok)
+
+    with patch.dict("sys.modules", {"transformers": transformers_mod}):
+        tok = token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
+
+    assert tok is fake_tok
+    transformers_mod.AutoTokenizer.from_pretrained.assert_called_once_with(
+        "meta-llama/Llama-3.1-8B-Instruct",
+        trust_remote_code=True,
+        token="hf_test_token_abc",
+    )
+    token_utils._load_hf_tokenizer.cache_clear()
+
+
+def test_load_hf_tokenizer_includes_underlying_error(monkeypatch: pytest.MonkeyPatch):
+    token_utils._load_hf_tokenizer.cache_clear()
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
+    monkeypatch.delenv("HF_API_TOKEN", raising=False)
+    monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
+
+    transformers_mod = MagicMock()
+    transformers_mod.AutoTokenizer.from_pretrained = MagicMock(
+        side_effect=OSError("You are trying to access a gated repo. 401 Client Error.")
+    )
+
+    with patch.dict("sys.modules", {"transformers": transformers_mod}):
+        with pytest.raises(RuntimeError, match="Underlying error:.*gated repo") as ei:
+            token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
+
+    assert ei.value.__cause__ is not None
+    token_utils._load_hf_tokenizer.cache_clear()

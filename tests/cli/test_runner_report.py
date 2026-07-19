@@ -40,6 +40,9 @@ EXPECTED_SCHEMA = [
     "trace_replay_enabled",
     "trace_replay_strategy",
     "trace_replay_fallback",
+    "soft_degraded",
+    "degradation_category",
+    "num_degradations",
 ]
 
 

@@ -452,10 +452,10 @@ def test_run_all_without_resume_wipes_existing_csv(
     assert not failures.exists() or failures.read_text(encoding="utf-8").strip() == ""
 
 
-def test_run_all_degraded_skips_csv_writes_failures(
+def test_run_all_degraded_writes_flagged_csv(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Soft degradations: ledger degraded + failures JSONL, no CSV rows."""
+    """Soft degradations: flagged CSV rows + ledger degraded + failures JSONL."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
     monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
@@ -488,7 +488,13 @@ def test_run_all_degraded_skips_csv_writes_failures(
         )
 
     results = tmp_path / "data" / "degraded.csv"
-    assert not results.exists() or results.stat().st_size == 0
+    assert results.exists() and results.stat().st_size > 0
+    out = pd.read_csv(results)
+    data = out[out["eval_method"] != "prep"]
+    assert (data["id"].astype(str) == "s1").any()
+    assert bool(data.iloc[0]["soft_degraded"]) is True
+    assert data.iloc[0]["degradation_category"] == "prompt_truncation"
+    assert int(data.iloc[0]["num_degradations"]) == 1
 
     ledger_path = tmp_path / "data" / "degraded_run_log.jsonl"
     failures_path = tmp_path / "data" / "degraded_failures.jsonl"
@@ -515,17 +521,27 @@ def test_run_all_degraded_skips_csv_writes_failures(
     assert fail_recs[0]["degradation_events"]
 
 
-def test_run_all_resume_reruns_degraded_units(
+def test_run_all_resume_skips_degraded_units(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Degraded ledger units are eligible for --resume re-run."""
+    """Soft-degraded ledger units are skipped on --resume (CSV already written)."""
     monkeypatch.chdir(tmp_path)
     data = tmp_path / "data"
     data.mkdir()
     monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
 
     results = data / "resume_deg.csv"
-    results.write_text("", encoding="utf-8")
+    prior = pd.DataFrame(
+        [
+            {
+                **_result_row("s1", "agent"),
+                "soft_degraded": True,
+                "degradation_category": "prompt_truncation",
+                "num_degradations": 1,
+            }
+        ]
+    )
+    prior.to_csv(results, index=False)
 
     ledger = data / "resume_deg_run_log.jsonl"
     with ledger.open("w", encoding="utf-8") as fh:
@@ -581,9 +597,47 @@ def test_run_all_resume_reruns_degraded_units(
             )
         )
 
-    assert called == [("s1", "agent")]
+    assert called == []
     out = pd.read_csv(results)
     assert (out["id"].astype(str) == "s1").any()
+    assert bool(out.iloc[0]["soft_degraded"]) is True
+
+
+def test_run_all_clean_success_stamps_soft_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Clean successes get soft_degraded=False and empty degradation fields."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
+
+    df = pd.DataFrame([{"id": "s1", "name": "o/r1", "difficulty": "easy"}])
+
+    async def _fake_report(app, scenario_id, output_root, **kwargs):
+        return [_result_row(str(scenario_id), kwargs.get("eval_method", "agent"))]
+
+    with patch.object(run_all_mod, "load_benchmark", return_value=df), patch.object(
+        run_all_mod, "build_graph", return_value=MagicMock()
+    ), patch.object(run_all_mod, "run_and_save_report", side_effect=_fake_report), patch.object(
+        run_all_mod, "ensure_prepared", side_effect=_fake_prepared
+    ), patch.object(run_all_mod, "BATCH_SIZE", 10):
+        asyncio.run(
+            run_all_mod._run_all(
+                **_run_kwargs(
+                    methods=["agent"],
+                    results_filename="clean.csv",
+                    concurrency=1,
+                )
+            )
+        )
+
+    out = pd.read_csv(tmp_path / "data" / "clean.csv")
+    data = out[out["eval_method"] != "prep"]
+    assert bool(data.iloc[0]["soft_degraded"]) is False
+    assert data.iloc[0]["degradation_category"] == "" or pd.isna(
+        data.iloc[0]["degradation_category"]
+    )
+    assert int(data.iloc[0]["num_degradations"]) == 0
 
 
 def test_run_all_resume_skips_successful_units(

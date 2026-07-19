@@ -75,6 +75,20 @@ def _resolve_method_concurrency(
     return max(1, min(int(n_methods), _DEFAULT_METHOD_CONCURRENCY_CAP))
 
 
+def _stamp_soft_degradation_flags(
+    rows: list[dict[str, Any]],
+    *,
+    soft_degraded: bool,
+    degradation_category: str,
+    num_degradations: int,
+) -> None:
+    """Stamp soft-degradation columns onto result rows (in place)."""
+    for row in rows:
+        row["soft_degraded"] = soft_degraded
+        row["degradation_category"] = degradation_category
+        row["num_degradations"] = num_degradations
+
+
 def _scenario_key_from_row(row) -> str:
     key = row.get("id")
     if key is None:
@@ -153,8 +167,9 @@ def main(
         Max parallel methods per scenario (default: min(len(methods), 8)).
     resume
         If True, keep existing results CSV / run ledger / failures log and skip
-        ``(scenario_id, eval_method)`` units already recorded as success.
-        Failures, degradations, and never-attempted units are re-run.
+        ``(scenario_id, eval_method)`` units already recorded as success or
+        soft-degraded (flagged CSV already written). Hard failures and
+        never-attempted units are re-run.
     trace_replay
         If True, ``bj_*`` ablations reuse a canonical ``better_judge`` trace
         (same-run snapshot or existing on-disk artifacts) and only execute the
@@ -378,8 +393,17 @@ async def _run_all(
         # Enforce unified column order/schema
         df = df.reindex(columns=RESULTS_SCHEMA_COLUMNS)
         with csv_lock:
-            header = not results_path.exists() or results_path.stat().st_size == 0
-            df.to_csv(results_path, mode="a", header=header, index=False)
+            if results_path.exists() and results_path.stat().st_size > 0:
+                existing_cols = list(pd.read_csv(results_path, nrows=0).columns)
+                if existing_cols != RESULTS_SCHEMA_COLUMNS:
+                    # Schema evolved (e.g. soft-degradation flags); rewrite unified.
+                    old = pd.read_csv(results_path).reindex(columns=RESULTS_SCHEMA_COLUMNS)
+                    combined = pd.concat([old, df], ignore_index=True)
+                    combined.to_csv(results_path, index=False)
+                else:
+                    df.to_csv(results_path, mode="a", header=False, index=False)
+            else:
+                df.to_csv(results_path, mode="w", header=True, index=False)
             logger.info(
                 "Appended %s rows → %s | %s",
                 len(per_file_results),
@@ -494,9 +518,16 @@ async def _run_all(
                         )
                         if has_degradations():
                             events = get_degradations()
+                            primary = primary_degradation_category(events)
+                            _stamp_soft_degradation_flags(
+                                per_file_results or [],
+                                soft_degraded=True,
+                                degradation_category=primary or "other",
+                                num_degradations=len(events),
+                            )
                             logger.warning(
                                 "[run_all] scenario=%s method=%s completed with "
-                                "%d soft degradation(s); not writing CSV rows",
+                                "%d soft degradation(s); writing CSV rows",
                                 scenario_key,
                                 method,
                                 len(events),
@@ -509,7 +540,7 @@ async def _run_all(
                                 eval_method=method,
                                 model_name=model_name,
                                 degradation_events=events,
-                                failure_category=primary_degradation_category(events),
+                                failure_category=primary,
                                 processing_time_s=processing_time,
                                 llm_calls=llm_calls,
                                 num_files=len(data_rows),
@@ -517,8 +548,14 @@ async def _run_all(
                                 captured_logs=list(captured),
                                 **replay_meta,
                             )
-                            progress.mark_done(worker_id, ok=False, elapsed_s=elapsed)
-                            return []
+                            progress.mark_done(worker_id, ok=True, elapsed_s=elapsed)
+                            return per_file_results or []
+                        _stamp_soft_degradation_flags(
+                            per_file_results or [],
+                            soft_degraded=False,
+                            degradation_category="",
+                            num_degradations=0,
+                        )
                         ledger.record_success(
                             scenario_id=scenario_key,
                             df_index=df_index,
