@@ -1,6 +1,7 @@
 #!/bin/bash
 # Fill qwen3-32b agent coverage gaps locally on Compute Canada / Alliance.
-# Dataset: data/agent_coverage_gaps/subsets/qwen3-32b_agent_gaps_needs_reprocess.csv
+# Dataset: data/agent_coverage_gaps/subsets/qwen3-32b_agent_gaps.csv
+#   (all gaps: not_processed + missing_results)
 # Methods: base_a base_b agent  |  Model: local:Qwen/Qwen3-32B
 #
 # Submit:
@@ -244,10 +245,10 @@ echo ""
 ################################
 # 9) Run the actual workload   #
 ################################
-# Gap subset only (4 not_processed scenarios from the agent coverage audit).
+# Full gap subset (not_processed + missing_results from the agent coverage audit).
 # Rebuild if missing so the job is self-contained after a fresh checkout.
 cd "${SLURM_SUBMIT_DIR:-$(pwd)}"
-GAP_SUBSET="data/agent_coverage_gaps/subsets/qwen3-32b_agent_gaps_needs_reprocess.csv"
+GAP_SUBSET="data/agent_coverage_gaps/subsets/qwen3-32b_agent_gaps.csv"
 if [[ ! -f "$GAP_SUBSET" ]]; then
   echo "Gap subset missing; building from coverage CSVs..."
   python scripts/build_agent_gap_subsets.py
@@ -269,7 +270,7 @@ echo "Starting pipeline run: $(date)"
 echo "Model:     local:Qwen/Qwen3-32B"
 echo "Methods:   base_a base_b agent"
 echo "Mode:      clone"
-echo "Dataset:   $DATASET_CSV ($N_SCENARIOS scenarios)"
+echo "Dataset:   $DATASET_CSV ($N_SCENARIOS scenarios; all gaps)"
 echo "Results:   data/$RESULTS_FILE"
 echo "=================================================================="
 

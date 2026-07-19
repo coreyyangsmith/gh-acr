@@ -3,8 +3,9 @@
   Re-run agent coverage gaps via OpenRouter for base_a, base_b, and agent.
 
 .DESCRIPTION
-  Uses subset CSVs under data/agent_coverage_gaps/subsets/ built from the
-  needs_reprocess gap lists. Defaults to methods base_a, base_b, agent.
+  Uses the full gap subset under data/agent_coverage_gaps/subsets/
+  (not_processed, empty_output, and missing_results). Defaults to methods
+  base_a, base_b, agent.
 
   Requires OPENROUTER_API_KEY (shell or .env). GITHUB_TOKEN recommended.
 
@@ -46,7 +47,7 @@ $ModelMap = @{
 }
 
 $ModelName = $ModelMap[$Model]
-$SubsetCsv = Join-Path $RepoRoot "data\agent_coverage_gaps\subsets\${Model}_agent_gaps_needs_reprocess.csv"
+$SubsetCsv = Join-Path $RepoRoot "data\agent_coverage_gaps\subsets\${Model}_agent_gaps.csv"
 $DateStamp = Get-Date -Format "yyyy_MM_dd"
 $ResultsFilename = "${DateStamp}_openrouter_${Model}_agent_gaps_base_agent.csv"
 

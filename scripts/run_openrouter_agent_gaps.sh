@@ -47,7 +47,7 @@ esac
 
 python scripts/build_agent_gap_subsets.py
 
-SUBSET="data/agent_coverage_gaps/subsets/${MODEL_LABEL}_agent_gaps_needs_reprocess.csv"
+SUBSET="data/agent_coverage_gaps/subsets/${MODEL_LABEL}_agent_gaps.csv"
 if [[ ! -f "$SUBSET" ]]; then
   echo "Missing subset CSV: $SUBSET" >&2
   exit 1
