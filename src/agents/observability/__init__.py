@@ -16,6 +16,8 @@ from .langfuse_tracing import (
     scenario_observation,
     set_llm_node,
     set_run_context,
+    trace_name_for_method,
+    update_observation_cost_metadata,
 )
 
 __all__ = [
@@ -34,4 +36,6 @@ __all__ = [
     "scenario_observation",
     "set_llm_node",
     "set_run_context",
+    "trace_name_for_method",
+    "update_observation_cost_metadata",
 ]

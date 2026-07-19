@@ -129,6 +129,7 @@ uv run python -m src.cli.run_all --mode clone [options]
 | `--n-easy N --n-medium M --n-hard K` | Sample by difficulty instead |
 | `--model-name` | LLM override (see below) |
 | `--results-filename FILE` | Custom output CSV name (under `data/`) |
+| `--resume` | Keep existing CSV/ledger/failures log; skip units already recorded as success; re-run failures, degradations, and missing units |
 | `--start-index N --end-index M` | Batch processing by row index |
 
 ### Model name formats
@@ -159,8 +160,13 @@ uv run python -m src.cli.run_all --mode clone --methods base_a base_b agent bypa
 
 ### Output locations
 
-- **Consolidated CSV**: `data/YYYY_MM_DD_results_all.csv` (or the name passed to `--results-filename`)
+- **Consolidated CSV**: `data/YYYY_MM_DD_results_all.csv` (or the name passed to `--results-filename`) — successful units only
+- **Run ledger**: `data/<results_stem>_run_log.jsonl` — per-unit `success` / `failure` / `degraded` / `summary` records
+- **Failures log**: `data/<results_stem>_failures.jsonl` — failure and degraded units only (for diagnosis and `--resume` re-runs)
 - **Per-scenario artifacts**: `data/<model_name>/<scenario_id>/` (diffs, ground truth, agent outputs)
+- **LLM failure traces**: `logs/llm_failures/` when an LLM call exhausts retries
+
+Soft degradations (prompt truncation, JSON/heuristic fallbacks, unclear judge verdicts) complete without raising but are recorded as `degraded` (not written to the results CSV) so `--resume` can re-run them.
 
 ### Analyzing results
 

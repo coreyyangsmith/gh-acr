@@ -34,7 +34,7 @@ Example Usage
 
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 
 MODEL_COSTS: Dict[str, Dict[str, Any]] = {
@@ -92,23 +92,33 @@ MODEL_COSTS: Dict[str, Dict[str, Any]] = {
     # Add entries for models you use frequently. Lookup also falls back via
     # get_model_config() if only the openrouter/<id> key is present.
     # -------------------------------------------------------------------------
-    "openrouter/openai/gpt-4o-mini": {
-        "input_limit": 128_000,
-        "output_limit": 16_000,
+    "openrouter/openai/gpt-5-nano": {
+        "input_limit": 400_000,
+        "output_limit": 128_000,
         "sliding_window": False,
-        "total_limit": 128_000,
-        "input_cost_per_1k": 0.00015,
-        "output_cost_per_1k": 0.0006,
+        "total_limit": 528_000,
+        "input_cost_per_1k": 0.00005,   # $0.05 per 1M input tokens
+        "output_cost_per_1k": 0.00040,  # $0.40 per 1M output tokens
         "tokenizer": "o200k_base",
     },
-    "openrouter/anthropic/claude-sonnet-4.5": {
-        "input_limit": 200_000,
-        "output_limit": 64_000,
+    "openrouter/qwen/qwen3-32b": {
+        "input_limit": 131_072,
+        "output_limit": 16_384,
         "sliding_window": False,
-        "total_limit": 200_000,
-        "input_cost_per_1k": 0.003,
-        "output_cost_per_1k": 0.015,
-        "tokenizer": "cl100k_base",
+        "total_limit": 131_072,
+        "input_cost_per_1k": 0.00029,   # $0.29 per 1M, see provider list
+        "output_cost_per_1k": 0.00058,  # $0.58 per 1M, see provider list
+        "tokenizer": "qwen",
+    },
+    # OpenRouter list price $0.02/$0.03 per 1M tokens; 131K context
+    "openrouter/meta-llama/llama-3.1-8b-instruct": {
+        "input_limit": 131_072,
+        "output_limit": 16_384,
+        "sliding_window": False,
+        "total_limit": 131_072,
+        "input_cost_per_1k": 0.00005,
+        "output_cost_per_1k": 0.00008,
+        "tokenizer": "llama",
     },
 
     # -------------------------------------------------------------------------
@@ -208,6 +218,20 @@ on available GPU memory.
 """
 
 
+def price_key(model_name: str) -> str:
+    """Normalize a model id to the key form used in ``MODEL_COSTS``.
+
+    Handles ``openai/``, ``openrouter/``, ``local:``, and ``groq:`` prefixes.
+    Bare OpenAI-style names (e.g. ``gpt-4o-mini``) become ``openai/<name>``.
+    """
+    try:
+        if model_name.startswith(("openai/", "openrouter/", "local:", "groq:")):
+            return model_name
+        return f"openai/{model_name}"
+    except Exception:
+        return model_name
+
+
 def get_model_config(model_name: str) -> Dict[str, Any]:
     """Get configuration for a model, with fallback handling.
 
@@ -225,19 +249,45 @@ def get_model_config(model_name: str) -> Dict[str, Any]:
     if cfg:
         return dict(cfg)
 
-    # Try alternate key formats
-    if model_name.startswith("groq:"):
-        alias = "groq/" + model_name.split(":", 1)[1]
-        return dict(MODEL_COSTS.get(alias, {}))
+    key = price_key(model_name)
+    if key != model_name:
+        cfg = MODEL_COSTS.get(key, {})
+        if cfg:
+            return dict(cfg)
 
-    if model_name.startswith("openrouter/"):
-        # Already the canonical key form; no alternate needed.
-        return {}
+    # Legacy alias: some callers historically used groq/ instead of groq:
+    if model_name.startswith("groq/"):
+        alias = "groq:" + model_name.split("/", 1)[1]
+        return dict(MODEL_COSTS.get(alias, {}))
 
     return {}
 
 
+def estimate_usd_cost(
+    model_name: str,
+    input_tokens: int | float,
+    output_tokens: int | float,
+) -> Tuple[float, float, float]:
+    """Estimate USD cost from token counts using ``MODEL_COSTS`` rates.
+
+    Returns
+    -------
+    Tuple[float, float, float]
+        ``(cost_in, cost_out, total)`` in USD. Unknown models yield zeros.
+    """
+    cfg = get_model_config(model_name)
+    if not cfg:
+        cfg = MODEL_COSTS.get(price_key(model_name), {})
+    input_rate = float(cfg.get("input_cost_per_1k", 0.0) or 0.0)
+    output_rate = float(cfg.get("output_cost_per_1k", 0.0) or 0.0)
+    cost_in = (float(input_tokens) / 1000.0) * input_rate
+    cost_out = (float(output_tokens) / 1000.0) * output_rate
+    return cost_in, cost_out, cost_in + cost_out
+
+
 __all__ = [
     "MODEL_COSTS",
+    "estimate_usd_cost",
     "get_model_config",
+    "price_key",
 ]

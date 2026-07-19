@@ -1,8 +1,17 @@
-"""Tests for token counting helpers."""
+"""Tests for token counting helpers and encoder resolution."""
 
 from __future__ import annotations
 
-from src.agents.token_utils import count_tokens, tiktoken_encoder
+from unittest.mock import MagicMock, patch
+
+import pytest
+
+from src.agents.token_utils import (
+    count_tokens,
+    hf_repo_for_model,
+    resolve_encoder,
+    tiktoken_encoder,
+)
 from tests.helpers import FakeEncoder
 
 
@@ -25,3 +34,78 @@ def test_tiktoken_encoder_returns_usable_or_none():
     else:
         assert hasattr(enc, "encode")
         assert len(enc.encode("hello")) >= 1
+
+
+@pytest.mark.parametrize(
+    "model_name,repo",
+    [
+        ("openrouter/qwen/qwen3-32b", "Qwen/Qwen3-32B"),
+        (
+            "openrouter/meta-llama/llama-3.1-8b-instruct",
+            "meta-llama/Llama-3.1-8B-Instruct",
+        ),
+        ("groq:qwen/qwen3-32b", "Qwen/Qwen3-32B"),
+        ("groq:llama-3.1-8b-instant", "meta-llama/Llama-3.1-8B-Instruct"),
+    ],
+)
+def test_hf_repo_for_configured_native_models(model_name, repo):
+    assert hf_repo_for_model(model_name) == repo
+
+
+def test_resolve_encoder_qwen_uses_native_hf_not_cl100k():
+    fake_tok = MagicMock(name="QwenTokenizer")
+    fake_tok.encode = MagicMock(return_value=[1, 2, 3])
+
+    with (
+        patch(
+            "src.agents.token_utils._load_hf_tokenizer", return_value=fake_tok
+        ) as load_hf,
+        patch("src.agents.token_utils.tiktoken_encoder") as tik,
+    ):
+        enc = resolve_encoder("openrouter/qwen/qwen3-32b")
+
+    assert enc is fake_tok
+    load_hf.assert_called_once_with("Qwen/Qwen3-32B")
+    tik.assert_not_called()
+
+
+def test_resolve_encoder_llama_uses_native_hf_not_cl100k():
+    fake_tok = MagicMock(name="LlamaTokenizer")
+
+    with (
+        patch(
+            "src.agents.token_utils._load_hf_tokenizer", return_value=fake_tok
+        ) as load_hf,
+        patch("src.agents.token_utils.tiktoken_encoder") as tik,
+    ):
+        enc = resolve_encoder("openrouter/meta-llama/llama-3.1-8b-instruct")
+
+    assert enc is fake_tok
+    load_hf.assert_called_once_with("meta-llama/Llama-3.1-8B-Instruct")
+    tik.assert_not_called()
+
+
+def test_resolve_encoder_openai_uses_tiktoken_encoding():
+    fake = MagicMock(name="TiktokenEnc")
+    with patch("src.agents.token_utils._tiktoken_encoding", return_value=fake) as enc_fn:
+        result = resolve_encoder("openrouter/openai/gpt-5-nano")
+    assert result is fake
+    enc_fn.assert_called()
+
+
+def test_resolve_encoder_unknown_returns_none_not_cl100k():
+    with patch("src.agents.token_utils.tiktoken_encoder") as tik:
+        enc = resolve_encoder("openrouter/anthropic/claude-sonnet-4.5")
+    assert enc is None
+    tik.assert_not_called()
+
+
+def test_resolve_encoder_propagates_native_tokenizer_failure():
+    with patch(
+        "src.agents.token_utils._load_hf_tokenizer",
+        side_effect=RuntimeError(
+            "Native tokenizer for 'Qwen/Qwen3-32B' requires the 'transformers' package"
+        ),
+    ):
+        with pytest.raises(RuntimeError, match="transformers"):
+            resolve_encoder("openrouter/qwen/qwen3-32b")

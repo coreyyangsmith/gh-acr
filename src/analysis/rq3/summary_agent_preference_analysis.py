@@ -226,15 +226,48 @@ def parse_summary_file(path: Path) -> tuple[Counter[str], dict[str, object]]:
 
 
 def discover_summary_pairs(artifact_root: Path) -> list[tuple[Path, Path]]:
-    """Find file-level A/B summary artifact pairs."""
+    """Find file-level A/B summary artifact pairs.
+
+    Supports the per-agent layout::
+
+        <method>/<file_slug>/summarizer/a/output.txt
+        <method>/<file_slug>/summarizer/b/output.txt
+
+    Also accepts the legacy flat ``a_summary.txt`` / ``b_summary.txt`` pairs under
+    a ``bypass`` method folder for older curated labeling trees.
+    """
     pairs: list[tuple[Path, Path]] = []
+    seen: set[tuple[Path, Path]] = set()
+
+    for a_path in sorted(artifact_root.rglob("output.txt")):
+        if a_path.parent.name != "a" or a_path.parent.parent.name != "summarizer":
+            continue
+        b_path = a_path.parent.parent / "b" / "output.txt"
+        if b_path.exists():
+            key = (a_path, b_path)
+            if key not in seen:
+                pairs.append(key)
+                seen.add(key)
+
     for a_path in sorted(artifact_root.rglob("a_summary.txt")):
         if a_path.parent.parent.name != "bypass":
             continue
         b_path = a_path.with_name("b_summary.txt")
         if b_path.exists():
-            pairs.append((a_path, b_path))
+            key = (a_path, b_path)
+            if key not in seen:
+                pairs.append(key)
+                seen.add(key)
     return pairs
+
+
+def _summary_file_slug(a_path: Path) -> str:
+    """Return the conflicted-file slug for a summary artifact path."""
+    # New layout: .../<file_slug>/summarizer/a/output.txt
+    if a_path.name == "output.txt" and a_path.parent.name == "a":
+        return a_path.parent.parent.parent.name
+    # Legacy: .../<file_slug>/a_summary.txt
+    return a_path.parent.name
 
 
 def build_file_level_table(artifact_root: Path) -> pd.DataFrame:
@@ -243,8 +276,15 @@ def build_file_level_table(artifact_root: Path) -> pd.DataFrame:
     all_types: set[str] = set(KNOWN_TYPES)
 
     for a_path, b_path in discover_summary_pairs(artifact_root):
-        file_dir = a_path.parent
-        case_dir = file_dir.parent.parent
+        file_slug = _summary_file_slug(a_path)
+        if a_path.name == "output.txt":
+            # .../<case>/<method>/<file_slug>/summarizer/a/output.txt
+            method_dir = a_path.parent.parent.parent.parent
+            case_dir = method_dir.parent
+        else:
+            # .../<case>/bypass/<file_slug>/a_summary.txt
+            file_dir = a_path.parent
+            case_dir = file_dir.parent.parent
         run_dir = case_dir.parent
         sample_id = extract_base_id(case_dir.name)
         source_file = source_file_from_run_dir(run_dir.name)
@@ -262,7 +302,7 @@ def build_file_level_table(artifact_root: Path) -> pd.DataFrame:
             "source_run": run_dir.name,
             "source_file": source_file,
             "model_family": _model_family_from_text(source_file),
-            "artifact_file_slug": file_dir.name,
+            "artifact_file_slug": file_slug,
             "file_path": file_path,
             "a_summary_path": str(a_path),
             "b_summary_path": str(b_path),

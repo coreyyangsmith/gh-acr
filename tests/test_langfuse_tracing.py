@@ -98,21 +98,22 @@ def test_is_langfuse_enabled_matrix(
 
 @pytest.mark.parametrize("method", list(ALL_EVAL_METHODS))
 def test_make_trace_name_for_all_eval_methods(method: str):
-    assert make_trace_name(method, "123") == f"{method}-scenario-123"
+    # Trace name is the method only; scenario id is ignored (session/tags carry it)
+    assert make_trace_name(method, "123") == method
 
 
 def test_make_trace_name_uses_context_when_args_omitted():
     set_run_context(eval_method="force_mix", scenario_id="9", model_name="m")
-    assert make_trace_name() == "force_mix-scenario-9"
+    assert make_trace_name() == "force_mix"
 
 
 def test_make_trace_name_defaults_to_unknown_without_context():
-    assert make_trace_name() == "unknown-scenario-unknown"
+    assert make_trace_name() == "unknown"
 
 
 def test_make_trace_name_explicit_none_falls_back_to_context():
     set_run_context(eval_method="agent", scenario_id="5")
-    assert make_trace_name(None, None) == "agent-scenario-5"
+    assert make_trace_name(None, None) == "agent"
 
 
 def test_set_run_context_coerces_none_model_to_empty():
@@ -164,12 +165,16 @@ def test_build_config_enabled_sets_method_trace_name(langfuse_keys):
         set_run_context(eval_method="bypass7", scenario_id="7", model_name="openai/gpt-4o-mini")
         config = build_langfuse_invoke_config({"callbacks": []}, model_name="openai/gpt-4o-mini")
 
-    assert config["run_name"] == "bypass7-scenario-7"
-    assert config["metadata"]["langfuse_trace_name"] == "bypass7-scenario-7"
+    assert config["run_name"] == "bypass7"
+    assert config["metadata"]["langfuse_trace_name"] == "bypass7"
+    assert config["metadata"]["langfuse_session_id"] == "7"
     assert config["metadata"]["eval_method"] == "bypass7"
     assert config["metadata"]["scenario_id"] == "7"
     assert config["metadata"]["model_name"] == "openai/gpt-4o-mini"
     assert "bypass7" in config["tags"]
+    assert "scenario:7" in config["tags"]
+    assert "bypass7" in config["metadata"]["langfuse_tags"]
+    assert "scenario:7" in config["metadata"]["langfuse_tags"]
     assert fake_handler in config["callbacks"]
     fake_cls.assert_called_once_with()
 
@@ -197,9 +202,11 @@ def test_build_config_uses_node_as_run_name_keeps_trace_name(langfuse_keys):
         config = build_langfuse_invoke_config({}, observation_name="summarizer_agent")
 
     assert config["run_name"] == "summarizer_agent"
-    assert config["metadata"]["langfuse_trace_name"] == "bypass7-scenario-7"
+    assert config["metadata"]["langfuse_trace_name"] == "bypass7"
+    assert config["metadata"]["langfuse_session_id"] == "7"
     assert config["metadata"]["llm_node"] == "summarizer_agent"
     assert "summarizer_agent" in config["tags"]
+    assert "scenario:7" in config["metadata"]["langfuse_tags"]
 
 
 def test_build_config_preserves_existing_callbacks_and_metadata(langfuse_keys):
@@ -254,8 +261,10 @@ def test_build_config_unknown_without_context(langfuse_keys):
     fake_cls = MagicMock(return_value=object())
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
         config = build_langfuse_invoke_config({})
-    assert config["run_name"] == "unknown-scenario-unknown"
+    assert config["run_name"] == "unknown"
     assert config["metadata"]["eval_method"] == "unknown"
+    assert config["metadata"]["langfuse_trace_name"] == "unknown"
+    assert config["metadata"]["langfuse_session_id"] == "unknown"
 
 
 def test_build_config_non_dict_unconvertible_passthrough(langfuse_keys):
@@ -267,14 +276,30 @@ def test_build_config_non_dict_unconvertible_passthrough(langfuse_keys):
         assert build_langfuse_invoke_config(weird) is weird
 
 
-@pytest.mark.parametrize("method", ["base_a", "base_b", "agent", "bypass7", "force_mix"])
+@pytest.mark.parametrize(
+    "method",
+    [
+        "base_a",
+        "base_b",
+        "agent",
+        "bypass7",
+        "better_judge",
+        "bj_no_summary",
+        "bj_no_judge",
+        "bj_no_plan",
+        "bj_no_review",
+        "force_mix",
+    ],
+)
 def test_build_config_trace_name_includes_each_method(langfuse_keys, method: str):
     fake_cls = MagicMock(return_value=object())
     with patch.object(lt, "_import_callback_handler", return_value=fake_cls):
         set_run_context(eval_method=method, scenario_id="sid")
         config = build_langfuse_invoke_config({})
-    assert config["run_name"] == f"{method}-scenario-sid"
-    assert config["metadata"]["langfuse_trace_name"] == f"{method}-scenario-sid"
+    assert config["run_name"] == method
+    assert config["metadata"]["langfuse_trace_name"] == method
+    assert config["metadata"]["langfuse_session_id"] == "sid"
+    assert f"scenario:sid" in config["metadata"]["langfuse_tags"]
 
 
 # ---------------------------------------------------------------------------
@@ -296,7 +321,9 @@ def test_langfuse_wrapper_forwards_merged_config(langfuse_keys):
     assert getattr(result, "content", None) == "ok"
     _, kwargs = inner.invoke.call_args
     merged = kwargs["config"]
-    assert merged["run_name"] == "agent-scenario-1"
+    assert merged["run_name"] == "agent"
+    assert merged["metadata"]["langfuse_trace_name"] == "agent"
+    assert merged["metadata"]["langfuse_session_id"] == "1"
     assert fake_handler in merged["callbacks"]
 
 
@@ -353,7 +380,8 @@ def test_langfuse_wrapper_ainvoke_uses_inner_ainvoke(langfuse_keys):
         result = asyncio.run(wrapper.ainvoke("prompt", config={"tags": ["t"]}))
 
     assert result.content == "async-ok"
-    assert inner.got_config["run_name"] == "bypass7-scenario-2"
+    assert inner.got_config["run_name"] == "bypass7"
+    assert inner.got_config["metadata"]["langfuse_trace_name"] == "bypass7"
     assert "t" in inner.got_config["tags"]
     assert "bypass7" in inner.got_config["tags"]
 
@@ -375,10 +403,15 @@ def test_wrapper_method_switches_across_invokes_without_rebuild(langfuse_keys):
 
     names = [c.kwargs["config"]["run_name"] for c in inner.invoke.call_args_list]
     assert names == [
-        "agent-scenario-1",
-        "bypass7-scenario-1",
-        "force_mix-scenario-1",
+        "agent",
+        "bypass7",
+        "force_mix",
     ]
+    traces = [
+        c.kwargs["config"]["metadata"]["langfuse_trace_name"]
+        for c in inner.invoke.call_args_list
+    ]
+    assert traces == ["agent", "bypass7", "force_mix"]
 
 
 # ---------------------------------------------------------------------------
@@ -469,6 +502,7 @@ def test_observability_package_exports():
         "scenario_observation",
         "set_llm_node",
         "set_run_context",
+        "trace_name_for_method",
     ):
         assert hasattr(obs, name)
 
@@ -499,22 +533,63 @@ def test_append_and_get_llm_calls_survive_clear():
 
 def test_scenario_observation_noop_when_disabled(no_langfuse_keys):
     entered = False
-    with lt.scenario_observation("agent-scenario-1"):
+    with lt.scenario_observation("agent") as obs:
         entered = True
+        assert obs is None
     assert entered is True
 
 
 def test_scenario_observation_uses_langfuse_client(langfuse_keys):
+    span = MagicMock(name="span")
     cm = MagicMock()
-    cm.__enter__ = MagicMock(return_value=None)
+    cm.__enter__ = MagicMock(return_value=span)
     cm.__exit__ = MagicMock(return_value=False)
     client = MagicMock()
     client.start_as_current_observation.return_value = cm
 
     with patch("langfuse.get_client", return_value=client, create=True):
-        with lt.scenario_observation("bypass7-scenario-9"):
-            pass
+        with lt.scenario_observation("bypass7") as obs:
+            assert obs is span
 
     client.start_as_current_observation.assert_called_once()
     kwargs = client.start_as_current_observation.call_args.kwargs
-    assert kwargs.get("name") == "bypass7-scenario-9"
+    assert kwargs.get("name") == "bypass7"
+
+
+def test_cost_injecting_observation_adds_cost_details(langfuse_keys):
+    lt.set_run_context(
+        eval_method="agent",
+        scenario_id="1",
+        model_name="openrouter/meta-llama/llama-3.1-8b-instruct",
+    )
+    inner = MagicMock()
+    inner.update.return_value = inner
+    proxy = lt._CostInjectingObservation(inner)
+    result = proxy.update(
+        usage_details={"input": 1000, "output": 500},
+        model="meta-llama/llama-3.1-8b-instruct",
+    )
+    assert result is proxy
+    kwargs = inner.update.call_args.kwargs
+    assert "cost_details" in kwargs
+    assert abs(kwargs["cost_details"]["input"] - 1000 / 1000 * 0.00002) < 1e-12
+    assert abs(kwargs["cost_details"]["output"] - 500 / 1000 * 0.00003) < 1e-12
+    assert abs(kwargs["cost_details"]["total"] - kwargs["cost_details"]["input"] - kwargs["cost_details"]["output"]) < 1e-12
+
+
+def test_update_observation_cost_metadata():
+    obs = MagicMock()
+    lt.update_observation_cost_metadata(
+        obs,
+        tokens_in=10,
+        tokens_out=5,
+        cost_in=0.1,
+        cost_out=0.2,
+        total_cost=0.3,
+        model_name="openrouter/meta-llama/llama-3.1-8b-instruct",
+    )
+    obs.update.assert_called_once()
+    meta = obs.update.call_args.kwargs["metadata"]
+    assert meta["tokens_in"] == 10
+    assert meta["total_cost"] == 0.3
+    assert meta["model_name"] == "openrouter/meta-llama/llama-3.1-8b-instruct"

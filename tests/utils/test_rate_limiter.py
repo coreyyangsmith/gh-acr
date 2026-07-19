@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import patch
 
+import pytest
+
 from src.utils.rate_limiter import LimiterRegistry, RateLimiter, _TokenBucket
 
 
@@ -29,15 +31,47 @@ def test_token_bucket_refill_and_consume():
     assert wait == 2.0
 
 
-def test_rate_limiter_acquire_no_wait_when_capacity():
-    limiter = RateLimiter(rpm=60, tpm=6000, backoff={"max_retries": 1, "initial_delay": 0.01, "multiplier": 2, "max_delay": 1, "jitter": 0})
+def test_rate_limiter_acquire_skips_wait_by_default(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("RL_ENABLE_WAITING", raising=False)
+    limiter = RateLimiter(
+        rpm=1,
+        tpm=1,
+        backoff={
+            "max_retries": 1,
+            "initial_delay": 0.01,
+            "multiplier": 2,
+            "max_delay": 1,
+            "jitter": 0,
+        },
+    )
+    with patch("src.utils.rate_limiter.time.sleep") as sleep:
+        waited = limiter.acquire(expected_tokens=10_000)
+    assert waited == 0.0
+    sleep.assert_not_called()
+    assert limiter.wait_events == 0
+
+
+def test_rate_limiter_acquire_waits_when_enabled(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RL_ENABLE_WAITING", "1")
+    limiter = RateLimiter(
+        rpm=60,
+        tpm=6000,
+        backoff={
+            "max_retries": 1,
+            "initial_delay": 0.01,
+            "multiplier": 2,
+            "max_delay": 1,
+            "jitter": 0,
+        },
+    )
     with patch("src.utils.rate_limiter.time.sleep") as sleep:
         waited = limiter.acquire(expected_tokens=10)
     assert waited == 0.0 or waited >= 0.0
     sleep.assert_not_called()
 
 
-def test_rate_limiter_adjust_returns_unused():
+def test_rate_limiter_adjust_returns_unused(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setenv("RL_ENABLE_WAITING", "1")
     limiter = RateLimiter(
         rpm=60,
         tpm=6000,

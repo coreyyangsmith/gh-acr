@@ -33,7 +33,13 @@ from ..agents.base_agent import (
 )
 from ..agents.single_agent import resolve_conflict_agent_node
 from ..agents.bypass7 import resolve_conflict_bypass7_multi_agent_node
+from ..agents.better_judge import resolve_conflict_better_judge_node
 from ..agents.force_mix import resolve_conflict_force_mix_node
+from ..agents.bj_no_summary import resolve_conflict_bj_no_summary_node
+from ..agents.bj_no_judge import resolve_conflict_bj_no_judge_node
+from ..agents.bj_no_plan import resolve_conflict_bj_no_plan_node
+from ..agents.bj_no_review import resolve_conflict_bj_no_review_node
+from ..utils.run_progress import set_stage
 
 # Evaluation
 from ..eval.exact_match import per_file as em_per_file, overall as em_overall
@@ -173,6 +179,7 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                     origin_url = ""
                 if origin_url and origin_url.endswith(f"{sample['name']}.git"):
                     logger.info("Reusing existing clone at %s", dest)
+                    set_stage("clone_reuse", detail=str(sample.get("name", "")))
                     return repo
                 logger.warning(
                     "Existing directory at %s has unexpected origin; deleting and recloning",
@@ -190,19 +197,29 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                 )
                 raise RuntimeError(f"Cannot remove stale repo directory: {dest}")
 
-        logger.info("Cloning %s → %s (this may take several minutes for large repos)", repo_url, dest)
+        logger.info("Cloning %s → %s (blobless partial clone)", repo_url, dest)
+        set_stage("clone", detail=str(sample.get("name", "")))
         clone_start = time.time()
 
+        # Blobless partial clone: fetch commit/tree metadata for the full history
+        # but defer blob downloads until checkout. Unlike --depth=1, this keeps
+        # arbitrary parent/merge commits reachable for the eval pipeline.
+        _CLONE_MULTI_OPTIONS = ["--filter=blob:none"]
+
         try:
-            # Use shallow clone with depth=1 for faster cloning (we only need specific commits)
-            # and add progress callback for visibility
             def _clone_progress(op_code, cur_count, max_count=None, message=''):
                 if max_count:
                     pct = int(100 * cur_count / max_count)
                     if pct % 25 == 0:  # Log at 0%, 25%, 50%, 75%, 100%
+                        set_stage("clone", detail=f"{pct}%", log=False)
                         logger.info("[clone] %s: %d%% (%d/%d)", message or "progress", pct, cur_count, max_count)
-            
-            repo = Repo.clone_from(repo_url, dest, progress=_clone_progress)
+
+            repo = Repo.clone_from(
+                repo_url,
+                dest,
+                multi_options=_CLONE_MULTI_OPTIONS,
+                progress=_clone_progress,
+            )
             clone_elapsed = time.time() - clone_start
             logger.info("Clone completed in %.1fs: %s", clone_elapsed, dest)
             return repo
@@ -215,7 +232,9 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                 )
                 env = os.environ.copy()
                 env["GIT_CONFIG_PARAMETERS"] = "core.longpaths=true"
-                return Repo.clone_from(repo_url, dest, env=env)
+                return Repo.clone_from(
+                    repo_url, dest, multi_options=_CLONE_MULTI_OPTIONS, env=env
+                )
             # Handle race: destination appeared during clone
             if "already exists and is not an empty directory" in msg:
                 try:
@@ -238,7 +257,9 @@ def _clone_repo(sample: SampleRow, checkout_dir: Path) -> Repo:
                         raise
                     # Second attempt wrapped to re-handle race conditions
                     try:
-                        return Repo.clone_from(repo_url, dest)
+                        return Repo.clone_from(
+                            repo_url, dest, multi_options=_CLONE_MULTI_OPTIONS
+                        )
                     except GitCommandError as exc2:
                         msg2 = str(exc2)
                         if "already exists and is not an empty directory" in msg2:
@@ -315,6 +336,22 @@ def _diff_ratio(a: str, b: str) -> float:
 
 def load_sample_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Load the CSV row given a *scenario_id* in *state*."""
+    t0 = time.perf_counter()
+    scenario_id = state.get("scenario_id", "unknown")
+
+    # Short-circuit when sample_row was prefilled (e.g. from context cache).
+    if isinstance(state.get("sample_row"), dict) and state["sample_row"]:
+        if "df_index" not in state["sample_row"]:
+            state["sample_row"]["df_index"] = state["sample_row"].get("id", scenario_id)
+        state["status"] = "sample_loaded"
+        logger.info(
+            "[load_sample] scenario=%s Using prefilled sample_row (%.3fs)",
+            scenario_id,
+            time.perf_counter() - t0,
+        )
+        return state
+
+    logger.info("[load_sample] scenario=%s Starting", scenario_id)
 
     df = load_benchmark()
     raw_id = str(state["scenario_id"])  # ensure string for comparison
@@ -345,7 +382,25 @@ def load_sample_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
 
     state["sample_row"] = sample_dict
     state["status"] = "sample_loaded"
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "[load_sample] scenario=%s Completed in %.3fs",
+        scenario_id,
+        elapsed,
+    )
     return state
+
+
+def _context_already_prepared(state: Dict[str, Any]) -> bool:
+    """True when ancestor/parent contents and diffs are already in state."""
+    required = (
+        "ancestor_contents",
+        "parent_a_contents",
+        "parent_b_contents",
+        "diffs_a",
+        "diffs_b",
+    )
+    return all(isinstance(state.get(k), dict) and state[k] for k in required)
 
 
 def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
@@ -356,7 +411,24 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     2. Finds the merge base.
     3. Reads file contents for ancestor, parent A, and parent B.
     4. Generates diffs between the ancestor and each parent.
+
+    Short-circuits when contents/diffs are already present (context cache).
     """
+    t0 = time.perf_counter()
+    scenario_id = state.get("scenario_id", "unknown")
+    set_stage("prepare_context")
+
+    if _context_already_prepared(state):
+        state["status"] = "context_prepared"
+        logger.info(
+            "[prepare_context] scenario=%s Using prefilled context (%.3fs)",
+            scenario_id,
+            time.perf_counter() - t0,
+        )
+        return state
+
+    logger.info("[prepare_context] scenario=%s Starting", scenario_id)
+
     sample = state["sample_row"]
     scenario = sample["scenario_json"]
     files = scenario["files_in_merge_conflict"]
@@ -384,9 +456,8 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     parent_b_contents = _read_files_at_commit(repo, parents[1], files)
 
     # Log summary of loaded contents for debugging bypass issues
-    scenario_id = state.get("scenario_id", "unknown")
     logger.info(
-        "[load_sample_node] scenario=%s loaded: ancestor=%d files, parent_a=%d files, parent_b=%d files",
+        "[prepare_context] scenario=%s loaded: ancestor=%d files, parent_a=%d files, parent_b=%d files",
         scenario_id, len(ancestor_contents), len(parent_a_contents), len(parent_b_contents)
     )
     
@@ -395,9 +466,9 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
         a_len = len(parent_a_contents.get(fpath, ""))
         b_len = len(parent_b_contents.get(fpath, ""))
         if a_len == 0:
-            logger.warning("[load_sample_node] scenario=%s parent_a_contents[%s] is EMPTY", scenario_id, fpath)
+            logger.warning("[prepare_context] scenario=%s parent_a_contents[%s] is EMPTY", scenario_id, fpath)
         if b_len == 0:
-            logger.warning("[load_sample_node] scenario=%s parent_b_contents[%s] is EMPTY", scenario_id, fpath)
+            logger.warning("[prepare_context] scenario=%s parent_b_contents[%s] is EMPTY", scenario_id, fpath)
 
     # Generate diffs
     diffs_a: Dict[str, str] = {}
@@ -465,6 +536,12 @@ def prepare_context_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     except Exception:
         commit_messages_b = ""
 
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "[prepare_context] scenario=%s Completed in %.3fs",
+        scenario_id,
+        elapsed,
+    )
     return {
         **state,
         "repo_path": repo.working_dir,
@@ -488,33 +565,41 @@ def resolve_conflict_stub_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa
 
 def evaluate_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Compare stub *resolution* to the *ground truth* merge commit."""
+    t0 = time.perf_counter()
+    scenario_id = state.get("scenario_id", "unknown")
+    logger.info("[evaluate] scenario=%s Starting", scenario_id)
+    set_stage("evaluate")
 
     sample = state["sample_row"]
     scenario = sample["scenario_json"]
-    repo = Repo(state["repo_path"])
-
-    truth_contents = _read_files_at_commit(
-        repo, scenario["merge_commit_hash"], scenario["files_in_merge_conflict"]
-    )
     pred_contents: FileContents = state["resolved_contents"]
+
+    # Prefer prefilled truth (context cache); otherwise read from clone.
+    truth_contents = state.get("truth_contents")
+    if not isinstance(truth_contents, dict) or not truth_contents:
+        repo = Repo(state["repo_path"])
+        truth_contents = _read_files_at_commit(
+            repo, scenario["merge_commit_hash"], scenario["files_in_merge_conflict"]
+        )
 
     # -------------------------------------------------------------------
     # Compute diffs between the ancestor version and the ground-truth merge
     # result so that we can persist them to disk later (ground_truth.diff).
     # -------------------------------------------------------------------
-    diffs_truth: Dict[str, str] = {}
-    ancestor_contents: FileContents = state.get("ancestor_contents", {})
-    for path in scenario["files_in_merge_conflict"]:
-        anc_lines = ancestor_contents.get(path, "").splitlines(keepends=True)
-        truth_lines = truth_contents.get(path, "").splitlines(keepends=True)
-        diffs_truth[path] = "".join(
-            difflib.unified_diff(
-                anc_lines,
-                truth_lines,
-                fromfile=f"ancestor/{path}",
-                tofile=f"ground_truth/{path}",
+    diffs_truth: Dict[str, str] = state.get("diffs_truth") or {}
+    if not diffs_truth:
+        ancestor_contents: FileContents = state.get("ancestor_contents", {})
+        for path in scenario["files_in_merge_conflict"]:
+            anc_lines = ancestor_contents.get(path, "").splitlines(keepends=True)
+            truth_lines = truth_contents.get(path, "").splitlines(keepends=True)
+            diffs_truth[path] = "".join(
+                difflib.unified_diff(
+                    anc_lines,
+                    truth_lines,
+                    fromfile=f"ancestor/{path}",
+                    tofile=f"ground_truth/{path}",
+                )
             )
-        )
 
     ratios = {
         path: _diff_ratio(pred_contents.get(path, ""), truth)
@@ -534,6 +619,12 @@ def evaluate_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
         "overall_rouge_l": rouge_overall(pred_contents, truth_contents),
     }
     state["status"] = "evaluated"
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "[evaluate] scenario=%s Completed in %.3fs",
+        scenario_id,
+        elapsed,
+    )
     return state
 
 
@@ -552,8 +643,11 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
         "base_a"     – baseline Parent-A resolver.
         "base_b"     – baseline Parent-B resolver.
         "bypass7"    – multi-agent bypass resolver (analyze → bypass or mix).
+        "better_judge" – same graph as bypass7 with a stricter conflict-judge prompt.
         "force_mix"  – multi-agent resolver that skips the conflict analyzer
                        and always uses the mix (plan → patch → review) path.
+        "bj_no_summary" / "bj_no_judge" / "bj_no_plan" / "bj_no_review"
+                     – better_judge ablation variants.
     """
 
     sg = StateGraph(dict)
@@ -573,12 +667,29 @@ def build_graph(eval_method: str = "agent") -> Pregel:  # noqa: D401
     elif eval_method == "bypass7":
         resolver_node_name = "resolve_bypass7_multi"
         sg.add_node(resolver_node_name, resolve_conflict_bypass7_multi_agent_node)
+    elif eval_method == "better_judge":
+        resolver_node_name = "resolve_better_judge"
+        sg.add_node(resolver_node_name, resolve_conflict_better_judge_node)
     elif eval_method == "force_mix":
         resolver_node_name = "resolve_force_mix"
         sg.add_node(resolver_node_name, resolve_conflict_force_mix_node)
+    elif eval_method == "bj_no_summary":
+        resolver_node_name = "resolve_bj_no_summary"
+        sg.add_node(resolver_node_name, resolve_conflict_bj_no_summary_node)
+    elif eval_method == "bj_no_judge":
+        resolver_node_name = "resolve_bj_no_judge"
+        sg.add_node(resolver_node_name, resolve_conflict_bj_no_judge_node)
+    elif eval_method == "bj_no_plan":
+        resolver_node_name = "resolve_bj_no_plan"
+        sg.add_node(resolver_node_name, resolve_conflict_bj_no_plan_node)
+    elif eval_method == "bj_no_review":
+        resolver_node_name = "resolve_bj_no_review"
+        sg.add_node(resolver_node_name, resolve_conflict_bj_no_review_node)
     else:
         raise ValueError(
-            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', 'bypass7', or 'force_mix'."
+            f"Unknown eval_method {eval_method!r}; choose 'agent', 'base_a', 'base_b', "
+            f"'bypass7', 'better_judge', 'force_mix', "
+            f"'bj_no_summary', 'bj_no_judge', 'bj_no_plan', or 'bj_no_review'."
         )
 
     sg.add_node("evaluate", evaluate_node)
@@ -597,7 +708,8 @@ def make_graph(config: RunnableConfig | None = None) -> Pregel:  # noqa: D401
     """LangGraph entrypoint: build a compiled app from ``config``.
 
     Recognised configurable keys:
-    - eval_method: "agent" | "base_a" | "base_b" | "bypass7" | "force_mix" (default: "agent")
+    - eval_method: "agent" | "base_a" | "base_b" | "bypass7" | "better_judge" | "force_mix"
+      | "bj_no_summary" | "bj_no_judge" | "bj_no_plan" | "bj_no_review" (default: "agent")
     """
     cfg = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     eval_method = cfg.get("eval_method", "agent")

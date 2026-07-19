@@ -32,3 +32,22 @@ def test_get_method_index_unknown_raises():
 def test_all_methods_match_default_order_set():
     assert set(ALL_EVAL_METHODS) == set(DEFAULT_METHOD_ORDER)
     assert list(ALL_EVAL_METHODS) == list(DEFAULT_METHOD_ORDER)
+
+
+def test_all_methods_include_better_judge():
+    assert "better_judge" in ALL_EVAL_METHODS
+    assert get_method_index("better_judge") == ALL_EVAL_METHODS.index("better_judge")
+    assert get_method_index("better_judge") == DEFAULT_METHOD_ORDER.index("bypass7") + 1
+
+
+def test_all_methods_include_bj_ablations():
+    from src.config.eval_methods import MULTI_AGENT_EVAL_METHODS
+
+    ablations = ("bj_no_summary", "bj_no_judge", "bj_no_plan", "bj_no_review")
+    for m in ablations:
+        assert m in ALL_EVAL_METHODS
+        assert m in DEFAULT_METHOD_ORDER
+        assert m in MULTI_AGENT_EVAL_METHODS
+    # Ablations sit between better_judge and force_mix
+    assert get_method_index("bj_no_summary") == get_method_index("better_judge") + 1
+    assert get_method_index("bj_no_review") == get_method_index("force_mix") - 1

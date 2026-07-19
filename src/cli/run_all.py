@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import datetime
+import json
+import os
+import threading
 import time
 import traceback
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 # Ensure one-time global startup (env, logging, tracing) before anything else
 import src.startup  # noqa: F401
@@ -16,14 +21,81 @@ import tyro
 from src.dataset.loader import load_benchmark
 from src.config.settings import BATCH_SIZE
 from src.config.eval_methods import EvalMethod, ALL_EVAL_METHODS
+from src.cache.scenario_context import ensure_prepared
 from src.utils.logger import setup_logger
-from src.utils.run_ledger import RunLedger, capture_logs
+from src.utils.degradation import (
+    clear_degradations,
+    get_degradations,
+    has_degradations,
+    primary_degradation_category,
+)
+from src.utils.failure_classify import classify_failure
+from src.utils.run_ledger import RunLedger, capture_logs, load_successful_units
+from src.utils.run_progress import (
+    RunProgress,
+    reset_current_worker_id,
+    set_current_worker_id,
+)
 from src.agents.graph_router import build_graph
 from src.agents.observability import get_llm_calls
 from src.cli.runner import run_and_save_report, RESULTS_SCHEMA_COLUMNS
 
 
 ProcessMode = Literal["clone"]
+
+_DEFAULT_CONCURRENCY = 8
+_DEFAULT_METHOD_CONCURRENCY_CAP = 8
+
+
+class CreditsExhaustedAbort(RuntimeError):
+    """Raised to stop a batch run after an insufficient-credits / 402 failure."""
+
+    pass
+
+
+def _resolve_concurrency(concurrency: int | None) -> int:
+    """Resolve scenario worker-pool size from CLI arg or INFERENCE_CONCURRENCY env."""
+    if concurrency is not None:
+        return max(1, int(concurrency))
+    env = (os.getenv("INFERENCE_CONCURRENCY") or "").strip()
+    if env:
+        try:
+            return max(1, int(env))
+        except ValueError:
+            pass
+    return _DEFAULT_CONCURRENCY
+
+
+def _resolve_method_concurrency(
+    method_concurrency: int | None, n_methods: int
+) -> int:
+    """Max parallel methods per scenario (default: min(n_methods, 8))."""
+    if method_concurrency is not None:
+        return max(1, int(method_concurrency))
+    return max(1, min(int(n_methods), _DEFAULT_METHOD_CONCURRENCY_CAP))
+
+
+def _scenario_key_from_row(row) -> str:
+    key = row.get("id")
+    if key is None:
+        return str(row.name)
+    return str(key)
+
+
+def _row_to_sample(row) -> dict[str, Any]:
+    """Convert a benchmark DataFrame row into a sample_row dict for prep/cache."""
+    sample = row.to_dict() if hasattr(row, "to_dict") else dict(row)
+    sample["df_index"] = getattr(row, "name", sample.get("id"))
+    if "id" not in sample or sample.get("id") is None:
+        sample["id"] = _scenario_key_from_row(row)
+    sj = sample.get("scenario_json")
+    if isinstance(sj, str):
+        sample["scenario_json"] = json.loads(sj)
+    elif sj is None and isinstance(sample.get("scenario"), str):
+        from src.dataset.loader import _parse_scenario
+
+        sample["scenario_json"] = _parse_scenario(sample["scenario"])
+    return sample
 
 
 def main(
@@ -39,6 +111,9 @@ def main(
     end_index: int | None = None,
     sample_percent: int | None = None,
     sample_seed: int = 42,
+    concurrency: int | None = None,
+    method_concurrency: int | None = None,
+    resume: bool = False,
 ):
     """Run the full benchmark across all evaluation methods.
 
@@ -50,7 +125,9 @@ def main(
     mode
         Processing mode: "clone" (defaults to "clone").
     methods
-        Subset of evaluation methods to run. Defaults to all: ["base_a", "base_b", "agent", "bypass7", "force_mix"].
+        Subset of evaluation methods to run. Defaults to all methods in
+        ALL_EVAL_METHODS (baselines, agent, bypass7, better_judge, bj_* ablations,
+        force_mix).
     model_name
         Optional model override for LLM-based methods.
     n_easy / n_medium / n_hard
@@ -67,6 +144,23 @@ def main(
         max_scenarios. Applied after start_index/end_index.
     sample_seed
         Random seed for sample_percent (default: 42).
+    concurrency
+        Max concurrent **scenarios** within a batch (default: 8, or
+        INFERENCE_CONCURRENCY). Peak LLM pressure ≈ concurrency ×
+        method_concurrency; lower this when running many methods in parallel.
+    method_concurrency
+        Max parallel methods per scenario (default: min(len(methods), 8)).
+    resume
+        If True, keep existing results CSV / run ledger / failures log and skip
+        ``(scenario_id, eval_method)`` units already recorded as success.
+        Failures, degradations, and never-attempted units are re-run.
+
+    Notes
+    -----
+    Clones under ``GHACR_CLONE_DIR`` / ``./repos`` and prepared context under
+    ``data/context_cache`` (or ``GHACR_CONTEXT_CACHE_DIR``) persist across
+    batches and model runs. Prep runs once per scenario, then pending methods
+    execute in parallel.
     """
 
     asyncio.run(
@@ -83,6 +177,9 @@ def main(
             end_index=end_index,
             sample_percent=sample_percent,
             sample_seed=sample_seed,
+            concurrency=concurrency,
+            method_concurrency=method_concurrency,
+            resume=resume,
         )
     )
 
@@ -101,10 +198,16 @@ async def _run_all(
     end_index: int | None,
     sample_percent: int | None,
     sample_seed: int,
+    concurrency: int | None = None,
+    method_concurrency: int | None = None,
+    resume: bool = False,
 ):
     # Configure root logger so all modules propagate here
     logger = setup_logger()
     methods_to_run: list[EvalMethod] = methods or ALL_EVAL_METHODS
+    workers = _resolve_concurrency(concurrency)
+    method_workers = _resolve_method_concurrency(method_concurrency, len(methods_to_run))
+    run_t0 = time.perf_counter()
 
     # Log run configuration for debugging
     logger.info("=" * 70)
@@ -118,12 +221,20 @@ async def _run_all(
     logger.info("  n_easy: %s, n_medium: %s, n_hard: %s", n_easy, n_medium, n_hard)
     logger.info("  start_index: %s, end_index: %s", start_index, end_index)
     logger.info("  sample_percent: %s, sample_seed: %s", sample_percent, sample_seed)
+    logger.info("  scenario_concurrency: %s", workers)
+    logger.info("  method_concurrency: %s", method_workers)
+    logger.info(
+        "  peak_llm_slots≈%s (scenario_concurrency × method_concurrency)",
+        workers * method_workers,
+    )
+    logger.info("  resume: %s", resume)
+    logger.info("  wall_clock_start: %.6f (perf_counter)", run_t0)
     logger.info("=" * 70)
 
     # Load and optionally sample benchmark scenarios
     logger.info("Loading benchmark dataset…")
     benchmark_df = load_benchmark()
-    
+
     # Apply start/end index slicing first (for batch processing)
     if start_index is not None or end_index is not None:
         start_idx = start_index if start_index is not None else 0
@@ -175,6 +286,16 @@ async def _run_all(
         logger.info("First scenario ID: %s", benchmark_df.iloc[0].get("id", benchmark_df.index[0]))
         logger.info("Columns: %s", list(benchmark_df.columns))
 
+    n_scenarios = len(benchmark_df)
+    n_methods = len(methods_to_run)
+    total_units = n_scenarios * n_methods
+    logger.info(
+        "Total work units: %d scenarios × %d methods = %d",
+        n_scenarios,
+        n_methods,
+        total_units,
+    )
+
     # Nest outputs under data/<model>/<id>
     output_root = Path.cwd() / "data"
 
@@ -185,165 +306,435 @@ async def _run_all(
     else:
         date_str = datetime.date.today().strftime("%Y_%m_%d")
         results_path = Path.cwd() / "data" / f"{date_str}_results_all.csv"
-    if results_path.exists():
-        logger.info("Removing existing results file: %s", results_path)
-        results_path.unlink()
     results_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Success/failure ledger next to the results CSV (crash-resilient JSONL)
+    # Success/failure/degraded ledger next to the results CSV (crash-resilient JSONL)
     ledger_path = results_path.with_name(f"{results_path.stem}_run_log.jsonl")
-    if ledger_path.exists():
-        logger.info("Removing existing run ledger: %s", ledger_path)
-        ledger_path.unlink()
-    ledger = RunLedger(ledger_path)
+    failures_path = results_path.with_name(f"{results_path.stem}_failures.jsonl")
+
+    done_units: set[tuple[str, str]] = set()
+    if resume:
+        if not results_path.exists() and not ledger_path.exists():
+            logger.warning(
+                "Resume requested but no existing results CSV or ledger at %s / %s; "
+                "starting a fresh run.",
+                results_path,
+                ledger_path,
+            )
+        done_units = load_successful_units(ledger_path)
+        # Only count successes that apply to this run's scenario×method grid
+        scenario_ids = {
+            str(row.get("id") if row.get("id") is not None else row.name)
+            for _, row in benchmark_df.iterrows()
+        }
+        method_set = set(methods_to_run)
+        done_in_scope = {
+            (sid, m) for (sid, m) in done_units if sid in scenario_ids and m in method_set
+        }
+        remaining_units = max(0, total_units - len(done_in_scope))
+        logger.info(
+            "Resume: %d/%d units already successful; running %d remaining",
+            len(done_in_scope),
+            total_units,
+            remaining_units,
+        )
+        done_units = done_in_scope
+        ledger = RunLedger.from_existing(ledger_path, failures_path=failures_path)
+        progress = RunProgress(remaining_units).activate()
+    else:
+        if results_path.exists():
+            logger.info("Removing existing results file: %s", results_path)
+            results_path.unlink()
+        if ledger_path.exists():
+            logger.info("Removing existing run ledger: %s", ledger_path)
+            ledger_path.unlink()
+        if failures_path.exists():
+            logger.info("Removing existing failures log: %s", failures_path)
+            failures_path.unlink()
+        ledger = RunLedger(ledger_path, failures_path=failures_path)
+        progress = RunProgress(total_units).activate()
+
     logger.info("Run ledger: %s", ledger_path)
+    logger.info("Failures log: %s", failures_path)
 
-    # Process in batches, streaming results to CSV as they complete
-    total = len(benchmark_df)
-    for start in range(0, total, BATCH_SIZE):
-        batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
-        try:
-            for method in methods_to_run:
-                logger.info("=== Running method: %s (mode=%s) batch %s-%s ===", method, mode, start + 1, min(start + BATCH_SIZE, total))
-                app = build_graph(process_mode=mode, eval_method=method)
+    csv_lock = threading.Lock()
+    credits_abort = threading.Event()
 
-                async def process_row(row):
-                    scenario_key = row.get("id")
-                    if scenario_key is None:
-                        # Be robust to unnamed first column exported as index
-                        scenario_key = str(row.name)
-                    repo_slug = str(row.get("name", "") or "")
-                    write_prep = method == methods_to_run[0]
-                    row_start = time.perf_counter()
-                    with capture_logs() as captured:
-                        try:
-                            per_file_results = await run_and_save_report(
-                                app,
-                                scenario_key,
-                                output_root,
-                                eval_method=method,
-                                model_name=model_name,
-                                process_mode=mode,
-                                write_prep=write_prep,
-                            )
-                            elapsed = time.perf_counter() - row_start
-                            # Derive lightweight status from returned rows (exclude prep)
-                            data_rows = [
-                                r for r in (per_file_results or [])
-                                if r.get("eval_method") != "prep"
-                            ]
-                            exact_vals = [
-                                bool(r.get("exact_match"))
-                                for r in data_rows
-                                if r.get("exact_match") != ""
-                            ]
-                            exact_overall = all(exact_vals) if exact_vals else None
-                            df_index = data_rows[0].get("id") if data_rows else None
-                            processing_time = (
-                                data_rows[0].get("processing_time_s", round(elapsed, 3))
-                                if data_rows
-                                else round(elapsed, 3)
-                            )
-                            llm_calls = get_llm_calls()
-                            prompt_total = sum(int(c.get("prompt_tokens") or 0) for c in llm_calls)
-                            completion_total = sum(
-                                int(c.get("completion_tokens") or 0) for c in llm_calls
-                            )
-                            logger.info(
-                                "[run_all] scenario=%s method=%s llm_calls=%d "
-                                "prompt_tokens=%d completion_tokens=%d",
+    def _append_results(per_file_results: list) -> None:
+        """Append scenario rows to the results CSV under the shared lock."""
+        if not per_file_results:
+            return
+        df = pd.DataFrame(per_file_results)
+        # Enforce unified column order/schema
+        df = df.reindex(columns=RESULTS_SCHEMA_COLUMNS)
+        with csv_lock:
+            header = not results_path.exists() or results_path.stat().st_size == 0
+            df.to_csv(results_path, mode="a", header=header, index=False)
+            logger.info(
+                "Appended %s rows → %s | %s",
+                len(per_file_results),
+                results_path,
+                progress.snapshot_line(),
+            )
+
+    # Build one graph per method (shared across scenarios in this process).
+    method_apps = {
+        method: build_graph(process_mode=mode, eval_method=method)
+        for method in methods_to_run
+    }
+
+    try:
+        total = len(benchmark_df)
+        for start in range(0, total, BATCH_SIZE):
+            batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
+            logger.info(
+                "=== Batch scenarios %s-%s | scenario_concurrency=%s "
+                "method_concurrency=%s | %s ===",
+                start + 1,
+                min(start + BATCH_SIZE, total),
+                workers,
+                method_workers,
+                progress.snapshot_line(),
+            )
+
+            async def process_method(
+                *,
+                scenario_key: str,
+                repo_slug: str,
+                method: str,
+                prepared: dict[str, Any],
+            ) -> list:
+                if credits_abort.is_set():
+                    return []
+                row_start = time.perf_counter()
+                worker_id = progress.acquire_worker()
+                worker_token = set_current_worker_id(worker_id)
+                progress.mark_started(worker_id, scenario_key, method)
+                clear_degradations()
+                with capture_logs() as captured:
+                    try:
+                        per_file_results = await run_and_save_report(
+                            method_apps[method],
+                            scenario_key,
+                            output_root,
+                            eval_method=method,
+                            model_name=model_name,
+                            process_mode=mode,
+                            write_prep=False,
+                            prepared_state=copy.deepcopy(prepared),
+                        )
+                        elapsed = time.perf_counter() - row_start
+                        data_rows = [
+                            r
+                            for r in (per_file_results or [])
+                            if r.get("eval_method") != "prep"
+                        ]
+                        exact_vals = [
+                            bool(r.get("exact_match"))
+                            for r in data_rows
+                            if r.get("exact_match") != ""
+                        ]
+                        exact_overall = all(exact_vals) if exact_vals else None
+                        df_index = data_rows[0].get("id") if data_rows else None
+                        processing_time = (
+                            data_rows[0].get("processing_time_s", round(elapsed, 3))
+                            if data_rows
+                            else round(elapsed, 3)
+                        )
+                        llm_calls = get_llm_calls()
+                        prompt_total = sum(
+                            int(c.get("prompt_tokens") or 0) for c in llm_calls
+                        )
+                        completion_total = sum(
+                            int(c.get("completion_tokens") or 0) for c in llm_calls
+                        )
+                        logger.info(
+                            "[run_all] scenario=%s method=%s llm_calls=%d "
+                            "prompt_tokens=%d completion_tokens=%d processing_time_s=%.3f",
+                            scenario_key,
+                            method,
+                            len(llm_calls),
+                            prompt_total,
+                            completion_total,
+                            float(processing_time)
+                            if processing_time is not None
+                            else elapsed,
+                        )
+                        if has_degradations():
+                            events = get_degradations()
+                            logger.warning(
+                                "[run_all] scenario=%s method=%s completed with "
+                                "%d soft degradation(s); not writing CSV rows",
                                 scenario_key,
                                 method,
-                                len(llm_calls),
-                                prompt_total,
-                                completion_total,
+                                len(events),
                             )
-                            ledger.record_success(
+                            ledger.record_degraded(
                                 scenario_id=scenario_key,
                                 df_index=df_index,
-                                repo=repo_slug or (data_rows[0].get("repo") if data_rows else None),
+                                repo=repo_slug
+                                or (data_rows[0].get("repo") if data_rows else None),
                                 eval_method=method,
                                 model_name=model_name,
-                                num_files=len(data_rows),
-                                exact_match_overall=exact_overall,
+                                degradation_events=events,
+                                failure_category=primary_degradation_category(events),
                                 processing_time_s=processing_time,
                                 llm_calls=llm_calls,
+                                num_files=len(data_rows),
+                                exact_match_overall=exact_overall,
+                                captured_logs=list(captured),
                             )
-                            return per_file_results
-                        except Exception as exc:  # pragma: no cover – runtime resilience
-                            elapsed = time.perf_counter() - row_start
-                            tb = traceback.format_exc()
-                            logger.exception(
-                                "[run_all] Error processing scenario %s (%s)",
-                                scenario_key,
-                                method,
+                            progress.mark_done(worker_id, ok=False, elapsed_s=elapsed)
+                            return []
+                        ledger.record_success(
+                            scenario_id=scenario_key,
+                            df_index=df_index,
+                            repo=repo_slug
+                            or (data_rows[0].get("repo") if data_rows else None),
+                            eval_method=method,
+                            model_name=model_name,
+                            num_files=len(data_rows),
+                            exact_match_overall=exact_overall,
+                            processing_time_s=processing_time,
+                            llm_calls=llm_calls,
+                        )
+                        progress.mark_done(worker_id, ok=True, elapsed_s=elapsed)
+                        return per_file_results or []
+                    except Exception as exc:  # pragma: no cover – runtime resilience
+                        elapsed = time.perf_counter() - row_start
+                        tb = traceback.format_exc()
+                        logger.exception(
+                            "[run_all] Error processing scenario %s (%s)",
+                            scenario_key,
+                            method,
+                        )
+                        llm_calls = get_llm_calls()
+                        ledger.record_failure(
+                            scenario_id=scenario_key,
+                            repo=repo_slug or None,
+                            eval_method=method,
+                            model_name=model_name,
+                            error=exc,
+                            traceback_text=tb,
+                            captured_logs=list(captured),
+                            processing_time_s=round(elapsed, 3),
+                            failure_trace_path=getattr(exc, "failure_trace_path", None),
+                            llm_calls=llm_calls,
+                        )
+                        progress.mark_done(worker_id, ok=False, elapsed_s=elapsed)
+                        if classify_failure(exc) == "credits":
+                            credits_abort.set()
+                            logger.error(
+                                "[run_all] Insufficient API credits (402); aborting "
+                                "remaining work. Add credits at "
+                                "https://openrouter.ai/settings/credits then resume."
                             )
-                            llm_calls = get_llm_calls()
+                            raise CreditsExhaustedAbort(str(exc)) from exc
+                        return []
+                    finally:
+                        progress.release_worker(worker_id)
+                        reset_current_worker_id(worker_token)
+
+            async def process_scenario(row) -> list:
+                """Prep once, then run pending methods (possibly in parallel)."""
+                if credits_abort.is_set():
+                    return []
+                scenario_key = _scenario_key_from_row(row)
+                repo_slug = str(row.get("name", "") or "")
+                pending_methods = [
+                    m
+                    for m in methods_to_run
+                    if (scenario_key, m) not in done_units
+                ]
+                if not pending_methods:
+                    logger.info(
+                        "Scenario %s: all methods already done; skipping",
+                        scenario_key,
+                    )
+                    return []
+
+                skipped = len(methods_to_run) - len(pending_methods)
+                if skipped:
+                    logger.info(
+                        "Scenario %s: skipping %d already-successful method(s); "
+                        "running %s",
+                        scenario_key,
+                        skipped,
+                        pending_methods,
+                    )
+
+                sample = _row_to_sample(row)
+                try:
+                    # Blocking prep/clone off the event loop
+                    prepared = await asyncio.to_thread(
+                        ensure_prepared, scenario_key, sample
+                    )
+                except Exception as exc:
+                    logger.exception(
+                        "[run_all] Prep failed for scenario %s: %s",
+                        scenario_key,
+                        exc,
+                    )
+                    # Record failure for each pending method so resume can retry
+                    for method in pending_methods:
+                        worker_id = progress.acquire_worker()
+                        worker_token = set_current_worker_id(worker_id)
+                        progress.mark_started(worker_id, scenario_key, method)
+                        try:
                             ledger.record_failure(
                                 scenario_id=scenario_key,
                                 repo=repo_slug or None,
                                 eval_method=method,
                                 model_name=model_name,
                                 error=exc,
-                                traceback_text=tb,
-                                captured_logs=list(captured),
-                                processing_time_s=round(elapsed, 3),
-                                failure_trace_path=getattr(exc, "failure_trace_path", None),
-                                llm_calls=llm_calls,
+                                traceback_text=traceback.format_exc(),
+                                captured_logs=[],
+                                processing_time_s=0.0,
+                                llm_calls=[],
+                                prep=True,
                             )
-                            return []
+                            progress.mark_done(worker_id, ok=False, elapsed_s=0.0)
+                        finally:
+                            progress.release_worker(worker_id)
+                            reset_current_worker_id(worker_token)
+                    return []
 
-                # Process scenarios sequentially (no concurrency)
-                completed = 0
-                tasks_count = len(batch_df)
-                for _, row in batch_df.iterrows():
-                    per_file_results = await process_row(row)
-                    if per_file_results:
-                        df = pd.DataFrame(per_file_results)
-                        # Enforce unified column order/schema
-                        df = df.reindex(columns=RESULTS_SCHEMA_COLUMNS)
-                        header = not results_path.exists() or results_path.stat().st_size == 0
-                        df.to_csv(results_path, mode="a", header=header, index=False)
-                        completed += 1
-                        logger.info("Appended %s rows for scenario (%s/%s) → %s", len(per_file_results), completed, tasks_count, results_path)
-                if completed == 0:
-                    logger.warning("Method %s: no results to append in this batch.", method)
-        finally:
-            # Cleanup batch repos (clone mode only)
-            if mode == "clone":
-                try:
-                    # Prefer the same root used for cloning
-                    from src.merge_pipeline.pipeline_clone import _checkout_root, _robust_rmtree  # type: ignore
-                    repos_root = _checkout_root()
-                except Exception:
-                    repos_root = Path.cwd() / "repos"
-                for _, row in batch_df.iterrows():
-                    name = str(row.get("name", "")).replace("/", "___")
-                    if not name:
-                        continue
-                    repo_dir = repos_root / name
-                    if repo_dir.exists():
+                out: list = []
+                if method_workers <= 1 or len(pending_methods) <= 1:
+                    for method in pending_methods:
+                        if credits_abort.is_set():
+                            break
+                        rows = await process_method(
+                            scenario_key=scenario_key,
+                            repo_slug=repo_slug,
+                            method=method,
+                            prepared=prepared,
+                        )
+                        if rows:
+                            out.extend(rows)
+                    return out
+
+                def _run_method_sync(method: str):
+                    if credits_abort.is_set():
+                        return []
+                    return asyncio.run(
+                        process_method(
+                            scenario_key=scenario_key,
+                            repo_slug=repo_slug,
+                            method=method,
+                            prepared=prepared,
+                        )
+                    )
+
+                pool_size = min(method_workers, len(pending_methods))
+                with ThreadPoolExecutor(max_workers=pool_size) as pool:
+                    futures = [
+                        pool.submit(_run_method_sync, method)
+                        for method in pending_methods
+                    ]
+                    for fut in as_completed(futures):
                         try:
-                            _robust_rmtree(repo_dir)
-                            logger.info("Cleaned cloned repo: %s", repo_dir)
-                        except Exception:
-                            logger.exception("Failed to remove repo directory: %s", repo_dir)
+                            rows = fut.result()
+                        except CreditsExhaustedAbort:
+                            for other in futures:
+                                other.cancel()
+                            raise
+                        if rows:
+                            out.extend(rows)
+                return out
 
-    ledger.record_summary(
-        results_path=str(results_path),
-        total_scenarios=total,
-        methods=list(methods_to_run),
-        model_name=model_name,
-    )
-    logger.info(
-        "All evaluations complete. Consolidated results saved to %s | run ledger: %s (success=%d, failure=%d)",
-        results_path,
-        ledger_path,
-        ledger.success_count,
-        ledger.failure_count,
-    )
+            if credits_abort.is_set():
+                logger.error(
+                    "[run_all] Aborting remaining batches due to insufficient credits."
+                )
+                break
+
+            pending_rows = [
+                row
+                for _, row in batch_df.iterrows()
+                if any(
+                    (_scenario_key_from_row(row), m) not in done_units
+                    for m in methods_to_run
+                )
+            ]
+            if not pending_rows:
+                logger.info(
+                    "Batch %s-%s: all scenario×method units already done; skipping",
+                    start + 1,
+                    min(start + BATCH_SIZE, total),
+                )
+                continue
+
+            batch_appended = 0
+            try:
+                if workers <= 1:
+                    for row in pending_rows:
+                        if credits_abort.is_set():
+                            break
+                        per_file_results = await process_scenario(row)
+                        if per_file_results:
+                            _append_results(per_file_results)
+                            batch_appended += 1
+                else:
+                    def _run_scenario_sync(row_data):
+                        if credits_abort.is_set():
+                            return []
+                        return asyncio.run(process_scenario(row_data))
+
+                    pool_size = min(workers, len(pending_rows))
+                    with ThreadPoolExecutor(max_workers=pool_size) as pool:
+                        futures = [
+                            pool.submit(_run_scenario_sync, row) for row in pending_rows
+                        ]
+                        for fut in as_completed(futures):
+                            try:
+                                per_file_results = fut.result()
+                            except CreditsExhaustedAbort:
+                                for other in futures:
+                                    other.cancel()
+                                credits_abort.set()
+                                raise
+                            if per_file_results:
+                                _append_results(per_file_results)
+                                batch_appended += 1
+            except CreditsExhaustedAbort:
+                logger.error(
+                    "[run_all] Aborting remaining batches due to insufficient credits."
+                )
+                break
+
+            if batch_appended == 0:
+                logger.warning(
+                    "Batch %s-%s: no results to append.",
+                    start + 1,
+                    min(start + BATCH_SIZE, total),
+                )
+            # Clones persist across batches and model runs (no rmtree cleanup).
+
+        ledger.record_summary(
+            results_path=str(results_path),
+            failures_path=str(failures_path),
+            total_scenarios=total,
+            methods=list(methods_to_run),
+            model_name=model_name,
+        )
+        run_elapsed = time.perf_counter() - run_t0
+        logger.info("%s", progress.summary_line())
+        logger.info(
+            "All evaluations complete in %.3fs. Consolidated results saved to %s | "
+            "run ledger: %s | failures log: %s "
+            "(success=%d, failure=%d, degraded=%d)",
+            run_elapsed,
+            results_path,
+            ledger_path,
+            failures_path,
+            ledger.success_count,
+            ledger.failure_count,
+            ledger.degraded_count,
+        )
+    finally:
+        progress.deactivate()
 
 
 if __name__ == "__main__":
     tyro.cli(main)
-

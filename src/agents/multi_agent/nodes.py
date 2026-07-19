@@ -27,17 +27,54 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Dict, Literal
 
+from ..artifact_io import (
+    agent_call_dir,
+    base_metadata,
+    file_path_to_slug,
+    get_artifact_root,
+    write_agent_call,
+)
 from ..llm_base import get_backend, count_tokens
-from ..resilient_invoke import resilient_invoke
-from ..utils import render_template, extract_text_content, scenario_file_list
+from ..parse_utils import (
+    extract_analyzer_verdict,
+    parse_plan_json,
+    parse_review_outcome,
+)
+from ..prompt_budget import (
+    EvidenceBlock,
+    FitReport,
+    fit_global_ab_prompt,
+    fit_variable_blocks,
+)
+from ..resilient_invoke import (
+    ParseExhausted,
+    ParsedResult,
+    invoke_and_parse,
+    resilient_invoke,
+)
+from ..utils import extract_text_content, scenario_file_list
+from ...utils.degradation import record_degradation
 from ...utils.logger import logger
+from ...utils.run_progress import get_active_progress, get_current_worker_id, set_stage
+
+
+# Map internal node names to short progress stage labels
+_NODE_STAGE_NAMES: dict[str, str] = {
+    "summarizer_agent": "summarise",
+    "conflict_analyzer": "analyze",
+    "conflict_agent": "plan",
+    "resolution_agent": "patch",
+    "review_agent": "review",
+}
 
 
 def _log_node_start(node_name: str, variant: str, state: Dict[str, Any]) -> float:
     """Log node start with state diagnostics, return start time."""
     scenario_id = state.get("scenario_id", "unknown")
     file_count = len(state.get("diffs_a", {}) or {})
-    logger.info(
+    stage = _NODE_STAGE_NAMES.get(node_name, node_name)
+    set_stage(stage, detail=f"{file_count} files")
+    logger.debug(
         "[%s] Starting (variant=%s, scenario=%s, files=%d)",
         node_name, variant, scenario_id, file_count
     )
@@ -48,17 +85,24 @@ def _log_node_end(node_name: str, start_time: float, state: Dict[str, Any]) -> N
     """Log node completion with timing and diagnostics."""
     elapsed = time.perf_counter() - start_time
     status = state.get("status", "unknown")
-    logger.info(
-        "[%s] Completed in %.3fs (status=%s)",
-        node_name, elapsed, status
-    )
-    
-    # Log memory usage if psutil is available
+    scenario_id = state.get("scenario_id", "unknown")
+    stage = _NODE_STAGE_NAMES.get(node_name, node_name)
+    wid = get_current_worker_id()
+    prog = get_active_progress()
+    if wid and prog is not None:
+        prog.mark_stage_done(wid, stage, elapsed_s=elapsed)
+    else:
+        logger.info(
+            "[%s] scenario=%s Completed in %.3fs (status=%s)",
+            node_name, scenario_id, elapsed, status
+        )
+
+    # Log memory usage if psutil is available (debug only — noisy under concurrency)
     try:
         import psutil
         process = psutil.Process()
         mem_info = process.memory_info()
-        logger.info(
+        logger.debug(
             "[%s] Memory: rss=%.1fMB, vms=%.1fMB",
             node_name, mem_info.rss / 1024 / 1024, mem_info.vms / 1024 / 1024
         )
@@ -67,7 +111,7 @@ def _log_node_end(node_name: str, start_time: float, state: Dict[str, Any]) -> N
 
 
 # Type alias for prompt variants
-PromptVariant = Literal["bypass7", "force_mix"]
+PromptVariant = Literal["bypass7", "better_judge", "force_mix"]
 
 # Type alias for node functions
 NodeFunc = Callable[[Dict[str, Any]], Dict[str, Any]]
@@ -109,13 +153,22 @@ def _get_model_name(state: Dict[str, Any]) -> str:
     return state.get("model_name") or os.getenv("OPENAI_MODEL", "openai/gpt-4o-mini")
 
 
-def _invoke_context(state: Dict[str, Any], *, node: str, file_path: str | None = None) -> Dict[str, Any]:
-    """Build shared metadata for resilient_invoke failure traces."""
+def _invoke_context(
+    state: Dict[str, Any],
+    *,
+    node: str,
+    agent: str,
+    file_path: str | None = None,
+    call_id: str | None = None,
+) -> Dict[str, Any]:
+    """Build shared metadata for resilient_invoke failure traces and artifacts."""
     return {
         "scenario_id": state.get("scenario_id"),
         "eval_method": state.get("eval_method"),
         "node": node,
+        "agent": agent,
         "file_path": file_path,
+        "call_id": call_id,
         "model_name": _get_model_name(state),
     }
 
@@ -125,6 +178,17 @@ def _init_token_counts(state: Dict[str, Any], path: str) -> Dict[str, int]:
     return state.setdefault("token_counts", {}).setdefault(
         path, {"system_prompt": 0, "original": 0, "diff_a": 0, "diff_b": 0, "output": 0}
     )
+
+
+def _with_budget_artifacts(
+    supporting: Dict[str, str] | None,
+    report: FitReport | None,
+) -> Dict[str, str]:
+    """Copy supporting artifacts and attach structured budget metadata when clipped."""
+    artifacts = dict(supporting or {})
+    if report is not None and report.was_clipped:
+        artifacts["truncation_report.json"] = report.artifact_json()
+    return artifacts
 
 
 # =============================================================================
@@ -161,6 +225,7 @@ def create_summarizer_node(prompt_variant: PromptVariant) -> NodeFunc:
         diffs_a: Dict[str, str] = state.get("diffs_a", {}) or {}
         diffs_b: Dict[str, str] = state.get("diffs_b", {}) or {}
         ancestor_contents: Dict[str, str] = state.get("ancestor_contents", {}) or {}
+        artifact_root = get_artifact_root(state)
 
         model_name = _get_model_name(state)
         encoder, llm = get_backend(model_name)
@@ -172,30 +237,106 @@ def create_summarizer_node(prompt_variant: PromptVariant) -> NodeFunc:
         for path in file_iter:
             original_text = ancestor_contents.get(path, "")
             summary_pair: Dict[str, str] = {}
-            logger.info("Summarizing changes for %s.", path)
+            file_slug = file_path_to_slug(path)
+            logger.debug("Summarizing changes for %s.", path)
 
             for parent_label, diff_text in (("A", diffs_a.get(path, "")), ("B", diffs_b.get(path, ""))):
+                call_id = parent_label.lower()
+                call_dir = agent_call_dir(
+                    artifact_root, agent="summarizer", file_slug=file_slug, call_id=call_id
+                )
+                supporting = {
+                    "original.txt": original_text,
+                    f"{call_id}.diff": diff_text or "",
+                }
                 if not diff_text:
-                    summary_pair[f"summary_{parent_label.lower()}"] = "(no changes)"
+                    summary_pair[f"summary_{call_id}"] = "(no changes)"
+                    write_agent_call(
+                        call_dir,
+                        input_text="",
+                        output_text="(no changes)",
+                        artifacts=supporting,
+                        metadata=base_metadata(
+                            agent="summarizer",
+                            node="summarizer_agent",
+                            state=state,
+                            file_path=path,
+                            call_id=call_id,
+                            llm_used=False,
+                            extra={"reason": "empty_diff"},
+                        ),
+                    )
                     continue
 
                 if llm is None:
                     logger.warning("No LLM backend available, using heuristic for %s.", path)
-                    summary_pair[f"summary_{parent_label.lower()}"] = _fallback_summary(diff_text)
-                else:
-                    prompt_text = render_template(
-                        prompt_str,
-                        {"original_code": original_text, "patch": diff_text},
+                    record_degradation(
+                        "llm_unavailable_heuristic",
+                        "summarizer used heuristic (no LLM)",
+                        node="summarizer_agent",
+                        file=path,
                     )
+                    heuristic = _fallback_summary(diff_text)
+                    summary_pair[f"summary_{call_id}"] = heuristic
+                    write_agent_call(
+                        call_dir,
+                        input_text="",
+                        output_text=heuristic,
+                        artifacts=supporting,
+                        metadata=base_metadata(
+                            agent="summarizer",
+                            node="summarizer_agent",
+                            state=state,
+                            file_path=path,
+                            call_id=call_id,
+                            llm_used=False,
+                            extra={"reason": "no_llm"},
+                        ),
+                    )
+                else:
+                    fit = fit_variable_blocks(
+                        template=prompt_str,
+                        render="mustache",
+                        fixed_variables={},
+                        blocks=[
+                            EvidenceBlock(
+                                block_id="original_code",
+                                text=original_text,
+                                kind="context",
+                                file_path=path,
+                                priority=20,
+                            ),
+                            EvidenceBlock(
+                                block_id="patch",
+                                text=diff_text,
+                                kind="primary",
+                                side=parent_label,
+                                file_path=path,
+                                priority=10,
+                            ),
+                        ],
+                        encoder=encoder,
+                        model_name=model_name,
+                        node="summarizer_agent",
+                        file_path=path,
+                    )
+                    prompt_text = fit.prompt
+                    call_artifacts = _with_budget_artifacts(supporting, fit)
                     result = resilient_invoke(
                         llm,
                         prompt_text,
                         context=_invoke_context(
-                            state, node="summarizer_agent", file_path=path
+                            state,
+                            node="summarizer_agent",
+                            agent="summarizer",
+                            file_path=path,
+                            call_id=call_id,
                         ),
+                        artifact_dir=call_dir,
+                        artifacts=call_artifacts,
                     )
                     content = extract_text_content(result)
-                    summary_pair[f"summary_{parent_label.lower()}"] = content.strip()
+                    summary_pair[f"summary_{call_id}"] = content.strip()
 
                     # Track token usage
                     counts = _init_token_counts(state, path)
@@ -205,7 +346,7 @@ def create_summarizer_node(prompt_variant: PromptVariant) -> NodeFunc:
                         counts["diff_a"] += count_tokens(encoder, diff_text)
                     else:
                         counts["diff_b"] += count_tokens(encoder, diff_text)
-                    counts["output"] += count_tokens(encoder, summary_pair[f"summary_{parent_label.lower()}"])
+                    counts["output"] += count_tokens(encoder, summary_pair[f"summary_{call_id}"])
 
             summaries[path] = summary_pair
 
@@ -222,13 +363,15 @@ def create_summarizer_node(prompt_variant: PromptVariant) -> NodeFunc:
 # =============================================================================
 
 def _normalize_decision_standard(text: str) -> str:
-    """Normalize decision text to ALL_A, ALL_B, or MIX."""
-    t = (text or "").strip().lower()
-    if "a" in t:
-        return "ALL_A"
-    if "b" in t:
-        return "ALL_B"
-    return "MIX"
+    """Normalize decision text to ALL_A, ALL_B, or MIX.
+
+    Uses multi-strategy local recovery (first-line, standalone verdict line,
+    choose-phrase). Returns MIX when unrecoverable; does **not** record a
+    soft degradation — callers that soft-default after retries should call
+    ``record_degradation`` themselves.
+    """
+    decision, _strategy = extract_analyzer_verdict(text)
+    return decision if decision is not None else "MIX"
 
 
 def create_conflict_analyzer_node(prompt_variant: PromptVariant) -> NodeFunc:
@@ -253,6 +396,8 @@ def create_conflict_analyzer_node(prompt_variant: PromptVariant) -> NodeFunc:
         summaries: Dict[str, Dict[str, str]] = state.get("summaries", {}) or {}
         diffs_a: Dict[str, str] = state.get("diffs_a", {}) or {}
         diffs_b: Dict[str, str] = state.get("diffs_b", {}) or {}
+        artifact_root = get_artifact_root(state)
+        call_dir = agent_call_dir(artifact_root, agent="analyzer")
 
         model_name = _get_model_name(state)
         encoder, llm = get_backend(model_name)
@@ -262,28 +407,102 @@ def create_conflict_analyzer_node(prompt_variant: PromptVariant) -> NodeFunc:
         b_sum = "\n\n".join(f"{p}: {s.get('summary_b', '')}" for p, s in summaries.items())
         a_diff = "\n\n".join(f"{p}: {diffs_a.get(p, '')}" for p in summaries.keys())
         b_diff = "\n\n".join(f"{p}: {diffs_b.get(p, '')}" for p in summaries.keys())
+        supporting = {
+            "a_summaries.txt": a_sum,
+            "b_summaries.txt": b_sum,
+            "a_diffs.txt": a_diff,
+            "b_diffs.txt": b_diff,
+        }
 
         if llm is None:
             logger.warning("No LLM backend available for analyzer; using heuristic.")
+            record_degradation(
+                "llm_unavailable_heuristic",
+                "conflict analyzer used heuristic (no LLM)",
+                node="conflict_analyzer",
+            )
             len_a, len_b = len(a_sum), len(b_sum)
             if abs(len_a - len_b) < 0.05 * max(1, (len_a + len_b) // 2):
                 decision = "MIX"
             else:
                 decision = "ALL_A" if len_a <= len_b else "ALL_B"
             raw_output = f"Heuristic decision based on summary lengths (A={len_a}, B={len_b}): {decision}"
+            write_agent_call(
+                call_dir,
+                input_text="",
+                output_text=raw_output,
+                artifacts=supporting,
+                metadata=base_metadata(
+                    agent="analyzer",
+                    node="conflict_analyzer",
+                    state=state,
+                    llm_used=False,
+                    extra={"reason": "no_llm", "decision": decision},
+                ),
+            )
         else:
-            prompt_text = prompt_str.format(
-                a_summary=a_sum, b_summary=b_sum, a_diff=a_diff, b_diff=b_diff
+            fit = fit_global_ab_prompt(
+                template=prompt_str,
+                render="format",
+                paths=list(summaries.keys()),
+                summaries=summaries,
+                diffs_a=diffs_a,
+                diffs_b=diffs_b,
+                encoder=encoder,
+                model_name=model_name,
+                node="conflict_analyzer",
             )
+            prompt_text = fit.prompt
+            # Prefer fitted aggregates in artifacts so audits match the model input.
+            supporting = {
+                "a_summaries.txt": fit.variables.get("a_summary", a_sum),
+                "b_summaries.txt": fit.variables.get("b_summary", b_sum),
+                "a_diffs.txt": fit.variables.get("a_diff", a_diff),
+                "b_diffs.txt": fit.variables.get("b_diff", b_diff),
+            }
+            call_artifacts = _with_budget_artifacts(supporting, fit)
 
-            result = resilient_invoke(
-                llm,
-                prompt_text,
-                context=_invoke_context(state, node="conflict_analyzer"),
-            )
-            content = extract_text_content(result)
-            raw_output = content.strip()
-            decision = _normalize_decision_standard(raw_output)
+            try:
+                def _parse_verdict(raw: str) -> ParsedResult:
+                    decision, strategy = extract_analyzer_verdict(raw)
+                    if decision is None:
+                        raise ValueError("unrecognized analyzer verdict")
+                    return ParsedResult(decision, strategy)
+
+                parsed, raw_output, _attempt_log = invoke_and_parse(
+                    llm,
+                    prompt_text,
+                    parse_fn=_parse_verdict,
+                    repair_hint=(
+                        "Return exactly one of the following tokens on its own first line, "
+                        "with no other text before it: A, B, or Mix."
+                    ),
+                    context=_invoke_context(
+                        state, node="conflict_analyzer", agent="analyzer"
+                    ),
+                    artifact_dir=call_dir,
+                    artifacts=call_artifacts,
+                )
+                decision = parsed
+            except ParseExhausted as exc:
+                raw_output = (exc.raw_text or "").strip()
+                logger.error(
+                    "Analyzer verdict unparseable after retries; defaulting to MIX."
+                )
+                if not raw_output:
+                    record_degradation(
+                        "unclear_verdict_fallback",
+                        "empty analyzer output; defaulting to MIX",
+                        node="conflict_analyzer",
+                    )
+                else:
+                    record_degradation(
+                        "unclear_verdict_fallback",
+                        "unrecognized analyzer verdict; defaulting to MIX",
+                        detail=raw_output[:200],
+                        node="conflict_analyzer",
+                    )
+                decision = "MIX"
             for path in summaries.keys():
                 counts = _init_token_counts(state, path)
                 counts["system_prompt"] += count_tokens(encoder, prompt_text)
@@ -326,35 +545,106 @@ def create_conflict_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
         summaries: Dict[str, Dict[str, str]] = state.get("summaries", {}) or {}
         model_name = _get_model_name(state)
         encoder, llm = get_backend(model_name)
+        artifact_root = get_artifact_root(state)
+        # One global planner call (like analyzer) lives at method/planner/
+        call_dir = agent_call_dir(artifact_root, agent="planner")
 
         if llm is None:
             logger.warning("No LLM backend available, falling back to heuristic.")
+            record_degradation(
+                "llm_unavailable_heuristic",
+                "conflict planner used heuristic (no LLM)",
+                node="conflict_agent",
+            )
             plan = {}
             for path, s in summaries.items():
                 a_len = len(s.get("summary_a", ""))
                 b_len = len(s.get("summary_b", ""))
                 plan[path] = "A" if a_len <= b_len else "B"
+            write_agent_call(
+                call_dir,
+                input_text="",
+                output_text=json.dumps(plan, indent=2, ensure_ascii=False),
+                artifacts={},
+                metadata=base_metadata(
+                    agent="planner",
+                    node="conflict_agent",
+                    state=state,
+                    llm_used=False,
+                    extra={"reason": "no_llm"},
+                ),
+            )
         else:
-            logger.info("Generating merge plan using LLM.")
+            logger.debug("Generating merge plan using LLM.")
             a_sum = "\n\n".join(f"{p}: {s.get('summary_a', '')}" for p, s in summaries.items())
             b_sum = "\n\n".join(f"{p}: {s.get('summary_b', '')}" for p, s in summaries.items())
             a_diff = "\n\n".join(f"{p}: {state.get('diffs_a', {}).get(p, '')}" for p in summaries.keys())
             b_diff = "\n\n".join(f"{p}: {state.get('diffs_b', {}).get(p, '')}" for p in summaries.keys())
+            supporting = {
+                "a_summaries.txt": a_sum,
+                "b_summaries.txt": b_sum,
+                "a_diffs.txt": a_diff,
+                "b_diffs.txt": b_diff,
+            }
 
-            prompt_text = render_template(
-                prompt_str,
-                {"a_diff": a_diff, "a_summary": a_sum, "b_diff": b_diff, "b_summary": b_sum},
+            fit = fit_global_ab_prompt(
+                template=prompt_str,
+                render="mustache",
+                paths=list(summaries.keys()),
+                summaries=summaries,
+                diffs_a=state.get("diffs_a", {}) or {},
+                diffs_b=state.get("diffs_b", {}) or {},
+                encoder=encoder,
+                model_name=model_name,
+                node="conflict_agent",
             )
-            result = resilient_invoke(
-                llm,
-                prompt_text,
-                context=_invoke_context(state, node="conflict_agent"),
-            )
-            content = extract_text_content(result)
+            prompt_text = fit.prompt
+            supporting = {
+                "a_summaries.txt": fit.variables.get("a_summary", a_sum),
+                "b_summaries.txt": fit.variables.get("b_summary", b_sum),
+                "a_diffs.txt": fit.variables.get("a_diff", a_diff),
+                "b_diffs.txt": fit.variables.get("b_diff", b_diff),
+            }
+            call_artifacts = _with_budget_artifacts(supporting, fit)
+            expected_paths = set(summaries.keys())
+
+            def _parse_plan(raw: str) -> dict:
+                return parse_plan_json(raw, expected_paths=expected_paths)
+
             try:
-                plan = json.loads(content)
-            except Exception:
-                logger.error("Failed to parse LLM output as JSON, falling back to merge.")
+                plan, content, _attempt_log = invoke_and_parse(
+                    llm,
+                    prompt_text,
+                    parse_fn=_parse_plan,
+                    repair_hint=(
+                        "Return a single JSON object whose keys are the conflicted file "
+                        "paths and whose values are one of: A, B, or merge."
+                    ),
+                    context=_invoke_context(state, node="conflict_agent", agent="planner"),
+                    artifact_dir=call_dir,
+                    artifacts=call_artifacts,
+                )
+            except ParseExhausted as exc:
+                content = exc.raw_text or ""
+                logger.error("Failed to parse LLM plan JSON after retries; merge-all fallback.")
+                # Distinguish JSON vs schema failure from the last attempt error.
+                last_err = ""
+                if exc.attempt_log:
+                    last_err = str(exc.attempt_log[-1].get("parse_error") or "")
+                if "schema mismatch" in last_err:
+                    record_degradation(
+                        "plan_schema_fallback",
+                        "plan JSON schema mismatch; merge-all fallback",
+                        detail=last_err[:200],
+                        node="conflict_agent",
+                    )
+                else:
+                    record_degradation(
+                        "json_parse_fallback",
+                        "plan JSON unparseable; merge-all fallback",
+                        detail=(content or "")[:200],
+                        node="conflict_agent",
+                    )
                 plan = {p: "merge" for p in summaries}
 
             for path in summaries.keys():
@@ -365,6 +655,11 @@ def create_conflict_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
         # Ensure plan contains all files
         if not plan:
             files = state.get("sample_row", {}).get("scenario_json", {}).get("files_in_merge_conflict", [])
+            record_degradation(
+                "plan_schema_fallback",
+                "empty plan; merge-all fallback",
+                node="conflict_agent",
+            )
             plan = {p: "merge" for p in files}
 
         state["conflict_plan"] = plan
@@ -405,6 +700,9 @@ def create_resolution_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
         ancestor_contents = state.get("ancestor_contents", {})
         diffs_a = state.get("diffs_a", {})
         diffs_b = state.get("diffs_b", {})
+        artifact_root = get_artifact_root(state)
+        attempt_no = int(state.get("_review_iter", 0)) + 1
+        call_id = f"attempt_{attempt_no}"
 
         model_name = _get_model_name(state)
         encoder, llm = get_backend(model_name)
@@ -425,42 +723,114 @@ def create_resolution_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
             counts["original"] += count_tokens(encoder, ancestor_contents.get(path, ""))
             counts["diff_a"] += count_tokens(encoder, diffs_a.get(path, ""))
             counts["diff_b"] += count_tokens(encoder, diffs_b.get(path, ""))
+            file_slug = file_path_to_slug(path)
+            call_dir = agent_call_dir(
+                artifact_root, agent="resolver", file_slug=file_slug, call_id=call_id
+            )
+            feedback_map = state.get("review_feedback", {}) or {}
+            feedback_text = str(feedback_map.get(path, "")).strip()
+            supporting = {
+                "plan.json": json.dumps({path: plan.get(path, "merge")}, indent=2, ensure_ascii=False),
+                "original.txt": ancestor_contents.get(path, ""),
+                "a.diff": diffs_a.get(path, ""),
+                "b.diff": diffs_b.get(path, ""),
+                "review_feedback.txt": feedback_text,
+            }
 
             if choice in ("A", "B") or llm is None:
                 if llm is None and choice not in ("A", "B"):
                     logger.warning("No LLM backend available to merge %s, falling back to parent A.", path)
+                    record_degradation(
+                        "llm_unavailable_heuristic",
+                        "resolver used parent A (no LLM)",
+                        node="resolution_agent",
+                        file=path,
+                    )
                     choice = "A"
-                logger.info("Resolving conflict for %s by selecting parent %s.", path, choice)
+                logger.debug("Resolving conflict for %s by selecting parent %s.", path, choice)
                 merged_text = parent_a.get(path, "") if choice == "A" else parent_b.get(path, "")
                 resolved[path] = merged_text
                 resolution_history.setdefault(path, []).append(merged_text)
                 counts["output"] += count_tokens(encoder, merged_text)
+                write_agent_call(
+                    call_dir,
+                    input_text="",
+                    output_text=merged_text,
+                    artifacts=supporting,
+                    metadata=base_metadata(
+                        agent="resolver",
+                        node="resolution_agent",
+                        state=state,
+                        file_path=path,
+                        call_id=call_id,
+                        llm_used=False,
+                        extra={"reason": "parent_select" if choice in ("A", "B") else "no_llm", "choice": choice},
+                    ),
+                )
                 continue
 
-            logger.info("Resolving conflict for %s using LLM.", path)
+            logger.debug("Resolving conflict for %s using LLM.", path)
             single_plan = {path: plan.get(path, "merge")}
-            feedback_map = state.get("review_feedback", {}) or {}
-            feedback_text = str(feedback_map.get(path, "")).strip()
 
             if feedback_text:
-                logger.info("Applying review feedback for %s (length=%d chars)", path, len(feedback_text))
+                logger.debug("Applying review feedback for %s (length=%d chars)", path, len(feedback_text))
 
-            prompt_text = render_template(
-                prompt_str,
-                {
-                    "plan": json.dumps(single_plan, ensure_ascii=False),
-                    "original_code": ancestor_contents.get(path, ""),
-                    "patch_a": diffs_a.get(path, ""),
-                    "patch_b": diffs_b.get(path, ""),
-                    "review_feedback": feedback_text,
-                },
+            plan_json = json.dumps(single_plan, ensure_ascii=False)
+            fit = fit_variable_blocks(
+                template=prompt_str,
+                render="mustache",
+                fixed_variables={"plan": plan_json},
+                blocks=[
+                    EvidenceBlock(
+                        block_id="original_code",
+                        text=ancestor_contents.get(path, ""),
+                        kind="context",
+                        file_path=path,
+                        priority=20,
+                    ),
+                    EvidenceBlock(
+                        block_id="patch_a",
+                        text=diffs_a.get(path, ""),
+                        side="A",
+                        kind="diff",
+                        file_path=path,
+                        priority=30,
+                    ),
+                    EvidenceBlock(
+                        block_id="patch_b",
+                        text=diffs_b.get(path, ""),
+                        side="B",
+                        kind="diff",
+                        file_path=path,
+                        priority=30,
+                    ),
+                    EvidenceBlock(
+                        block_id="review_feedback",
+                        text=feedback_text,
+                        kind="secondary",
+                        file_path=path,
+                        priority=40,
+                    ),
+                ],
+                encoder=encoder,
+                model_name=model_name,
+                node="resolution_agent",
+                file_path=path,
             )
+            prompt_text = fit.prompt
+            call_artifacts = _with_budget_artifacts(supporting, fit)
             result = resilient_invoke(
                 llm,
                 prompt_text,
                 context=_invoke_context(
-                    state, node="resolution_agent", file_path=path
+                    state,
+                    node="resolution_agent",
+                    agent="resolver",
+                    file_path=path,
+                    call_id=call_id,
                 ),
+                artifact_dir=call_dir,
+                artifacts=call_artifacts,
             )
             content = extract_text_content(result)
             merged_text = content.strip("\n")
@@ -515,6 +885,12 @@ def create_review_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
         resolved: Dict[str, str] = state.get("resolved_contents", {}) or {}
         model_name = _get_model_name(state)
         encoder, llm = get_backend(model_name)
+        artifact_root = get_artifact_root(state)
+        attempt_no = int(state.get("_review_iter", 0)) + 1
+        call_id = f"attempt_{attempt_no}"
+        plan = state.get("conflict_plan", {}) or {}
+        diffs_a = state.get("diffs_a", {}) or {}
+        diffs_b = state.get("diffs_b", {}) or {}
 
         reviews: Dict[str, str] = {}
         review_results: Dict[str, Dict[str, str]] = {}
@@ -525,39 +901,107 @@ def create_review_agent_node(prompt_variant: PromptVariant) -> NodeFunc:
 
         for path in file_iter:
             content = resolved.get(path, "")
-            logger.info("Reviewing %s.", path)
+            logger.debug("Reviewing %s.", path)
+            file_slug = file_path_to_slug(path)
+            call_dir = agent_call_dir(
+                artifact_root, agent="reviewer", file_slug=file_slug, call_id=call_id
+            )
+            supporting = {
+                "resolved.txt": content,
+                "plan.json": json.dumps({path: plan.get(path, "merge")}, indent=2, ensure_ascii=False),
+                "a.diff": diffs_a.get(path, ""),
+                "b.diff": diffs_b.get(path, ""),
+            }
 
             if llm is None:
                 reviews[path] = "ACCEPT – heuristic stub (no LLM)."
                 review_results[path] = {"outcome": "ACCEPT", "rationale": ""}
                 logger.warning("No LLM backend available, using heuristic for %s.", path)
+                record_degradation(
+                    "llm_unavailable_heuristic",
+                    "reviewer used ACCEPT stub (no LLM)",
+                    node="review_agent",
+                    file=path,
+                )
+                write_agent_call(
+                    call_dir,
+                    input_text="",
+                    output_text=reviews[path],
+                    artifacts=supporting,
+                    metadata=base_metadata(
+                        agent="reviewer",
+                        node="review_agent",
+                        state=state,
+                        file_path=path,
+                        call_id=call_id,
+                        llm_used=False,
+                        extra={"reason": "no_llm", "outcome": "ACCEPT"},
+                    ),
+                )
                 continue
 
-            prompt_text = render_template(prompt_str, {"generated_code": content})
-            res = resilient_invoke(
-                llm,
-                prompt_text,
-                context=_invoke_context(state, node="review_agent", file_path=path),
+            prompt_fit = fit_variable_blocks(
+                template=prompt_str,
+                render="mustache",
+                fixed_variables={},
+                blocks=[
+                    EvidenceBlock(
+                        block_id="generated_code",
+                        text=content,
+                        kind="primary",
+                        file_path=path,
+                        priority=10,
+                    ),
+                ],
+                encoder=encoder,
+                model_name=model_name,
+                node="review_agent",
+                file_path=path,
             )
-            text = extract_text_content(res)
+            prompt_text = prompt_fit.prompt
+            call_artifacts = _with_budget_artifacts(supporting, prompt_fit)
+
+            def _parse_review(raw: str) -> dict[str, str]:
+                outcome, rationale = parse_review_outcome(raw)
+                if outcome is None:
+                    raise ValueError("review JSON missing ACCEPT/REJECT outcome")
+                return {"outcome": outcome, "rationale": rationale}
+
+            try:
+                parsed_review, text, _attempt_log = invoke_and_parse(
+                    llm,
+                    prompt_text,
+                    parse_fn=_parse_review,
+                    repair_hint=(
+                        'Return a single JSON object like '
+                        '{"outcome":"ACCEPT"|"REJECT","rationale":"..."} with no other text.'
+                    ),
+                    context=_invoke_context(
+                        state,
+                        node="review_agent",
+                        agent="reviewer",
+                        file_path=path,
+                        call_id=call_id,
+                    ),
+                    artifact_dir=call_dir,
+                    artifacts=call_artifacts,
+                )
+                outcome = parsed_review["outcome"]
+                rationale = parsed_review.get("rationale", "")
+            except ParseExhausted as exc:
+                text = exc.raw_text or ""
+                outcome = "REJECT"
+                rationale = text.strip()
+                record_degradation(
+                    "json_parse_fallback",
+                    "review JSON unparseable; defaulting to REJECT",
+                    detail=(text or "")[:200],
+                    node="review_agent",
+                    file=path,
+                )
+
             reviews[path] = text
             review_history.setdefault(path, []).append(text)
-
-            # Parse structured outcome
-            outcome = "REJECT"
-            rationale = ""
-            try:
-                data = json.loads(text)
-                if isinstance(data, list) and data:
-                    data = data[0]
-                if isinstance(data, dict):
-                    raw_outcome = str(data.get("outcome", "")).strip().upper()
-                    if raw_outcome in {"ACCEPT", "REJECT"}:
-                        outcome = raw_outcome
-                    rationale = str(data.get("rationale", "")).strip()
-            except Exception:
-                rationale = text.strip()
-
             review_results[path] = {"outcome": outcome, "rationale": rationale}
 
             counts = _init_token_counts(state, path)

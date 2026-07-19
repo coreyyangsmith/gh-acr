@@ -135,21 +135,50 @@ def setup_logger(
             # File handler for persistent logs
             file_handler = logging.FileHandler(log_file, encoding="utf-8")
             file_handler.setFormatter(logging.Formatter(format_string))
+            # Handlers also filter: keep console/file at least INFO unless DEBUG requested
+            handler_level = getattr(logging, level, logging.INFO)
+            file_handler.setLevel(handler_level)
             logger.addHandler(file_handler)
 
             # Console handler for immediate feedback
             console_handler = logging.StreamHandler(sys.stdout)
             console_handler.setFormatter(logging.Formatter(format_string))
+            console_handler.setLevel(handler_level)
             logger.addHandler(console_handler)
 
         logger.setLevel(getattr(logging, level, logging.INFO))
+
+        # Always quiet noisy third-party loggers unless the user explicitly
+        # asked for DEBUG (LOG_LEVEL=DEBUG). Prevents git/httpx spam at INFO.
+        _quiet_third_party = (
+            "git",
+            "git.cmd",
+            "git.util",
+            "urllib3",
+            "httpx",
+            "httpcore",
+            "openai",
+            "httpcore.connection",
+            "httpcore.http11",
+            "asyncio",
+            "filelock",
+        )
+        third_party_level = (
+            logging.DEBUG if level == "DEBUG" else logging.WARNING
+        )
+        for name in _quiet_third_party:
+            logging.getLogger(name).setLevel(third_party_level)
     else:
         # Named loggers: propagate to root, no direct handlers
         # Remove any stray handlers to avoid duplicate records
         for h in list(logger.handlers):
             logger.removeHandler(h)
         logger.propagate = True
-        logger.setLevel(getattr(logging, level, logging.INFO))
+        # Do not raise named logger above root; NOTSET inherits root's INFO default
+        if level != "DEBUG":
+            logger.setLevel(logging.NOTSET)
+        else:
+            logger.setLevel(logging.DEBUG)
 
     return logger
 

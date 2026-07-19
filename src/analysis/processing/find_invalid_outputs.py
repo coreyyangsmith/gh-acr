@@ -2,7 +2,9 @@
 
 An ID is considered INVALID if:
   1. The bypass7 folder doesn't exist, OR
-  2. Any .txt files inside bypass7 are empty (0 bytes)
+  2. Any ``final/resolved.txt`` under bypass7 is missing or empty (0 bytes).
+     Falls back to scanning all ``.txt`` files when no ``final/`` dirs exist
+     (legacy flat layout).
 
 How to run (from repo root, PowerShell single-line commands):
 
@@ -50,7 +52,16 @@ def find_invalid_ids(input_folder: Path) -> tuple[list[str], list[str], int]:
             invalid_ids.append(id_name)
             continue
         
-        # Check for empty .txt files in bypass7 (recursively)
+        final_resolved = list(bypass7_folder.rglob("final/resolved.txt"))
+        if final_resolved:
+            has_empty = any(p.stat().st_size == 0 for p in final_resolved)
+            if has_empty:
+                invalid_ids.append(id_name)
+            else:
+                valid_ids.append(id_name)
+            continue
+
+        # Legacy flat layout: any empty .txt under bypass7 marks invalid
         has_empty_txt = False
         txt_files_found = False
         
@@ -60,7 +71,6 @@ def find_invalid_ids(input_folder: Path) -> tuple[list[str], list[str], int]:
                 has_empty_txt = True
                 break
         
-        # If no txt files found or any are empty, mark as invalid
         if not txt_files_found or has_empty_txt:
             invalid_ids.append(id_name)
         else:

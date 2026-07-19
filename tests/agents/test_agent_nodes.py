@@ -92,3 +92,91 @@ def test_resolution_and_review_nodes(synthetic_agent_state, mock_get_backend):
     review_node = create_review_agent_node("bypass7")
     state = review_node(state)
     assert "review_results" in state
+
+
+def test_conflict_agent_parses_per_file_plan_schema(synthetic_agent_state):
+    """The planner must map each conflicted file path to "A"/"B"/"merge",
+    matching the contract documented in src/prompts/*/plan_prompt.txt and
+    consumed by create_resolution_agent_node via plan.get(path, "merge")."""
+    from src.agents.multi_agent.nodes import create_conflict_agent_node
+
+    synthetic_agent_state["summaries"] = {
+        "src/main.py": {"summary_a": "changed a", "summary_b": "changed b"}
+    }
+
+    class _StubLLM:
+        def invoke(self, prompt, config=None):
+            return type("Msg", (), {"content": '{"src/main.py": "A"}'})()
+
+        async def ainvoke(self, prompt, config=None):
+            return self.invoke(prompt, config=config)
+
+    with patch(
+        "src.agents.multi_agent.nodes.get_backend",
+        return_value=(FakeEncoder(), _StubLLM()),
+    ):
+        node = create_conflict_agent_node("bypass7")
+        out = node(synthetic_agent_state)
+
+    assert out["conflict_plan"] == {"src/main.py": "A"}
+
+
+def test_conflict_agent_rejects_schema_mismatched_plan(synthetic_agent_state):
+    """Regression test for a real production bug: the plan prompt used to
+    request a {strategy, steps, resolution} object instead of a per-file
+    map, which parsed as valid JSON but silently defaulted every file to
+    "merge" via plan.get(path, "merge"). The planner must now detect this
+    shape mismatch and fall back explicitly instead of propagating an
+    unusable plan downstream."""
+    from src.agents.multi_agent.nodes import create_conflict_agent_node
+
+    synthetic_agent_state["summaries"] = {
+        "src/main.py": {"summary_a": "changed a", "summary_b": "changed b"}
+    }
+
+    class _StubLLM:
+        def invoke(self, prompt, config=None):
+            content = (
+                '{"strategy": "merge both", "steps": ["do it"], '
+                '"resolution": "done"}'
+            )
+            return type("Msg", (), {"content": content})()
+
+        async def ainvoke(self, prompt, config=None):
+            return self.invoke(prompt, config=config)
+
+    with patch(
+        "src.agents.multi_agent.nodes.get_backend",
+        return_value=(FakeEncoder(), _StubLLM()),
+    ):
+        node = create_conflict_agent_node("bypass7")
+        out = node(synthetic_agent_state)
+
+    assert out["conflict_plan"] == {"src/main.py": "merge"}
+
+
+def test_resolution_agent_bypasses_llm_for_per_file_ab_choice(synthetic_agent_state):
+    """When the plan says "A" or "B" for a file, the resolver must copy that
+    parent's content directly and must NOT invoke the LLM for that file."""
+    from src.agents.multi_agent.nodes import create_resolution_agent_node
+
+    synthetic_agent_state["conflict_plan"] = {"src/main.py": "A"}
+
+    class _RaisingLLM:
+        def invoke(self, prompt, config=None):
+            raise AssertionError("LLM should not be called for an A/B plan choice")
+
+        async def ainvoke(self, prompt, config=None):
+            return self.invoke(prompt, config=config)
+
+    with patch(
+        "src.agents.multi_agent.nodes.get_backend",
+        return_value=(FakeEncoder(), _RaisingLLM()),
+    ):
+        node = create_resolution_agent_node("bypass7")
+        out = node(synthetic_agent_state)
+
+    assert (
+        out["resolved_contents"]["src/main.py"]
+        == synthetic_agent_state["parent_a_contents"]["src/main.py"]
+    )

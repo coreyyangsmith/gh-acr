@@ -25,7 +25,10 @@ def build_graph(*, process_mode: ProcessMode = "clone", eval_method: EvalMethod 
         "base_a"     – baseline Parent-A resolver
         "base_b"     – baseline Parent-B resolver
         "bypass7"    – multi-agent bypass resolver (analyze → bypass or mix)
+        "better_judge" – same graph as bypass7 with a stricter conflict-judge prompt
         "force_mix"  – multi-agent resolver, always mix path (no analyzer)
+        "bj_no_summary" / "bj_no_judge" / "bj_no_plan" / "bj_no_review"
+                     – better_judge ablation variants
     """
 
     if process_mode == "clone":

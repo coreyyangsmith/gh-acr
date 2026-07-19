@@ -77,8 +77,9 @@ def test_get_backend_includes_langfuse_wrapper(monkeypatch):
         get_backend.cache_clear()
         _, llm = get_backend("openai/gpt-4o-mini-langfuse-cache-key")
 
-        # Unwrap ThreadSafe -> LangfuseLLMWrapper
-        assert isinstance(llm._inner, LangfuseLLMWrapper)
+        # Hosted API backends are not wrapped in _ThreadSafeLLMWrapper
+        assert isinstance(llm, LangfuseLLMWrapper)
+        assert not isinstance(llm, _ThreadSafeLLMWrapper)
 
         set_run_context(
             eval_method="agent",
@@ -91,7 +92,9 @@ def test_get_backend_includes_langfuse_wrapper(monkeypatch):
             clear_run_context()
 
     assert fake.last_config is not None
-    assert fake.last_config["run_name"] == "agent-scenario-55"
+    assert fake.last_config["run_name"] == "agent"
+    assert fake.last_config["metadata"]["langfuse_trace_name"] == "agent"
+    assert fake.last_config["metadata"]["langfuse_session_id"] == "55"
     assert fake_handler in fake.last_config["callbacks"]
 
 
@@ -151,7 +154,8 @@ def test_get_backend_wrap_stack_includes_truncation(monkeypatch):
         get_backend.cache_clear()
         _, llm = get_backend("openai/wrap-order-key")
 
-    assert isinstance(llm, _ThreadSafeLLMWrapper)
+    # Hosted API: no thread-safe lock; truncation still applied
+    assert not isinstance(llm, _ThreadSafeLLMWrapper)
     seen = []
     cur = llm
     for _ in range(6):
@@ -162,7 +166,28 @@ def test_get_backend_wrap_stack_includes_truncation(monkeypatch):
         if cur is None:
             break
     assert "TruncatingLLMWrapper" in seen
-    assert "_ThreadSafeLLMWrapper" in seen
+    assert "_ThreadSafeLLMWrapper" not in seen
+
+
+def test_get_backend_local_applies_thread_safe_wrapper(monkeypatch):
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
+
+    class FakeLLM:
+        def with_config(self, config=None):
+            return self
+
+        def invoke(self, prompt, config=None):
+            return MagicMock(content="ok")
+
+    with patch(
+        "src.agents.llm_base.create_backend",
+        return_value=(None, FakeLLM()),
+    ):
+        get_backend.cache_clear()
+        _, llm = get_backend("local:meta-llama/Fake-1B")
+
+    assert isinstance(llm, _ThreadSafeLLMWrapper)
 
 
 def test_thread_safe_wrapper_serializes_invoke():

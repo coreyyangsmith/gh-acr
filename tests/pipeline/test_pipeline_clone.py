@@ -91,8 +91,29 @@ def test_build_graph_dispatch_builds_for_all_methods():
         pc, "resolve_conflict_base_a_node", _make_sentinel("base_a")
     ), patch.object(pc, "resolve_conflict_base_b_node", _make_sentinel("base_b")), patch.object(
         pc, "resolve_conflict_bypass7_multi_agent_node", _make_sentinel("bypass7")
-    ), patch.object(pc, "resolve_conflict_force_mix_node", _make_sentinel("force_mix")):
-        for method in ("agent", "base_a", "base_b", "bypass7", "force_mix"):
+    ), patch.object(
+        pc, "resolve_conflict_better_judge_node", _make_sentinel("better_judge")
+    ), patch.object(pc, "resolve_conflict_force_mix_node", _make_sentinel("force_mix")), patch.object(
+        pc, "resolve_conflict_bj_no_summary_node", _make_sentinel("bj_no_summary")
+    ), patch.object(
+        pc, "resolve_conflict_bj_no_judge_node", _make_sentinel("bj_no_judge")
+    ), patch.object(
+        pc, "resolve_conflict_bj_no_plan_node", _make_sentinel("bj_no_plan")
+    ), patch.object(
+        pc, "resolve_conflict_bj_no_review_node", _make_sentinel("bj_no_review")
+    ):
+        for method in (
+            "agent",
+            "base_a",
+            "base_b",
+            "bypass7",
+            "better_judge",
+            "bj_no_summary",
+            "bj_no_judge",
+            "bj_no_plan",
+            "bj_no_review",
+            "force_mix",
+        ):
             app = pc.build_graph(eval_method=method)
             assert app is not None
 
@@ -100,3 +121,82 @@ def test_build_graph_dispatch_builds_for_all_methods():
 def test_build_graph_unknown_method_raises():
     with pytest.raises(ValueError, match="Unknown eval_method"):
         pc.build_graph(eval_method="not_a_real_method")  # type: ignore[arg-type]
+
+
+def test_load_sample_short_circuits_when_prefilled():
+    state = {
+        "scenario_id": "s1",
+        "sample_row": {
+            "id": "s1",
+            "name": "o/r",
+            "scenario_json": {"files_in_merge_conflict": ["a.py"]},
+        },
+    }
+    with patch.object(pc, "load_benchmark") as load_bm:
+        out = pc.load_sample_node(state)
+        load_bm.assert_not_called()
+    assert out["status"] == "sample_loaded"
+    assert out["sample_row"]["df_index"] == "s1"
+
+
+def test_prepare_context_short_circuits_when_prefilled():
+    state = {
+        "scenario_id": "s1",
+        "sample_row": {"scenario_json": {"files_in_merge_conflict": ["a.py"]}},
+        "ancestor_contents": {"a.py": "x"},
+        "parent_a_contents": {"a.py": "a"},
+        "parent_b_contents": {"a.py": "b"},
+        "diffs_a": {"a.py": ""},
+        "diffs_b": {"a.py": ""},
+    }
+    with patch.object(pc, "_clone_repo") as clone:
+        out = pc.prepare_context_node(state)
+        clone.assert_not_called()
+    assert out["status"] == "context_prepared"
+
+
+def test_evaluate_skips_git_read_when_truth_prefilled():
+    state = {
+        "scenario_id": "s1",
+        "sample_row": {
+            "scenario_json": {
+                "files_in_merge_conflict": ["main.py"],
+                "parents": ["x", "y"],
+                "merge_commit_hash": "z",
+            }
+        },
+        "repo_path": "/nonexistent",
+        "ancestor_contents": {"main.py": "base\n"},
+        "truth_contents": {"main.py": "truth\n"},
+        "diffs_truth": {"main.py": "diff"},
+        "resolved_contents": {"main.py": "truth\n"},
+    }
+    with patch.object(pc, "_read_files_at_commit") as read_files:
+        out = pc.evaluate_node(state)
+        read_files.assert_not_called()
+    assert out["status"] == "evaluated"
+    assert out["evaluation"]["overall_exact_match"] is True
+
+
+def test_clone_repo_uses_blobless_partial_clone(tmp_path: Path):
+    """New clones pass --filter=blob:none so blobs are deferred until checkout."""
+    from unittest.mock import MagicMock, patch
+
+    captured: dict = {}
+    fake_repo = MagicMock()
+
+    def _fake_clone(url, dest, multi_options=None, progress=None, env=None):
+        captured["url"] = url
+        captured["dest"] = Path(dest)
+        captured["multi_options"] = multi_options
+        Path(dest).mkdir(parents=True, exist_ok=True)
+        return fake_repo
+
+    sample = {"name": "owner/repo"}
+    with patch.object(pc.Repo, "clone_from", side_effect=_fake_clone):
+        result = pc._clone_repo(sample, checkout_dir=tmp_path)
+
+    assert result is fake_repo
+    assert captured["url"] == "https://github.com/owner/repo.git"
+    assert captured["multi_options"] == ["--filter=blob:none"]
+    assert captured["dest"].name == "owner___repo"

@@ -44,6 +44,11 @@ def test_create_passes_model(monkeypatch):
     assert captured.get("groq_api_key") == "gsk-test"
     # MODEL_COSTS entry has output_limit 128_000
     assert captured.get("max_tokens") == 128_000
+    # Groq API has no precision / quantization / dtype parameter to set.
+    assert "dtype" not in captured
+    assert "quantization" not in captured
+    assert "precision" not in captured
+    assert "model_kwargs" not in captured
 
 
 def test_parse_rejects_wrong_scheme():

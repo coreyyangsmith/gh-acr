@@ -3,7 +3,13 @@
 Soft-disabled when ``LANGFUSE_PUBLIC_KEY`` / ``LANGFUSE_SECRET_KEY`` are unset
 (or ``LANGFUSE_TRACING_ENABLED`` is falsy). When enabled, each scenario reuses
 one shared CallbackHandler and wraps the run in a parent observation so all
-multi-agent LLM calls nest under ``{eval_method}-scenario-{id}``.
+multi-agent LLM calls nest under a single method-named trace
+(``bypass7``, ``force_mix``, ``agent``, ``base_a``, ``base_b``).
+
+Trace attributes (Langfuse v4 / CallbackHandler metadata keys):
+- ``langfuse_trace_name`` = eval method (low-cardinality operation id)
+- ``langfuse_session_id`` = scenario id (Sessions view / per-scenario grouping)
+- ``langfuse_tags`` = ``[method, "scenario:<id>"]``
 """
 
 from __future__ import annotations
@@ -56,6 +62,89 @@ def _import_callback_handler() -> Any | None:
             return None
 
 
+def _usage_token_counts(usage: Any) -> tuple[int, int]:
+    """Extract (input, output) token counts from LangFuse / OpenAI usage dicts."""
+    if not isinstance(usage, dict):
+        return 0, 0
+    prompt = usage.get("input")
+    if prompt is None:
+        prompt = usage.get("prompt_tokens")
+    if prompt is None:
+        prompt = usage.get("input_tokens")
+    completion = usage.get("output")
+    if completion is None:
+        completion = usage.get("completion_tokens")
+    if completion is None:
+        completion = usage.get("output_tokens")
+    try:
+        in_tok = int(prompt or 0)
+    except Exception:
+        in_tok = 0
+    try:
+        out_tok = int(completion or 0)
+    except Exception:
+        out_tok = 0
+    return in_tok, out_tok
+
+
+class _CostInjectingObservation:
+    """Proxy that injects MODEL_COSTS-derived ``cost_details`` on generation.update()."""
+
+    def __init__(self, inner: Any):
+        self._inner = inner
+
+    def update(self, *args: Any, **kwargs: Any) -> Any:
+        if "cost_details" not in kwargs:
+            usage = kwargs.get("usage_details")
+            if usage is None:
+                usage = kwargs.get("usage")
+            in_tok, out_tok = _usage_token_counts(usage)
+            model = _model_name.get() or str(kwargs.get("model") or "")
+            if model or in_tok or out_tok:
+                try:
+                    from src.config.model_costs import estimate_usd_cost
+
+                    cost_in, cost_out, total = estimate_usd_cost(model, in_tok, out_tok)
+                    if cost_in or cost_out or total or model:
+                        kwargs["cost_details"] = {
+                            "input": float(cost_in),
+                            "output": float(cost_out),
+                            "total": float(total),
+                        }
+                except Exception:
+                    pass
+        result = self._inner.update(*args, **kwargs)
+        # generation.update(...).end() chaining — keep proxy if update returns self-like
+        if result is self._inner:
+            return self
+        return result
+
+    def end(self, *args: Any, **kwargs: Any) -> Any:
+        return self._inner.end(*args, **kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
+def _wrap_handler_with_cost_details(handler: Any) -> Any:
+    """Wrap CallbackHandler._detach_observation so generation updates include costs."""
+    original = getattr(handler, "_detach_observation", None)
+    if not callable(original):
+        return handler
+
+    def _detach(run_id: Any) -> Any:
+        obs = original(run_id)
+        if obs is None:
+            return None
+        return _CostInjectingObservation(obs)
+
+    try:
+        handler._detach_observation = _detach  # type: ignore[method-assign]
+    except Exception:
+        return handler
+    return handler
+
+
 def _ensure_shared_handler() -> Any | None:
     """Create or return the per-scenario shared CallbackHandler."""
     existing = _shared_handler.get()
@@ -67,7 +156,7 @@ def _ensure_shared_handler() -> Any | None:
     if handler_cls is None:
         return None
     try:
-        handler = handler_cls()
+        handler = _wrap_handler_with_cost_details(handler_cls())
     except Exception as exc:
         logger.warning("[langfuse] Failed to construct CallbackHandler: %s", exc)
         return None
@@ -119,11 +208,27 @@ def get_run_context() -> dict[str, str]:
     }
 
 
+def trace_name_for_method(eval_method: str | None = None) -> str:
+    """Return the LangFuse trace name for an eval method (method only).
+
+    Low-cardinality operation identifier so traces group by agent method
+    in the LangFuse UI: ``base_a``, ``base_b``, ``agent``, ``bypass7``,
+    ``force_mix``.
+    """
+    method = (eval_method if eval_method is not None else _eval_method.get()) or ""
+    method = str(method).strip()
+    return method or "unknown"
+
+
 def make_trace_name(eval_method: str | None = None, scenario_id: str | None = None) -> str:
-    """Build the canonical LangFuse / LangChain run name."""
-    method = (eval_method if eval_method is not None else _eval_method.get()) or "unknown"
-    sid = (scenario_id if scenario_id is not None else _scenario_id.get()) or "unknown"
-    return f"{method}-scenario-{sid}"
+    """Build the canonical LangFuse / LangChain run name (= eval method).
+
+    The scenario id argument is accepted for backward compatibility but is
+    ignored; scenario identity is carried via ``langfuse_session_id`` and
+    tags instead of the trace name.
+    """
+    _ = scenario_id  # kept for call-site compatibility; not part of the name
+    return trace_name_for_method(eval_method)
 
 
 def set_llm_node(node: str | None) -> None:
@@ -163,13 +268,16 @@ def get_shared_handler() -> Any | None:
 
 
 @contextmanager
-def scenario_observation(name: str) -> Iterator[None]:
+def scenario_observation(name: str) -> Iterator[Any | None]:
     """Wrap a scenario run so all LLM invokes nest under one LangFuse observation.
+
+    Yields the observation/span object when available (else ``None``) so callers
+    can attach scenario-level cost metadata before the context exits.
 
     No-op when LangFuse is disabled or the SDK observation API is unavailable.
     """
     if not is_langfuse_enabled():
-        yield
+        yield None
         return
 
     try:
@@ -183,7 +291,7 @@ def scenario_observation(name: str) -> Iterator[None]:
             client = Langfuse()
         except Exception as exc:  # pragma: no cover
             logger.debug("[langfuse] scenario_observation unavailable: %s", exc)
-            yield
+            yield None
             return
 
     start = getattr(client, "start_as_current_observation", None)
@@ -191,7 +299,7 @@ def scenario_observation(name: str) -> Iterator[None]:
         # Older SDKs may only expose start_as_current_span
         start = getattr(client, "start_as_current_span", None)
     if start is None:
-        yield
+        yield None
         return
 
     try:
@@ -201,15 +309,57 @@ def scenario_observation(name: str) -> Iterator[None]:
             cm = start(name=name)
         except Exception as exc:  # pragma: no cover
             logger.debug("[langfuse] start observation failed: %s", exc)
-            yield
+            yield None
             return
     except Exception as exc:  # pragma: no cover
         logger.debug("[langfuse] start observation failed: %s", exc)
-        yield
+        yield None
         return
 
-    with cm:
-        yield
+    with cm as obs:
+        yield obs
+
+
+def update_observation_cost_metadata(
+    observation: Any | None,
+    *,
+    tokens_in: int,
+    tokens_out: int,
+    cost_in: float,
+    cost_out: float,
+    total_cost: float,
+    model_name: str | None = None,
+) -> None:
+    """Attach scenario-level token/cost totals to a LangFuse parent observation."""
+    if observation is None:
+        return
+    metadata = {
+        "tokens_in": int(tokens_in),
+        "tokens_out": int(tokens_out),
+        "cost_in": float(cost_in),
+        "cost_out": float(cost_out),
+        "total_cost": float(total_cost),
+    }
+    if model_name:
+        metadata["model_name"] = str(model_name)
+    try:
+        update = getattr(observation, "update", None)
+        if callable(update):
+            update(metadata=metadata)
+            return
+    except Exception as exc:
+        logger.debug("[langfuse] observation cost metadata update failed: %s", exc)
+    try:
+        from langfuse import get_client  # type: ignore
+
+        client = get_client()
+        fn = getattr(client, "update_current_span", None) or getattr(
+            client, "update_current_observation", None
+        )
+        if callable(fn):
+            fn(metadata=metadata)
+    except Exception as exc:
+        logger.debug("[langfuse] current span cost metadata update failed: %s", exc)
 
 
 def build_langfuse_invoke_config(
@@ -223,6 +373,11 @@ def build_langfuse_invoke_config(
     Reuses the per-scenario shared CallbackHandler so multi-agent LLM calls
     nest under one parent observation. When tracing is disabled, returns
     ``existing`` unchanged.
+
+    Trace attributes (Langfuse v4 CallbackHandler metadata keys):
+    - ``langfuse_trace_name`` = eval method
+    - ``langfuse_session_id`` = scenario id
+    - ``langfuse_tags`` = ``[method, "scenario:<id>"]``
     """
     if not is_langfuse_enabled():
         return existing
@@ -234,7 +389,7 @@ def build_langfuse_invoke_config(
     eval_method = _eval_method.get() or "unknown"
     scenario_id = _scenario_id.get() or "unknown"
     resolved_model = model_name or _model_name.get() or ""
-    trace_name = make_trace_name(eval_method, scenario_id)
+    trace_name = trace_name_for_method(eval_method)
     node = get_llm_node()
     run_name = observation_name or node or trace_name
 
@@ -259,6 +414,7 @@ def build_langfuse_invoke_config(
     metadata.update(
         {
             "langfuse_trace_name": trace_name,
+            "langfuse_session_id": scenario_id,
             "eval_method": eval_method,
             "scenario_id": scenario_id,
             "model_name": resolved_model,
@@ -266,13 +422,30 @@ def build_langfuse_invoke_config(
     )
     if node:
         metadata["llm_node"] = node
+
+    # Trace-level tags via CallbackHandler (langfuse_tags); also keep LangChain tags
+    desired_tags: list[str] = []
+    if eval_method:
+        desired_tags.append(eval_method)
+    if scenario_id and scenario_id != "unknown":
+        desired_tags.append(f"scenario:{scenario_id}")
+    if node:
+        desired_tags.append(node)
+
+    existing_lf_tags = metadata.get("langfuse_tags")
+    lf_tags: list[str] = []
+    if isinstance(existing_lf_tags, list):
+        lf_tags = [str(t) for t in existing_lf_tags]
+    for t in desired_tags:
+        if t not in lf_tags:
+            lf_tags.append(t)
+    metadata["langfuse_tags"] = lf_tags
     config["metadata"] = metadata
 
     tags = list(config.get("tags") or [])
-    if eval_method and eval_method not in tags:
-        tags.append(eval_method)
-    if node and node not in tags:
-        tags.append(node)
+    for t in desired_tags:
+        if t and t not in tags:
+            tags.append(t)
     config["tags"] = tags
 
     return config
@@ -308,7 +481,7 @@ class LangfuseLLMWrapper:
         return self
 
     def invoke(self, prompt_input: Any, config: Any | None = None) -> Any:
-        # Prefer node-labeled run_name for generations; keep scenario trace_name in metadata.
+        # Prefer node-labeled run_name for generations; keep method as langfuse_trace_name.
         node = get_llm_node()
         merged = build_langfuse_invoke_config(
             config,
@@ -345,4 +518,6 @@ __all__ = [
     "scenario_observation",
     "set_llm_node",
     "set_run_context",
+    "trace_name_for_method",
+    "update_observation_cost_metadata",
 ]

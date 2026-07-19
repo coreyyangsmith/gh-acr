@@ -16,9 +16,10 @@ import os
 import re
 import time
 import traceback
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from src.config.rate_limits import BACKOFF_SETTINGS, get_limits_for_model
 from src.utils.rate_limiter import LimiterRegistry
@@ -29,9 +30,18 @@ logger = logging.getLogger(__name__)
 _LLM_MAX_RETRIES = int(
     os.getenv("LLM_MAX_RETRIES", str(BACKOFF_SETTINGS.get("max_retries", 5)))
 )
+_LLM_MAX_PARSE_ATTEMPTS = int(os.getenv("LLM_MAX_PARSE_ATTEMPTS", "3"))
 
 _FAILURES_DIR = Path("logs") / "llm_failures"
 _IO_TRACE_DIR = Path("logs") / "llm_io"
+
+
+@dataclass(frozen=True)
+class ParsedResult:
+    """Optional wrapper so ``parse_fn`` can report a recovery strategy."""
+
+    value: Any
+    strategy: str | None = None
 
 # Substrings / patterns that indicate a retryable transient error
 _RETRYABLE_PATTERNS = (
@@ -70,6 +80,9 @@ _FATAL_PATTERNS = (
     "forbidden",
     "401",
     "403",
+    "402",
+    "insufficient credits",
+    "payment required",
     "invalid_request",
     "invalid request",
     "context_length",
@@ -116,7 +129,7 @@ def is_retryable_error(error: BaseException) -> bool:
     try:
         if status is not None and int(status) in {408, 429, 500, 502, 503, 504}:
             return True
-        if status is not None and int(status) in {400, 401, 403, 404}:
+        if status is not None and int(status) in {400, 401, 402, 403, 404}:
             return False
     except (TypeError, ValueError):
         pass
@@ -216,12 +229,124 @@ def _maybe_write_io_trace(
     return _write_json(path, payload)
 
 
+def _latest_llm_call_record(node: str | None) -> dict[str, Any]:
+    """Pull the most recent ledger record for this node (tokens/cost)."""
+    try:
+        from src.agents.observability import get_llm_calls
+
+        calls = get_llm_calls() or []
+    except Exception:
+        return {}
+    if not calls:
+        return {}
+    if node:
+        for record in reversed(calls):
+            if not isinstance(record, dict):
+                continue
+            if record.get("node") == node:
+                return record
+    last = calls[-1]
+    return last if isinstance(last, dict) else {}
+
+
+def _write_call_artifacts(
+    *,
+    artifact_dir: Path | str | None,
+    prompt_text: str,
+    response_text: str | None,
+    artifacts: dict[str, str] | None,
+    context: dict[str, Any],
+    elapsed_s: float | None,
+    status: str,
+    error: BaseException | None = None,
+) -> None:
+    if artifact_dir is None:
+        return
+    try:
+        from src.agents.artifact_io import write_agent_call
+
+        node = context.get("node")
+        usage = _latest_llm_call_record(str(node) if node else None)
+        metadata: dict[str, Any] = {
+            "agent": context.get("agent") or node,
+            "node": node,
+            "model_name": context.get("model_name") or usage.get("model_name"),
+            "elapsed_s": round(float(elapsed_s), 4) if elapsed_s is not None else None,
+            "prompt_tokens": usage.get("prompt_tokens"),
+            "completion_tokens": usage.get("completion_tokens"),
+            "total_tokens": usage.get("total_tokens"),
+            "cost_in": usage.get("cost_in"),
+            "cost_out": usage.get("cost_out"),
+            "total_cost": usage.get("total_cost"),
+            "usage_from_api": usage.get("usage_from_api"),
+            "scenario_id": context.get("scenario_id"),
+            "eval_method": context.get("eval_method"),
+            "file_path": context.get("file_path"),
+            "call_id": context.get("call_id"),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "llm_used": True,
+            "status": status,
+        }
+        if error is not None:
+            metadata["error_type"] = type(error).__name__
+            metadata["error_message"] = str(error)
+        extra = context.get("metadata_extra")
+        if isinstance(extra, dict) and extra:
+            metadata.update(extra)
+        write_agent_call(
+            artifact_dir,
+            input_text=prompt_text,
+            output_text=response_text or "",
+            artifacts=artifacts,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        logger.warning("Failed to persist agent call artifacts at %s: %s", artifact_dir, exc)
+
+
+def _patch_call_metadata(artifact_dir: Path | str | None, updates: dict[str, Any]) -> None:
+    """Merge *updates* into an existing ``metadata.json`` under *artifact_dir*."""
+    if artifact_dir is None or not updates:
+        return
+    try:
+        meta_path = Path(artifact_dir) / "metadata.json"
+        if not meta_path.is_file():
+            return
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return
+        data.update(updates)
+        meta_path.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+    except Exception as exc:
+        logger.warning("Failed to patch call metadata at %s: %s", artifact_dir, exc)
+
+
+class ParseExhausted(ValueError):
+    """Raised when ``invoke_and_parse`` cannot recover a structured value."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw_text: str = "",
+        attempt_log: list[dict[str, Any]] | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.raw_text = raw_text
+        self.attempt_log = list(attempt_log or [])
+
+
 def resilient_invoke(
     llm: Any,
     prompt_text: str,
     *,
     context: dict[str, Any] | None = None,
     max_retries: int | None = None,
+    artifact_dir: Path | str | None = None,
+    artifacts: dict[str, str] | None = None,
 ) -> Any:
     """Invoke an LLM with retry/backoff and durable failure logging.
 
@@ -233,9 +358,14 @@ def resilient_invoke(
         Fully rendered prompt string.
     context
         Metadata for logging/traces: scenario_id, eval_method, node,
-        file_path, model_name, etc.
+        file_path, model_name, agent, call_id, etc.
     max_retries
         Override for ``LLM_MAX_RETRIES`` / ``BACKOFF_SETTINGS['max_retries']``.
+    artifact_dir
+        Optional directory for per-call ``input.txt`` / ``output.txt`` /
+        ``artifacts/`` / ``metadata.json``.
+    artifacts
+        Optional supporting files (e.g. diffs) written under ``artifacts/``.
 
     Returns
     -------
@@ -267,6 +397,7 @@ def resilient_invoke(
     attempt_log: list[dict[str, Any]] = []
     last_error: BaseException | None = None
     last_response: str | None = None
+    last_latency: float | None = None
 
     try:
         # attempts = initial try + retries
@@ -284,6 +415,7 @@ def resilient_invoke(
                 )
                 result = llm.invoke(prompt_text)
                 latency = time.perf_counter() - t0
+                last_latency = latency
                 response_text = _extract_response_text(result)
                 last_response = response_text
                 attempt_log.append(
@@ -293,6 +425,13 @@ def resilient_invoke(
                         "latency_s": round(latency, 4),
                     }
                 )
+                logger.info(
+                    "[resilient_invoke] success in %.3fs node=%s scenario=%s file=%s",
+                    latency,
+                    ctx.get("node"),
+                    ctx.get("scenario_id"),
+                    ctx.get("file_path"),
+                )
                 _maybe_write_io_trace(
                     prompt_text=prompt_text,
                     response_text=response_text,
@@ -300,9 +439,19 @@ def resilient_invoke(
                     status="success",
                     latency_s=latency,
                 )
+                _write_call_artifacts(
+                    artifact_dir=artifact_dir,
+                    prompt_text=prompt_text,
+                    response_text=response_text,
+                    artifacts=artifacts,
+                    context=ctx,
+                    elapsed_s=latency,
+                    status="success",
+                )
                 return result
             except Exception as exc:
                 latency = time.perf_counter() - t0
+                last_latency = latency
                 last_error = exc
                 attempt_log.append(
                     {
@@ -351,6 +500,16 @@ def resilient_invoke(
             status="failure",
             error=last_error,
         )
+        _write_call_artifacts(
+            artifact_dir=artifact_dir,
+            prompt_text=prompt_text,
+            response_text=last_response,
+            artifacts=artifacts,
+            context=ctx,
+            elapsed_s=last_latency,
+            status="failure",
+            error=last_error,
+        )
         # Attach trace path for upstream ledger consumers if useful
         try:
             last_error.failure_trace_path = str(trace_path)  # type: ignore[attr-defined]
@@ -365,8 +524,126 @@ def resilient_invoke(
                 pass
 
 
+def invoke_and_parse(
+    llm: Any,
+    prompt_text: str,
+    *,
+    parse_fn: Callable[[str], Any],
+    max_parse_attempts: int | None = None,
+    repair_hint: str | None = None,
+    context: dict[str, Any] | None = None,
+    artifact_dir: Path | str | None = None,
+    artifacts: dict[str, str] | None = None,
+    max_retries: int | None = None,
+) -> tuple[Any, str, list[dict[str, Any]]]:
+    """Invoke an LLM and parse the result, retrying only when local parse fails.
+
+    ``parse_fn`` should apply local recovery first and either return a value or
+    raise / return ``None`` when unrecoverable. Successful local recovery on
+    attempt 1 does not trigger further LLM calls.
+
+    Returns
+    -------
+    tuple
+        ``(parsed, raw_text, attempt_log)``
+
+    Raises
+    ------
+    ParseExhausted
+        After ``max_parse_attempts`` failed local parses (API errors still
+        propagate from ``resilient_invoke``).
+    """
+    attempts = int(
+        max_parse_attempts if max_parse_attempts is not None else _LLM_MAX_PARSE_ATTEMPTS
+    )
+    attempts = max(1, attempts)
+    ctx = dict(context or {})
+    attempt_log: list[dict[str, Any]] = []
+    last_raw = ""
+    current_prompt = prompt_text
+
+    for attempt in range(1, attempts + 1):
+        result = resilient_invoke(
+            llm,
+            current_prompt,
+            context=ctx,
+            max_retries=max_retries,
+            artifact_dir=artifact_dir,
+            artifacts=artifacts,
+        )
+        raw = _extract_response_text(result)
+        last_raw = raw
+        parsed: Any = None
+        parse_error: str | None = None
+        strategy: str | None = None
+        try:
+            parsed = parse_fn(raw)
+            if isinstance(parsed, ParsedResult):
+                strategy = parsed.strategy
+                parsed = parsed.value
+            if parsed is None:
+                parse_error = "parse_fn returned None"
+        except Exception as exc:
+            parse_error = f"{type(exc).__name__}: {exc}"
+            parsed = None
+
+        entry: dict[str, Any] = {
+            "attempt": attempt,
+            "parse_ok": parsed is not None and parse_error is None,
+            "raw_snippet": (raw or "")[:200],
+        }
+        if strategy:
+            entry["parse_strategy"] = strategy
+        if parse_error:
+            entry["parse_error"] = parse_error
+        attempt_log.append(entry)
+
+        if parsed is not None and parse_error is None:
+            meta = {
+                "parse_ok": True,
+                "parse_attempts": attempt_log,
+                "parse_attempt": attempt,
+            }
+            if strategy:
+                meta["parse_strategy"] = strategy
+            _patch_call_metadata(artifact_dir, meta)
+            return parsed, raw, attempt_log
+
+        logger.warning(
+            "[invoke_and_parse] parse failed attempt=%d/%d node=%s: %s",
+            attempt,
+            attempts,
+            ctx.get("node"),
+            parse_error,
+        )
+        _patch_call_metadata(
+            artifact_dir,
+            {
+                "parse_ok": False,
+                "parse_attempts": attempt_log,
+                "parse_attempt": attempt,
+                "parse_error": parse_error,
+            },
+        )
+
+        if attempt < attempts and repair_hint:
+            current_prompt = (
+                f"{prompt_text.rstrip()}\n\n"
+                f"---\nPrevious output was not parseable. {repair_hint}\n"
+            )
+
+    raise ParseExhausted(
+        f"failed to parse LLM output after {attempts} attempt(s)",
+        raw_text=last_raw,
+        attempt_log=attempt_log,
+    )
+
+
 __all__ = [
     "resilient_invoke",
+    "invoke_and_parse",
     "is_retryable_error",
     "write_failure_trace",
+    "ParseExhausted",
+    "ParsedResult",
 ]

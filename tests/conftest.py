@@ -34,6 +34,14 @@ def clear_api_keys(monkeypatch: pytest.MonkeyPatch):
         "OPENROUTER_BASE_URL",
         "OPENROUTER_HTTP_REFERER",
         "OPENROUTER_APP_TITLE",
+        "OPENROUTER_PROVIDER",
+        "OPENROUTER_PROVIDER_GPT5NANO",
+        "OPENROUTER_PROVIDER_LLAMA3",
+        "OPENROUTER_PROVIDER_QWEN3",
+        "OPENROUTER_ALLOW_FALLBACKS",
+        "OPENROUTER_ALLOW_FALLBACKS_GPT5NANO",
+        "OPENROUTER_ALLOW_FALLBACKS_LLAMA3",
+        "OPENROUTER_ALLOW_FALLBACKS_QWEN3",
         "HTTP_REFERER",
     ):
         monkeypatch.delenv(key, raising=False)

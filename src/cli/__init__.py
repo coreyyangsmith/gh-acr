@@ -36,7 +36,9 @@ Key parameters:
 Output Files
 ------------
 Results are written to:
-- `data/<model_name>/<scenario_id>/`: Per-scenario artifacts
+- `data/<model_name>/<scenario_id>/`: Shared conflict inputs per file
+- `data/<model_name>/<scenario_id>/<method>/`: Per-agent call artifacts
+  (`summarizer/`, `analyzer/`, `planner/`, `resolver/`, `reviewer/`, `final/`)
 - `data/YYYY_MM_DD_results_all.csv`: Consolidated metrics
 
 Example Usage

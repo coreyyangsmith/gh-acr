@@ -55,8 +55,14 @@ def _minimal_success_result(*, scenario_id: str = "42", eval_method: str = "agen
             "overall_bleu3": 0.1,
             "overall_rouge_l": 0.2,
         },
-        "bypass_decision": "MIX" if eval_method in ("bypass7", "force_mix") else "",
-        "bypass_method": "MIX" if eval_method in ("bypass7", "force_mix") else "NA",
+        "bypass_decision": "MIX" if eval_method in (
+            "bypass7", "better_judge", "force_mix",
+            "bj_no_summary", "bj_no_judge", "bj_no_plan", "bj_no_review",
+        ) else "",
+        "bypass_method": "MIX" if eval_method in (
+            "bypass7", "better_judge", "force_mix",
+            "bj_no_summary", "bj_no_judge", "bj_no_plan", "bj_no_review",
+        ) else "NA",
         "summaries": {"a.py": {"summary_a": "sa", "summary_b": "sb"}},
         "reviews": {"a.py": "{}"},
         "review_results": {"a.py": {"outcome": "ACCEPT", "rationale": ""}},
@@ -69,7 +75,20 @@ def _minimal_success_result(*, scenario_id: str = "42", eval_method: str = "agen
     }
 
 
-@pytest.mark.parametrize("method", ["agent", "bypass7", "force_mix", "base_a"])
+@pytest.mark.parametrize(
+    "method",
+    [
+        "agent",
+        "bypass7",
+        "better_judge",
+        "bj_no_summary",
+        "bj_no_judge",
+        "bj_no_plan",
+        "bj_no_review",
+        "force_mix",
+        "base_a",
+    ],
+)
 def test_runner_sets_context_during_ainvoke(tmp_path: Path, method: str):
     seen: dict[str, str] = {}
 
@@ -77,7 +96,7 @@ def test_runner_sets_context_during_ainvoke(tmp_path: Path, method: str):
         ctx = get_run_context()
         seen.update(ctx)
         assert state.get("eval_method") == method
-        assert config["run_name"] == f"{method}-scenario-99"
+        assert config["run_name"] == method
         return _minimal_success_result(scenario_id="99", eval_method=method)
 
     app = MagicMock()
@@ -104,7 +123,19 @@ def test_runner_sets_context_during_ainvoke(tmp_path: Path, method: str):
     assert rows[0]["eval_method"] == method
 
 
-@pytest.mark.parametrize("method", ["agent", "bypass7", "force_mix"])
+@pytest.mark.parametrize(
+    "method",
+    [
+        "agent",
+        "bypass7",
+        "better_judge",
+        "bj_no_summary",
+        "bj_no_judge",
+        "bj_no_plan",
+        "bj_no_review",
+        "force_mix",
+    ],
+)
 def test_runner_ainvoke_config_includes_langfuse_trace_name(
     tmp_path: Path, method: str, monkeypatch: pytest.MonkeyPatch
 ):
@@ -136,11 +167,13 @@ def test_runner_ainvoke_config_includes_langfuse_trace_name(
             )
         )
 
-    expected = f"{method}-scenario-99"
+    expected = method
     assert captured_config["run_name"] == expected
     assert captured_config["metadata"]["langfuse_trace_name"] == expected
+    assert captured_config["metadata"]["langfuse_session_id"] == "99"
     assert captured_config["metadata"]["eval_method"] == method
     assert method in captured_config["tags"]
+    assert "scenario:99" in captured_config["metadata"]["langfuse_tags"]
     assert fake_handler in captured_config["callbacks"]
     # One shared handler per scenario (created once in set_run_context)
     assert fake_cls.call_count == 1
@@ -161,7 +194,7 @@ def test_runner_enters_scenario_observation(tmp_path: Path, monkeypatch: pytest.
     def _fake_obs(name: str):
         entered["count"] += 1
         entered["name"] = name
-        yield
+        yield None
 
     with patch.object(lt, "_import_callback_handler", return_value=MagicMock(return_value=object())):
         # Local import inside run_and_save_report resolves this package attribute at call time
@@ -178,7 +211,7 @@ def test_runner_enters_scenario_observation(tmp_path: Path, monkeypatch: pytest.
             )
 
     assert entered["count"] == 1
-    assert entered["name"] == "bypass7-scenario-42"
+    assert entered["name"] == "bypass7"
 
 
 def test_runner_clears_context_and_flushes_on_failure(tmp_path: Path):

@@ -5,13 +5,60 @@ import logging
 
 from langchain_core.callbacks import BaseCallbackHandler
 
-from ..config.model_costs import MODEL_COSTS
+from ..config.model_costs import estimate_usd_cost, get_model_config
 from ..config.rate_limits import get_limits_for_model, BACKOFF_SETTINGS
 from ..utils.rate_limiter import LimiterRegistry
 from .token_utils import count_tokens
 
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_usage_tokens(response: Any) -> tuple[int | None, int | None]:
+    """Prefer provider-reported usage from an LLMResult when available."""
+    # LangChain LLMResult.llm_output["token_usage"]
+    try:
+        llm_output = getattr(response, "llm_output", None) or {}
+        usage = llm_output.get("token_usage") or llm_output.get("usage") or {}
+        if isinstance(usage, dict):
+            prompt = usage.get("prompt_tokens")
+            if prompt is None:
+                prompt = usage.get("input_tokens")
+            completion = usage.get("completion_tokens")
+            if completion is None:
+                completion = usage.get("output_tokens")
+            if prompt is not None and completion is not None:
+                return int(prompt), int(completion)
+    except Exception:
+        pass
+
+    # Chat generations may carry usage_metadata on the message
+    try:
+        for gen_list in getattr(response, "generations", []) or []:
+            for gen in gen_list:
+                msg = getattr(gen, "message", None)
+                meta = getattr(msg, "usage_metadata", None) if msg is not None else None
+                if isinstance(meta, dict):
+                    prompt = meta.get("input_tokens")
+                    if prompt is None:
+                        prompt = meta.get("prompt_tokens")
+                    completion = meta.get("output_tokens")
+                    if completion is None:
+                        completion = meta.get("completion_tokens")
+                    if prompt is not None and completion is not None:
+                        return int(prompt), int(completion)
+                resp_meta = getattr(msg, "response_metadata", None) if msg is not None else None
+                if isinstance(resp_meta, dict):
+                    usage = resp_meta.get("token_usage") or resp_meta.get("usage") or {}
+                    if isinstance(usage, dict):
+                        prompt = usage.get("prompt_tokens", usage.get("input_tokens"))
+                        completion = usage.get("completion_tokens", usage.get("output_tokens"))
+                        if prompt is not None and completion is not None:
+                            return int(prompt), int(completion)
+    except Exception:
+        pass
+
+    return None, None
 
 
 class RateLimitAndCostHandler(BaseCallbackHandler):
@@ -35,7 +82,7 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
     def on_llm_start(self, serialized: dict[str, Any], prompts: list[str], *, run_id: Any, **kwargs: Any) -> None:  # type: ignore[override]
         prompt_text = "\n\n".join(prompts or [])
         prompt_tokens = count_tokens(self.encoder, prompt_text)
-        model_cfg = MODEL_COSTS.get(self.model_name, {}) or MODEL_COSTS.get(f"openai/{self._backend_name()}", {})
+        model_cfg = get_model_config(self.model_name)
 
         input_limit = int(model_cfg.get("input_limit", 0))
         output_limit = int(model_cfg.get("output_limit", 0))
@@ -81,25 +128,33 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
             return
         prompt_tokens = int(info.get("prompt_tokens", 0))
 
-        try:
-            texts: list[str] = []
-            for gen_list in getattr(response, "generations", []) or []:
-                for gen in gen_list:
-                    if hasattr(gen, "text") and gen.text:
-                        texts.append(str(gen.text))
-                    elif hasattr(gen, "message") and getattr(gen.message, "content", None):
-                        content = gen.message.content
-                        texts.append(content if isinstance(content, str) else str(content))
-            output_text = "\n".join(texts)
-        except Exception:
-            output_text = ""
+        api_prompt, api_completion = _extract_usage_tokens(response)
+        usage_from_api = api_prompt is not None and api_completion is not None
 
-        completion_tokens = count_tokens(self.encoder, output_text)
+        if usage_from_api:
+            prompt_tokens = int(api_prompt)
+            completion_tokens = int(api_completion)
+        else:
+            try:
+                texts: list[str] = []
+                for gen_list in getattr(response, "generations", []) or []:
+                    for gen in gen_list:
+                        if hasattr(gen, "text") and gen.text:
+                            texts.append(str(gen.text))
+                        elif hasattr(gen, "message") and getattr(gen.message, "content", None):
+                            content = gen.message.content
+                            texts.append(content if isinstance(content, str) else str(content))
+                output_text = "\n".join(texts)
+            except Exception:
+                output_text = ""
+
+            completion_tokens = count_tokens(self.encoder, output_text)
+
         total_tokens = prompt_tokens + completion_tokens
-        cost_info = MODEL_COSTS.get(self.model_name, {}) or MODEL_COSTS.get(f"openai/{self._backend_name()}", {})
-        input_cost_per_1k = float(cost_info.get("input_cost_per_1k", 0))
-        output_cost_per_1k = float(cost_info.get("output_cost_per_1k", 0))
-        total_cost = ((prompt_tokens / 1000.0) * input_cost_per_1k) + ((completion_tokens / 1000.0) * output_cost_per_1k)
+        cost_in, cost_out, total_cost = estimate_usd_cost(
+            self.model_name, prompt_tokens, completion_tokens
+        )
+        has_rates = "input_cost_per_1k" in get_model_config(self.model_name)
 
         try:
             self._limiter.adjust(actual_tokens=int(total_tokens), reserved_tokens=int(info.get("reserved", 0)))
@@ -122,13 +177,39 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
                     "prompt_tokens": prompt_tokens,
                     "completion_tokens": completion_tokens,
                     "total_tokens": total_tokens,
+                    "cost_in": cost_in,
+                    "cost_out": cost_out,
+                    "total_cost": total_cost,
+                    "usage_from_api": usage_from_api,
                 }
             )
         except Exception:
             pass
 
+        # Best-effort: push the same MODEL_COSTS dollars into the active LangFuse generation
+        try:
+            from .observability.langfuse_tracing import is_langfuse_enabled
+
+            if is_langfuse_enabled() and (cost_in or cost_out or total_cost):
+                from langfuse import get_client  # type: ignore
+
+                get_client().update_current_generation(
+                    usage_details={
+                        "input": int(prompt_tokens),
+                        "output": int(completion_tokens),
+                    },
+                    cost_details={
+                        "input": float(cost_in),
+                        "output": float(cost_out),
+                        "total": float(total_cost),
+                    },
+                )
+        except Exception:
+            pass
+
+        estimated_suffix = " (estimated)" if not has_rates else ("" if usage_from_api else " (tiktoken)")
         if node:
-            logger.info(
+            logger.debug(
                 "LLM call to %s completed (node=%s).\n  *  Tokens: %d prompt, %d completion (%d total)\n  *  Cost:   $%.4f%s",
                 self._backend_name(),
                 node,
@@ -136,17 +217,17 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
                 completion_tokens,
                 total_tokens,
                 total_cost,
-                " (estimated)" if not (input_cost_per_1k or output_cost_per_1k) else "",
+                estimated_suffix,
             )
         else:
-            logger.info(
+            logger.debug(
                 "LLM call to %s completed.\n  *  Tokens: %d prompt, %d completion (%d total)\n  *  Cost:   $%.4f%s",
                 self._backend_name(),
                 prompt_tokens,
                 completion_tokens,
                 total_tokens,
                 total_cost,
-                " (estimated)" if not (input_cost_per_1k or output_cost_per_1k) else "",
+                estimated_suffix,
             )
 
     def on_llm_error(self, error: BaseException, *, run_id: Any, **kwargs: Any) -> None:  # type: ignore[override]
@@ -166,6 +247,4 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
             pass
 
 
-__all__ = ["RateLimitAndCostHandler"]
-
-
+__all__ = ["RateLimitAndCostHandler", "_extract_usage_tokens"]

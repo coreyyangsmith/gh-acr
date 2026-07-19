@@ -33,7 +33,9 @@ resolves a handler via the registry, then wraps the result with:
 1. **TruncatingLLMWrapper**: Clips over-long prompts to model limits
 2. **RateLimitAndCostHandler**: Enforces rate limits and logs token costs
 3. **LangfuseLLMWrapper**: Injects LangFuse callbacks when credentials are set
-4. **_ThreadSafeLLMWrapper**: Prevents tokenizer concurrency issues
+4. **_ThreadSafeLLMWrapper**: Only for ``local:`` models (HF tokenizers are not
+   thread-safe). Hosted API backends (openai/openrouter/groq) skip this lock so
+   concurrent scenario workers can issue overlapping ``invoke`` calls.
 Results are cached with @lru_cache to avoid redundant model loading.
 
 Example Usage
@@ -156,11 +158,14 @@ def get_backend(model_name: str) -> Tuple[Optional[Any], Optional[Any]]:
     except Exception:
         pass
 
-    # Final wrapper: thread-safe wrapper to prevent tokenizer concurrency issues
-    try:
-        raw_llm = _ThreadSafeLLMWrapper(raw_llm)
-    except Exception:
-        pass
+    # Serialize invokes only for local HF models (tokenizers are not thread-safe).
+    # Hosted API clients are safe for concurrent stateless invoke and must not be
+    # locked, or scenario-level concurrency would be neutralized.
+    if model_name.startswith("local:"):
+        try:
+            raw_llm = _ThreadSafeLLMWrapper(raw_llm)
+        except Exception:
+            pass
 
     return enc, raw_llm
 

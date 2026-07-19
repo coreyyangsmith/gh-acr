@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict
 import os
 import logging
+import time
 from dotenv import load_dotenv
 
 # We intentionally import tiktoken and langchain lazily (inside try/except)
@@ -19,6 +20,16 @@ import tiktoken  # type: ignore
 # Updated import location per latest LangChain split
 from ..llm_base import get_backend, count_tokens
 from ..resilient_invoke import resilient_invoke
+from ..artifact_io import (
+    agent_call_dir,
+    base_metadata,
+    file_path_to_slug,
+    get_artifact_root,
+    write_agent_call,
+    write_final_artifacts,
+)
+from ...utils.degradation import record_degradation
+from ...utils.run_progress import set_stage
 
 load_dotenv()
 
@@ -108,12 +119,18 @@ logger = logging.getLogger(__name__)
 
 def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
     """Merge conflicted files via a single-turn LLM prompt (or fallback)."""
-
+    t0 = time.perf_counter()
+    scenario_id = state.get("scenario_id", "unknown")
     parent_a: FileContents = state["parent_a_contents"]
     parent_b: FileContents = state["parent_b_contents"]
 
     model_name: str = state.get("model_name") or _DEFAULT_MODEL
-    logger.info("Starting conflict resolution with model: %s", model_name)
+    set_stage("resolve", detail=f"model={model_name}")
+    logger.info(
+        "[resolve_conflict_agent] scenario=%s Starting with model: %s",
+        scenario_id,
+        model_name,
+    )
 
     encoder, llm_backend = get_backend(model_name)
 
@@ -125,13 +142,52 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
     # No credentials or failed initialisation → naive fallback.
     if runnable is None:
         logger.warning("No LLM backend available, using naive fallback (parent_a)")
+        record_degradation(
+            "llm_unavailable_heuristic",
+            "single-agent used parent_a stub (no LLM)",
+            node="resolve_conflict_agent",
+        )
         state["resolved_contents"] = parent_a
         state["status"] = "resolved_agent_stub"
+        artifact_root = get_artifact_root(state)
+        for path, content in parent_a.items():
+            write_agent_call(
+                agent_call_dir(
+                    artifact_root,
+                    agent="agent",
+                    file_slug=file_path_to_slug(path),
+                ),
+                input_text="",
+                output_text=content or "",
+                artifacts={},
+                metadata=base_metadata(
+                    agent="agent",
+                    node="resolve_conflict_agent",
+                    state=state,
+                    file_path=path,
+                    llm_used=False,
+                    extra={"reason": "no_llm"},
+                ),
+            )
+            write_final_artifacts(
+                artifact_root,
+                file_path=path,
+                resolved_text=content or "",
+                final_diff="",
+            )
+        elapsed = time.perf_counter() - t0
+        logger.info(
+            "[resolve_conflict_agent] scenario=%s Completed in %.3fs (status=%s)",
+            scenario_id,
+            elapsed,
+            state["status"],
+        )
         return state
 
     file_paths = list(parent_a.keys() | parent_b.keys())
     logger.info("Processing %d files for conflict resolution", len(file_paths))
     resolved: FileContents = {}
+    artifact_root = get_artifact_root(state)
 
     for path in file_paths:
         logger.debug("Processing file: %s", path)
@@ -155,7 +211,18 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
             .replace("{diff_a}", diff_a_text)
             .replace("{diff_b}", diff_b_text)
         )
-        
+
+        call_dir = agent_call_dir(
+            artifact_root,
+            agent="agent",
+            file_slug=file_path_to_slug(path),
+        )
+        supporting = {
+            "original.txt": original_text,
+            "a.diff": diff_a_text,
+            "b.diff": diff_b_text,
+        }
+
         logger.debug("Invoking LLM for file: %s", path)
         result = resilient_invoke(
             runnable,
@@ -164,9 +231,12 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
                 "scenario_id": state.get("scenario_id"),
                 "eval_method": state.get("eval_method", "agent"),
                 "node": "resolve_conflict_agent",
+                "agent": "agent",
                 "file_path": path,
                 "model_name": model_name,
             },
+            artifact_dir=call_dir,
+            artifacts=supporting,
         )
 
         merged_content = result.content if hasattr(result, "content") else str(result)
@@ -176,8 +246,21 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
 
         token_usage = {**pre_token_usage, "output": count_tokens(encoder, merged_clean)}
         state.setdefault("token_counts", {})[path] = token_usage
+        write_final_artifacts(
+            artifact_root,
+            file_path=path,
+            resolved_text=merged_clean,
+            final_diff="",
+        )
 
     logger.info("Conflict resolution completed for %d files", len(resolved))
     state["resolved_contents"] = resolved
     state["status"] = "resolved_agent"
+    elapsed = time.perf_counter() - t0
+    logger.info(
+        "[resolve_conflict_agent] scenario=%s Completed in %.3fs (status=%s)",
+        scenario_id,
+        elapsed,
+        state["status"],
+    )
     return state

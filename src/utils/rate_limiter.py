@@ -1,16 +1,15 @@
 """Thread-safe rate limiting for LLM API calls.
 
-This module provides a token-bucket based rate limiter that enforces both
-requests-per-minute (RPM) and tokens-per-minute (TPM) limits. It's designed
-for use with LLM APIs that have dual rate limits.
+This module provides a token-bucket based rate limiter that can enforce both
+requests-per-minute (RPM) and tokens-per-minute (TPM) limits. Client-side
+waiting is **disabled by default** (``RL_ENABLE_WAITING`` unset/false); set
+``RL_ENABLE_WAITING=1`` to restore blocking acquire behavior.
 
-Architecture
-------------
-The rate limiter uses two token buckets:
+When waiting is enabled, the limiter uses two token buckets:
 1. **RPM bucket**: Refills at requests/minute rate
 2. **TPM bucket**: Refills at tokens/minute rate
 
-Requests block until both buckets have sufficient capacity.
+Requests then block until both buckets have sufficient capacity.
 
 Classes
 -------
@@ -55,10 +54,25 @@ The LimiterRegistry provides aggregate metrics for monitoring::
 
 from __future__ import annotations
 
+import os
 import random
 import threading
 import time
 from typing import Any, Dict, Optional
+
+
+def client_waiting_enabled() -> bool:
+    """Return True when client-side RPM/TPM pacing sleeps are enabled.
+
+    Disabled by default: hosted APIs (e.g. OpenRouter) are assumed not to need
+    local token-bucket waiting. Set ``RL_ENABLE_WAITING=1`` to restore pacing.
+    """
+    return os.getenv("RL_ENABLE_WAITING", "0").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
 
 class _TokenBucket:
@@ -180,10 +194,11 @@ class RateLimiter:
         self.last_error: Optional[str] = None
 
     def acquire(self, *, expected_tokens: int) -> float:
-        """Block until both RPM and TPM buckets can satisfy the request.
+        """Reserve capacity for one request (optionally blocking on RPM/TPM).
 
-        This method should be called before making an API request with
-        the estimated total token count (input + expected output).
+        When ``RL_ENABLE_WAITING`` is unset/false (default), returns immediately
+        without sleeping. When enabled, blocks until both RPM and TPM buckets
+        can satisfy the request.
 
         Parameters
         ----------
@@ -195,6 +210,9 @@ class RateLimiter:
         float
             Total seconds spent waiting for capacity.
         """
+        if not client_waiting_enabled():
+            return 0.0
+
         waited = 0.0
         while True:
             now = time.perf_counter()
@@ -355,4 +373,5 @@ class LimiterRegistry:
 __all__ = [
     "RateLimiter",
     "LimiterRegistry",
+    "client_waiting_enabled",
 ]

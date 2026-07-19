@@ -197,7 +197,7 @@ def build_proxy_mapping() -> pd.DataFrame:
         {
             "fm3_subclaim": "Failure to converge in MIX traces",
             "proxy_family": "trace_non_convergence",
-            "columns": "resolution*.txt; review*.txt; review_feedback_history.txt; review_results.txt",
+            "columns": "planner/output.txt; resolver/attempt_*/output.txt; reviewer/attempt_*/output.txt (legacy: resolution*.txt; review*.txt; review_feedback_history.txt; review_results.txt)",
             "rationale": (
                 "Saved trace artifacts can directly show repeated review/revision cycles, "
                 "rejection rationales, and drift across resolver attempts."
@@ -538,6 +538,9 @@ def _read_text(path: Path) -> str:
 
 def _iter_trace_files(trace_root: Path) -> Iterable[Path]:
     """Yield plausible persisted trace artifacts without scanning dependency trees."""
+    # New per-agent layout
+    wanted_agent_dirs = {"planner", "resolver", "reviewer"}
+    # Legacy flat filenames
     wanted_names = {"review_feedback_history.txt", "review_results.txt", "agent_plan.txt", "plan.txt"}
     wanted_prefixes = ("resolution", "review")
     skip_dirs = {".git", ".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache"}
@@ -547,11 +550,23 @@ def _iter_trace_files(trace_root: Path) -> Iterable[Path]:
 
     for root, dirs, files in os.walk(trace_root):
         dirs[:] = [d for d in dirs if d not in skip_dirs]
+        root_path = Path(root)
+        agent_name = root_path.name
+        parent_name = root_path.parent.name if root_path.parent else ""
+
         for name in files:
+            path = root_path / name
+            # New layout: planner/output.txt, resolver/attempt_N/output.txt, reviewer/...
+            if name == "output.txt" and (
+                agent_name in wanted_agent_dirs
+                or parent_name in wanted_agent_dirs
+            ):
+                yield path
+                continue
             if name in wanted_names or (
                 name.endswith(".txt") and name.startswith(wanted_prefixes)
             ):
-                yield Path(root) / name
+                yield path
 
 
 def audit_traces(table: pd.DataFrame, mix_cases: pd.DataFrame, trace_root: Path) -> pd.DataFrame:
@@ -574,9 +589,31 @@ def audit_traces(table: pd.DataFrame, mix_cases: pd.DataFrame, trace_root: Path)
         sample_id = str(case["id"])
         file_name = str(case.get("file_name", ""))
         files = files_by_id.get(sample_id, [])
-        resolution_files = [p for p in files if re.search(r"resolution\d+\.txt$", p.name)]
-        review_files = [p for p in files if re.search(r"review\d+\.txt$", p.name)]
+        resolution_files = [
+            p
+            for p in files
+            if re.search(r"resolution\d+\.txt$", p.name)
+            or (
+                p.name == "output.txt"
+                and ("resolver" in p.parts)
+            )
+        ]
+        review_files = [
+            p
+            for p in files
+            if re.search(r"review\d+\.txt$", p.name)
+            or (
+                p.name == "output.txt"
+                and ("reviewer" in p.parts)
+            )
+        ]
         feedback_files = [p for p in files if p.name == "review_feedback_history.txt"]
+        plan_files = [
+            p
+            for p in files
+            if p.name in {"plan.txt", "agent_plan.txt"}
+            or (p.name == "output.txt" and "planner" in p.parts)
+        ]
         review_text = "\n\n".join(_read_text(p) for p in review_files + feedback_files)
 
         keyword_hits = {
@@ -589,7 +626,7 @@ def audit_traces(table: pd.DataFrame, mix_cases: pd.DataFrame, trace_root: Path)
                 "id": sample_id,
                 "file_name": file_name,
                 "artifacts_found": bool(files),
-                "n_plan_files": len([p for p in files if p.name in {"plan.txt", "agent_plan.txt"}]),
+                "n_plan_files": len(plan_files),
                 "n_resolution_files": len(resolution_files),
                 "n_review_files": len(review_files),
                 "n_feedback_history_files": len(feedback_files),
@@ -702,7 +739,9 @@ def write_summary(
     else:
         lines.extend(
             [
-                "No persisted `resolution*.txt`, `review*.txt`, `agent_plan.txt`, or `review_feedback_history.txt` artifacts for the MIX cases were found in this checkout.",
+                "No persisted planner/resolver/reviewer ``output.txt`` (or legacy "
+                "``resolution*.txt`` / ``review*.txt`` / ``agent_plan.txt``) artifacts "
+                "for the MIX cases were found in this checkout.",
                 "The iteration/oscillation part of FM3 therefore remains a trace-level claim until archived outputs are located or the runs are regenerated with existing artifact persistence.",
             ]
         )

@@ -1,0 +1,36 @@
+You are a senior merge judge.
+
+Choose ONE verdict for the entire change set:
+
+A
+B
+Mix
+
+Prefer selecting one complete parent.
+
+Choose Mix only when:
+
+* Neither complete parent is clearly safe or correct, or
+* Each parent contains important changes needed for a correct result, or
+* The available evidence is too conflicting or incomplete to confidently choose A or B.
+
+Use only the provided evidence. Do not assume tests pass or behavior is correct unless stated.
+
+Inputs:
+Summaries Parent A:
+{a_summary}
+
+Summaries Parent B:
+{b_summary}
+
+Diffs A:
+{a_diff}
+
+Diffs B:
+{b_diff}
+
+Return exactly one string:
+
+A
+B
+Mix

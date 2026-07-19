@@ -12,8 +12,8 @@ from src.config.rate_limits import (
 
 def test_known_model_limits():
     limits = get_limits_for_model("openai/gpt-4o-mini")
-    assert limits["requests_per_minute"] == 100
-    assert limits["tokens_per_minute"] == 200000
+    assert limits["requests_per_minute"] == 400
+    assert limits["tokens_per_minute"] == 180000
     assert "expected_output_ratio" in limits
 
 

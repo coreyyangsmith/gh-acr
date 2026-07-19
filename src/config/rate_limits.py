@@ -4,6 +4,10 @@ This module defines per-model request/token throughput caps and generic
 backoff settings used by the LLM invocation layer. These limits are enforced
 client-side to minimize server-side 429 (rate limit) errors.
 
+When running with ``--concurrency > 1`` (scenario worker pool), these soft
+caps only apply if ``RL_ENABLE_WAITING=1``. Waiting is **disabled by default**
+so concurrent workers are not paced by the local token bucket.
+
 Configuration Levels
 --------------------
 1. **BACKOFF_SETTINGS**: Retry behavior for transient errors
@@ -26,6 +30,11 @@ Default Limits:
 
 Model-Specific Overrides:
 - RL_RPM_GPT41_NANO, RL_TPM_GPT41_NANO, etc.
+
+Recommended values for concurrent hosted-API runs (tune to your account tier):
+- OpenAI Tier 1 gpt-4o-mini: ~500 RPM / ~200k TPM → set RL_RPM_GPT4O_MINI=400, RL_TPM_GPT4O_MINI=180000
+- OpenAI Tier 3+ gpt-4o-mini: often 5000+ RPM / 2M+ TPM → raise accordingly
+- Unlisted models: set RL_DEFAULT_RPM / RL_DEFAULT_TPM above your planned concurrency
 
 Example Usage
 -------------
@@ -91,8 +100,11 @@ MODEL_RATE_LIMITS: Dict[str, Dict[str, Any]] = {
         "expected_output_ratio": float(os.getenv("RL_OUTRATIO_GPT41_NANO", str(EXPECTED_OUTPUT_RATIO_DEFAULT))),
     },
     "openai/gpt-4o-mini": {
-        "requests_per_minute": int(os.getenv("RL_RPM_GPT4O_MINI", "100")),
-        "tokens_per_minute": int(os.getenv("RL_TPM_GPT4O_MINI", "200000")),
+        # Soft client caps (below typical Tier-1 OpenAI limits) so concurrent
+        # workers have headroom without immediately tripping 429s. Override via
+        # RL_RPM_GPT4O_MINI / RL_TPM_GPT4O_MINI to match your account tier.
+        "requests_per_minute": int(os.getenv("RL_RPM_GPT4O_MINI", "400")),
+        "tokens_per_minute": int(os.getenv("RL_TPM_GPT4O_MINI", "180000")),
         "expected_output_ratio": float(os.getenv("RL_OUTRATIO_GPT4O_MINI", str(EXPECTED_OUTPUT_RATIO_DEFAULT))),
     },
 }

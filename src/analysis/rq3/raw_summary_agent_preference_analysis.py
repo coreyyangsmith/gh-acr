@@ -1,10 +1,11 @@
 """Analyze Summary Agent artifacts across raw model outputs.
 
 This complements ``summary_agent_preference_analysis.py`` by reading every
-paired ``a_summary.txt`` / ``b_summary.txt`` artifact under
-``data/raw_model_outputs`` instead of only the curated labeling-results tree.
-It reports both all available summary artifacts and the subset whose joined
-result metadata indicates at least one exact-match failure.
+paired summarizer A/B output under ``data/raw_model_outputs`` (new layout:
+``<method>/<file_slug>/summarizer/{a,b}/output.txt``) instead of only the
+curated labeling-results tree. It reports both all available summary
+artifacts and the subset whose joined result metadata indicates at least one
+exact-match failure.
 """
 
 from __future__ import annotations
@@ -60,10 +61,26 @@ def discover_raw_summary_pairs(artifact_root: Path) -> list[tuple[Path, Path]]:
         return []
 
     pairs: list[tuple[Path, Path]] = []
+    seen: set[tuple[Path, Path]] = set()
+
+    for a_path in sorted(artifact_root.rglob("output.txt")):
+        if a_path.parent.name != "a" or a_path.parent.parent.name != "summarizer":
+            continue
+        b_path = a_path.parent.parent / "b" / "output.txt"
+        if b_path.exists():
+            key = (a_path, b_path)
+            if key not in seen:
+                pairs.append(key)
+                seen.add(key)
+
+    # Legacy flat layout
     for a_path in sorted(artifact_root.rglob("a_summary.txt")):
         b_path = a_path.with_name("b_summary.txt")
         if b_path.exists():
-            pairs.append((a_path, b_path))
+            key = (a_path, b_path)
+            if key not in seen:
+                pairs.append(key)
+                seen.add(key)
     return pairs
 
 
@@ -75,6 +92,15 @@ def extract_raw_path_metadata(path: Path, artifact_root: Path) -> dict[str, str]
         relative = path
 
     parts = relative.parts
+    # New: <model>/<sample>/<method>/<file_slug>/summarizer/a/output.txt  (7 parts)
+    if len(parts) >= 7 and parts[-3] == "summarizer" and parts[-2] == "a":
+        return {
+            "raw_model_dir": parts[0],
+            "sample_id": parts[1],
+            "eval_method": parts[2],
+            "artifact_file_slug": parts[3],
+        }
+    # Legacy: <model>/<sample>/<method>/<file_slug>/a_summary.txt  (5 parts)
     if len(parts) < 5:
         return {
             "raw_model_dir": "",
