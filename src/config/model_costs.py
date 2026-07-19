@@ -182,22 +182,26 @@ MODEL_COSTS: Dict[str, Dict[str, Any]] = {
         "output_cost_per_1k": 0,
         "tokenizer": "llama",
     },
+    # Native Qwen3 context is 32,768. Reserve LOCAL_MAX_NEW_TOKENS / QWEN3_MAX_NEW_TOKENS
+    # (default 2048) for generation so shared prompt budgeting
+    # (min(input, total - output) - buffer) leaves ~30k for the prompt.
+    # DO NOT set output_limit ≈ total_limit — that collapses the prompt budget
+    # to a few hundred tokens and causes pathological truncation.
     "local:Qwen/Qwen3-8B": {
-        "input_limit": 32_000,
-        "output_limit": 32_000,
+        "input_limit": 30_720,
+        "output_limit": 2_048,
         "sliding_window": False,
         "total_limit": 32_768,
         "input_cost_per_1k": 0,
         "output_cost_per_1k": 0,
         "tokenizer": "qwen",
     },
-    # Same checkpoint used via the OpenRouter API ("qwen/qwen3-32b"), run
-    # locally through transformers. Native context is 32,768 tokens (extendable
-    # to 131,072 with YARN via QWEN3_ENABLE_YARN=1); we budget to the native
-    # window to stay safe without rope scaling. No API cost (self-hosted).
+    # Same checkpoint as OpenRouter "qwen/qwen3-32b", run locally via transformers.
+    # Budget to the native 32,768 window (extendable to 131,072 with
+    # QWEN3_ENABLE_YARN=1). No API cost (self-hosted).
     "local:Qwen/Qwen3-32B": {
-        "input_limit": 32_000,
-        "output_limit": 32_000,
+        "input_limit": 30_720,
+        "output_limit": 2_048,
         "sliding_window": False,
         "total_limit": 32_768,
         "input_cost_per_1k": 0,

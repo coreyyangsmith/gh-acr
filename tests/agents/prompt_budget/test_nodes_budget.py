@@ -115,3 +115,65 @@ def test_bj_no_summary_raw_diffs_still_budgeted(monkeypatch, tmp_path):
     assert out["bypass_decision"] in {"ALL_A", "ALL_B", "MIX"}
     assert get_degradations()
     assert "Choose ONE verdict" in llm.prompts[0] or "Prefer selecting" in llm.prompts[0]
+
+
+def test_local_qwen32_analyzer_over_budget_does_not_crash(tmp_path, monkeypatch):
+    """Structured fit for local:Qwen/Qwen3-32B must clip huge evidence without raising."""
+    clear_degradations()
+    monkeypatch.setenv("PROMPT_TRUNCATION_BUFFER", "0")
+
+    from src.agents.multi_agent.nodes import create_conflict_analyzer_node
+    import src.agents.prompt_budget.fit as fit_mod
+
+    # Tiny budget forces clipping while still using the local model id end-to-end.
+    monkeypatch.setattr(fit_mod, "allowed_prompt_tokens", lambda *a, **k: 150)
+    monkeypatch.setattr(fit_mod, "REPAIR_HEADROOM_TOKENS", 0)
+
+    huge = " ".join(f"tok{i}" for i in range(500))
+    state = {
+        "scenario_id": "local-qwen-s1",
+        "eval_method": "better_judge",
+        "model_name": "local:Qwen/Qwen3-32B",
+        "artifact_root": str(tmp_path / "arts_local"),
+        "summaries": {
+            "src/a.py": {"summary_a": huge, "summary_b": huge},
+            "src/b.py": {"summary_a": huge, "summary_b": huge},
+            "src/c.py": {"summary_a": huge, "summary_b": huge},
+        },
+        "diffs_a": {"src/a.py": huge, "src/b.py": huge, "src/c.py": huge},
+        "diffs_b": {"src/a.py": huge, "src/b.py": huge, "src/c.py": huge},
+        "sample_row": {
+            "scenario_json": {
+                "files_in_merge_conflict": ["src/a.py", "src/b.py", "src/c.py"]
+            }
+        },
+    }
+
+    llm = RecordingLLM()
+
+    def _fake_backend(model_name):
+        assert model_name == "local:Qwen/Qwen3-32B"
+        return FakeEncoder(), llm
+
+    def _invoke(prompt, config=None):
+        llm.prompts.append(prompt)
+        return type("Msg", (), {"content": "Mix"})()
+
+    llm.invoke = _invoke  # type: ignore[method-assign]
+
+    with patch("src.agents.multi_agent.nodes.get_backend", side_effect=_fake_backend):
+        out = create_conflict_analyzer_node("better_judge")(state)
+
+    assert out["bypass_decision"] == "MIX"
+    assert llm.prompts
+    prompt = llm.prompts[0]
+    assert "Return exactly one string" in prompt or "Choose ONE verdict" in prompt
+    assert len(prompt.split()) <= 400
+    events = get_degradations()
+    assert any(e["category"] == "prompt_truncation" for e in events)
+    detail = json.loads(
+        next(e for e in events if e["category"] == "prompt_truncation")["detail"]
+    )
+    assert detail["truncation_mode"] == "structured"
+    assert detail["model_name"] == "local:Qwen/Qwen3-32B"
+    assert detail["was_clipped"] is True

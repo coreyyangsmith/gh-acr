@@ -139,6 +139,74 @@ def test_openrouter_shared_context_budget(model_name, monkeypatch):
     assert allowed == 114_624
 
 
+def test_local_qwen32_shared_context_budget(monkeypatch):
+    monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)
+    wrapper = TruncatingLLMWrapper(
+        RecordingLLM(),
+        encoder=FakeEncoder(),
+        model_name="local:Qwen/Qwen3-32B",
+    )
+    allowed = wrapper._allowed_prompt_tokens(200_000)
+    expected = min(30_720, 32_768 - 2_048) - DEFAULT_PROMPT_SAFETY_BUFFER
+    assert allowed == expected
+    assert allowed == 30_656
+
+
+def test_local_qwen32_truncates_over_budget_without_crash(monkeypatch):
+    """Over-budget local prompts clip cleanly; must not raise."""
+    monkeypatch.setenv("LOCAL_TRUNCATION_SIDE", "left")
+    monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)
+    clear_degradations()
+
+    inner = RecordingLLM()
+    wrapper = TruncatingLLMWrapper(
+        inner,
+        encoder=FakeEncoder(),
+        model_name="local:Qwen/Qwen3-32B",
+    )
+    budget = 30_656
+    prompt = _words(budget + 5_000)
+    # Must not raise even for large synthetic prompts.
+    result = wrapper.invoke(prompt)
+    assert result is not None
+    truncated = inner.prompts[-1]
+    assert isinstance(truncated, str)
+    assert len(truncated.split()) == budget
+    events = get_degradations()
+    assert events
+    assert events[0]["category"] == "prompt_truncation"
+    assert "reserved_output=2048" in events[0]["detail"]
+    assert "model=local:Qwen/Qwen3-32B" in events[0]["detail"]
+
+
+def test_local_qwen32_encode_failure_falls_back_to_words(monkeypatch):
+    """If the HF tokenizer blows up, fall back to word clipping instead of crashing."""
+    monkeypatch.setenv("LOCAL_TRUNCATION_SIDE", "right")
+    monkeypatch.setenv("PROMPT_TRUNCATION_BUFFER", "0")
+    clear_degradations()
+
+    class BoomEncoder(FakeEncoder):
+        def encode(self, text: str):
+            raise MemoryError("simulated tokenizer OOM")
+
+        def decode(self, ids):
+            raise MemoryError("simulated tokenizer OOM")
+
+    inner = RecordingLLM()
+    wrapper = TruncatingLLMWrapper(
+        inner,
+        encoder=BoomEncoder(),
+        model_name="local:Qwen/Qwen3-32B",
+    )
+    # Force a tiny allowed budget so truncation path is taken.
+    wrapper._allowed_prompt_tokens = lambda prompt_tokens: 12  # type: ignore[method-assign]
+    prompt = _words(200)
+    wrapper.invoke(prompt)
+    truncated = inner.prompts[-1]
+    assert truncated == " ".join(f"w{i}" for i in range(12))
+    assert get_degradations()
+
+
 def test_openrouter_qwen_truncates_over_budget(monkeypatch):
     monkeypatch.setenv("LOCAL_TRUNCATION_SIDE", "right")
     monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)

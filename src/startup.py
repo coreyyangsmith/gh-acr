@@ -63,6 +63,7 @@ def _log_environment_diagnostics(logger) -> None:
         "TRUNCATION_SIDE",
         "LOCAL_TOKENIZER_BUFFER_TOKENS",
         "TOKENIZER_BUFFER_TOKENS",
+        "PROMPT_TRUNCATION_BUFFER",
         "LLAMA_MAX_NEW_TOKENS",
         "LLAMA_TEMPERATURE",
         "LLAMA_TOP_P",

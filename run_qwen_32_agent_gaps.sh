@@ -202,10 +202,13 @@ export HF_DEVICE_MAP=auto
 export HF_TORCH_DTYPE=bf16
 
 # Truncation/context handling (native Qwen3 window is 32,768 tokens).
+# Shared prompt_budget + TruncatingLLMWrapper use MODEL_COSTS for
+# local:Qwen/Qwen3-32B (input≈30720, output=2048, total=32768) minus this buffer.
 export LOCAL_MAX_NEW_TOKENS=2048
 export LOCAL_TRUNCATION_SIDE=left
 export LOCAL_TOKENIZER_BUFFER_TOKENS=512
 export TOKENIZER_BUFFER_TOKENS=512
+export PROMPT_TRUNCATION_BUFFER=64
 
 # Qwen3-specific generation knobs (see local_backend.py Qwen3ChatWrapper).
 # Match the non-thinking sampling profile recommended by Qwen for Qwen3.
@@ -226,6 +229,8 @@ echo "  BATCH_SIZE=$BATCH_SIZE"
 echo "  HF_HOME=$HF_HOME"
 echo "  HF_DEVICE_MAP=$HF_DEVICE_MAP  HF_TORCH_DTYPE=$HF_TORCH_DTYPE"
 echo "  LOCAL_MAX_NEW_TOKENS=$LOCAL_MAX_NEW_TOKENS  QWEN3_MAX_NEW_TOKENS=$QWEN3_MAX_NEW_TOKENS"
+echo "  LOCAL_TRUNCATION_SIDE=$LOCAL_TRUNCATION_SIDE  PROMPT_TRUNCATION_BUFFER=$PROMPT_TRUNCATION_BUFFER"
+echo "  LOCAL_TOKENIZER_BUFFER_TOKENS=$LOCAL_TOKENIZER_BUFFER_TOKENS"
 echo "  QWEN3_ENABLE_THINKING=$QWEN3_ENABLE_THINKING  QWEN3_TEMPERATURE=$QWEN3_TEMPERATURE"
 
 ################################

@@ -173,6 +173,39 @@ def test_fit_determinism(monkeypatch):
     assert r1.to_dict()["actions"] == r2.to_dict()["actions"]
 
 
+def test_fit_local_qwen32_uses_real_budget_and_clips(monkeypatch):
+    """End-to-end fit against local:Qwen/Qwen3-32B MODEL_COSTS (no budget mock)."""
+    monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)
+    clear_degradations()
+    enc = FakeEncoder()
+    import src.agents.prompt_budget.fit as fit_mod
+
+    monkeypatch.setattr(fit_mod, "REPAIR_HEADROOM_TOKENS", 0)
+
+    # Build evidence far larger than the ~30.6k local budget.
+    huge = " ".join(f"x{i}" for i in range(80_000))
+    report = fit_global_ab_prompt(
+        template=JUDGE_TEMPLATE,
+        render="format",
+        paths=["big.py"],
+        summaries={"big.py": {"summary_a": huge, "summary_b": huge}},
+        diffs_a={"big.py": huge},
+        diffs_b={"big.py": huge},
+        encoder=enc,
+        model_name="local:Qwen/Qwen3-32B",
+        node="conflict_analyzer",
+    )
+    assert report.was_clipped
+    assert report.tokens_after <= 30_656
+    assert report.budget_tokens == 30_656
+    assert "Instructions stay forever" in report.prompt
+    assert "Return exactly one string" in report.prompt
+    assert not any(
+        e.get("category") == "prompt_truncation" and "wrapper_fallback" in str(e.get("detail", ""))
+        for e in get_degradations()
+    )
+
+
 def test_resolver_omits_feedback_before_patches(monkeypatch):
     monkeypatch.setenv("PROMPT_TRUNCATION_BUFFER", "0")
     clear_degradations()

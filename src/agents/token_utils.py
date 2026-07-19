@@ -186,12 +186,17 @@ def count_tokens(encoder: Optional[Any], text: str) -> int:  # noqa: D401
     if encoder is None:
         return len(text.split())
     if hasattr(encoder, "encode"):
-        ids = encoder.encode(text)  # type: ignore[attr-defined]
-        # HF tokenizers may return Encoding objects; prefer length of ids list.
         try:
-            return len(ids)
-        except TypeError:  # pragma: no cover
-            return len(list(ids))
+            ids = encoder.encode(text)  # type: ignore[attr-defined]
+            # HF tokenizers may return Encoding objects; prefer length of ids list.
+            try:
+                return len(ids)
+            except TypeError:  # pragma: no cover
+                return len(list(ids))
+        except Exception:
+            # Local HF tokenizers can OOM or reject pathological inputs; word
+            # count keeps TruncatingLLMWrapper / prompt_budget from crashing.
+            return len(text.split())
     return len(text.split())
 
 

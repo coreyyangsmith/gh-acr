@@ -212,10 +212,13 @@ export HF_DEVICE_MAP=auto
 export HF_TORCH_DTYPE=bf16
 
 # Truncation/context handling (native Qwen3 window is 32,768 tokens).
+# Shared prompt_budget + TruncatingLLMWrapper use MODEL_COSTS for
+# local:Qwen/Qwen3-32B (input≈30720, output=2048, total=32768) minus this buffer.
 export LOCAL_MAX_NEW_TOKENS=2048
 export LOCAL_TRUNCATION_SIDE=left
 export LOCAL_TOKENIZER_BUFFER_TOKENS=512
 export TOKENIZER_BUFFER_TOKENS=512
+export PROMPT_TRUNCATION_BUFFER=64
 
 # Qwen3 generation knobs (see local_backend.py Qwen3ChatWrapper).
 export QWEN3_ENABLE_THINKING=0
@@ -231,6 +234,7 @@ export TOKENIZERS_PARALLELISM=false
 export LOG_LEVEL=INFO
 
 echo "LLM configuration: INFERENCE_CONCURRENCY=$INFERENCE_CONCURRENCY HF_DEVICE_MAP=$HF_DEVICE_MAP HF_TORCH_DTYPE=$HF_TORCH_DTYPE"
+echo "  LOCAL_MAX_NEW_TOKENS=$LOCAL_MAX_NEW_TOKENS PROMPT_TRUNCATION_BUFFER=$PROMPT_TRUNCATION_BUFFER LOCAL_TRUNCATION_SIDE=$LOCAL_TRUNCATION_SIDE"
 
 ################################
 # 6) GPU diagnostics before run
