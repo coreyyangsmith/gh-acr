@@ -21,3 +21,5 @@ __pycache__/
 *.cursorignore
 
 *.zip
+
+!data/agent_coverage_gaps/*
