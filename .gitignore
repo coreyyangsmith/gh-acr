@@ -22,4 +22,4 @@ __pycache__/
 
 *.zip
 
-!data/agent_coverage_gaps/*
+!data/agent_coverage_gaps/
