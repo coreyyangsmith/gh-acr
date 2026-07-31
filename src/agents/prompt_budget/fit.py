@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Mapping, Optional, Sequence
 
 from ...utils.degradation import record_degradation
-from ..token_utils import count_tokens
+from ..token_utils import estimate_prompt_tokens
 from ..utils import render_template
 from .budget import allowed_prompt_tokens
 from .clip import head_tail_clip
@@ -111,7 +111,7 @@ def _allocate_targets(
     evidence_budget: int,
 ) -> dict[str, int]:
     """Return per-block token targets summing to <= evidence_budget."""
-    sizes = {b.block_id: count_tokens(encoder, b.text or "") for b in blocks}
+    sizes = {b.block_id: estimate_prompt_tokens(encoder, b.text or "") for b in blocks}
     total = sum(sizes.values())
     if evidence_budget <= 0:
         return {b.block_id: 0 for b in blocks}
@@ -204,7 +204,7 @@ def _apply_targets(
     actions: list[BlockFitAction] = []
     for b in blocks:
         target = int(targets.get(b.block_id, 0))
-        before = count_tokens(encoder, b.text or "")
+        before = estimate_prompt_tokens(encoder, b.text or "")
         if before <= target:
             actions.append(
                 BlockFitAction(
@@ -278,7 +278,7 @@ def _shrink_to_budget(
         actions = _apply_targets(blocks, targets, encoder=encoder)
         fitted_vars = {**dict(fixed_variables), **{a.block_id: a.text for a in actions}}
         prompt = _render_vars(template, render, fitted_vars)
-        tokens_after = count_tokens(encoder, prompt)
+        tokens_after = estimate_prompt_tokens(encoder, prompt)
         if tokens_after <= budget or working_budget <= 0:
             break
         # Reduce working evidence budget by the overrun (+small margin).
@@ -320,10 +320,12 @@ def fit_variable_blocks(
     budget = allowed_prompt_tokens(model_name, encoder=encoder)
     empty_vars = {**dict(fixed_variables), **{b.block_id: "" for b in blocks}}
     immutable_prompt = _render_vars(template, render, empty_vars)
-    immutable_tokens = count_tokens(encoder, immutable_prompt)
+    immutable_tokens = estimate_prompt_tokens(encoder, immutable_prompt)
 
     evidence_budget = max(0, budget - immutable_tokens - max(0, repair_headroom))
-    tokens_before_evidence = sum(count_tokens(encoder, b.text or "") for b in blocks)
+    tokens_before_evidence = sum(
+        estimate_prompt_tokens(encoder, b.text or "") for b in blocks
+    )
 
     actions, fitted_vars, prompt, tokens_after = _shrink_to_budget(
         template=template,
@@ -441,9 +443,11 @@ def fit_global_ab_prompt(
     budget = allowed_prompt_tokens(model_name, encoder=encoder)
     empty_vars = {"a_summary": "", "b_summary": "", "a_diff": "", "b_diff": ""}
     immutable_prompt = _render_vars(template, render, empty_vars)
-    immutable_tokens = count_tokens(encoder, immutable_prompt)
+    immutable_tokens = estimate_prompt_tokens(encoder, immutable_prompt)
     evidence_budget = max(0, budget - immutable_tokens - REPAIR_HEADROOM_TOKENS)
-    tokens_before_evidence = sum(count_tokens(encoder, b.text or "") for b in blocks)
+    tokens_before_evidence = sum(
+        estimate_prompt_tokens(encoder, b.text or "") for b in blocks
+    )
 
     working_budget = evidence_budget
     actions: list[BlockFitAction] = []
@@ -469,7 +473,7 @@ def fit_global_ab_prompt(
             "b_diff": _join("diff_b"),
         }
         prompt = _render_vars(template, render, variables)
-        tokens_after = count_tokens(encoder, prompt)
+        tokens_after = estimate_prompt_tokens(encoder, prompt)
         if tokens_after <= budget or working_budget <= 0:
             break
         working_budget = max(0, working_budget - (tokens_after - budget) - 4)

@@ -4,12 +4,16 @@ from __future__ import annotations
 
 import pytest
 
+from src.agents.token_utils import estimate_prompt_tokens
 from src.agents.truncation_wrapper import (
     DEFAULT_PROMPT_SAFETY_BUFFER,
     TruncatingLLMWrapper,
 )
 from src.utils.degradation import clear_degradations, get_degradations
 from tests.helpers import FakeEncoder, RecordingLLM
+
+OPENROUTER_SHARED_BUDGET = min(131_072, 131_072 - 16_384) - DEFAULT_PROMPT_SAFETY_BUFFER
+LOCAL_QWEN_BUDGET = min(30_720, 32_768 - 2_048) - DEFAULT_PROMPT_SAFETY_BUFFER
 
 
 def _words(n: int) -> str:
@@ -46,6 +50,7 @@ def test_left_truncation_keeps_tail(monkeypatch):
     assert truncated != prompt
     # Left truncation keeps the end of the token stream (synthetic tN ids)
     assert truncated.startswith("t")
+    assert estimate_prompt_tokens(enc, truncated) <= 20
     assert len(truncated.split()) == 20
 
 
@@ -64,6 +69,7 @@ def test_right_truncation_keeps_head(monkeypatch):
     assert truncated.startswith("t0")
     assert "t15" in truncated.split()
     assert "t100" not in truncated.split()
+    assert estimate_prompt_tokens(enc, truncated) <= 16
     assert len(truncated.split()) == 16
 
 
@@ -128,15 +134,15 @@ def test_ainvoke_truncates_string(monkeypatch):
     ],
 )
 def test_openrouter_shared_context_budget(model_name, monkeypatch):
-    """allowed = min(input, total - max_tokens) - buffer = 114624."""
+    """allowed = min(input, total - max_tokens) - buffer = 110592."""
     monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)
     wrapper = TruncatingLLMWrapper(
         RecordingLLM(), encoder=FakeEncoder(), model_name=model_name
     )
     allowed = wrapper._allowed_prompt_tokens(200_000)
-    expected = min(131_072, 131_072 - 16_384) - DEFAULT_PROMPT_SAFETY_BUFFER
+    expected = OPENROUTER_SHARED_BUDGET
     assert allowed == expected
-    assert allowed == 114_624
+    assert allowed == 110_592
 
 
 def test_local_qwen32_shared_context_budget(monkeypatch):
@@ -147,9 +153,9 @@ def test_local_qwen32_shared_context_budget(monkeypatch):
         model_name="local:Qwen/Qwen3-32B",
     )
     allowed = wrapper._allowed_prompt_tokens(200_000)
-    expected = min(30_720, 32_768 - 2_048) - DEFAULT_PROMPT_SAFETY_BUFFER
+    expected = LOCAL_QWEN_BUDGET
     assert allowed == expected
-    assert allowed == 30_656
+    assert allowed == 26_624
 
 
 def test_local_qwen32_truncates_over_budget_without_crash(monkeypatch):
@@ -159,19 +165,20 @@ def test_local_qwen32_truncates_over_budget_without_crash(monkeypatch):
     clear_degradations()
 
     inner = RecordingLLM()
+    enc = FakeEncoder()
     wrapper = TruncatingLLMWrapper(
         inner,
-        encoder=FakeEncoder(),
+        encoder=enc,
         model_name="local:Qwen/Qwen3-32B",
     )
-    budget = 30_656
+    budget = LOCAL_QWEN_BUDGET
     prompt = _words(budget + 5_000)
     # Must not raise even for large synthetic prompts.
     result = wrapper.invoke(prompt)
     assert result is not None
     truncated = inner.prompts[-1]
     assert isinstance(truncated, str)
-    assert len(truncated.split()) == budget
+    assert estimate_prompt_tokens(enc, truncated) <= budget
     events = get_degradations()
     assert events
     assert events[0]["category"] == "prompt_truncation"
@@ -179,8 +186,8 @@ def test_local_qwen32_truncates_over_budget_without_crash(monkeypatch):
     assert "model=local:Qwen/Qwen3-32B" in events[0]["detail"]
 
 
-def test_local_qwen32_encode_failure_falls_back_to_words(monkeypatch):
-    """If the HF tokenizer blows up, fall back to word clipping instead of crashing."""
+def test_local_qwen32_encode_failure_falls_back_to_chars(monkeypatch):
+    """If the HF tokenizer blows up, char clipping still enforces the budget."""
     monkeypatch.setenv("LOCAL_TRUNCATION_SIDE", "right")
     monkeypatch.setenv("PROMPT_TRUNCATION_BUFFER", "0")
     clear_degradations()
@@ -193,9 +200,10 @@ def test_local_qwen32_encode_failure_falls_back_to_words(monkeypatch):
             raise MemoryError("simulated tokenizer OOM")
 
     inner = RecordingLLM()
+    enc = BoomEncoder()
     wrapper = TruncatingLLMWrapper(
         inner,
-        encoder=BoomEncoder(),
+        encoder=enc,
         model_name="local:Qwen/Qwen3-32B",
     )
     # Force a tiny allowed budget so truncation path is taken.
@@ -203,7 +211,9 @@ def test_local_qwen32_encode_failure_falls_back_to_words(monkeypatch):
     prompt = _words(200)
     wrapper.invoke(prompt)
     truncated = inner.prompts[-1]
-    assert truncated == " ".join(f"w{i}" for i in range(12))
+    assert isinstance(truncated, str)
+    assert truncated != prompt
+    assert estimate_prompt_tokens(enc, truncated) <= 12
     assert get_degradations()
 
 
@@ -213,23 +223,85 @@ def test_openrouter_qwen_truncates_over_budget(monkeypatch):
     clear_degradations()
 
     inner = RecordingLLM()
+    enc = FakeEncoder()
     wrapper = TruncatingLLMWrapper(
         inner,
-        encoder=FakeEncoder(),
+        encoder=enc,
         model_name="openrouter/qwen/qwen3-32b",
     )
-    # FakeEncoder counts whitespace tokens; build a prompt over the ~114.6k cap.
-    budget = 114_624
+    budget = OPENROUTER_SHARED_BUDGET
     over = budget + 1_000
     prompt = _words(over)
     wrapper.invoke(prompt)
     truncated = inner.prompts[-1]
-    assert len(truncated.split()) == budget
+    assert estimate_prompt_tokens(enc, truncated) <= budget
     events = get_degradations()
     assert events
     assert events[0]["category"] == "prompt_truncation"
     assert "reserved_output=16384" in events[0]["detail"]
     assert f"buffer={DEFAULT_PROMPT_SAFETY_BUFFER}" in events[0]["detail"]
+
+
+def test_openrouter_llama_truncates_over_budget(monkeypatch):
+    monkeypatch.setenv("LOCAL_TRUNCATION_SIDE", "right")
+    monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)
+    clear_degradations()
+
+    inner = RecordingLLM()
+    enc = FakeEncoder()
+    wrapper = TruncatingLLMWrapper(
+        inner,
+        encoder=enc,
+        model_name="openrouter/meta-llama/llama-3.1-8b-instruct",
+    )
+    budget = OPENROUTER_SHARED_BUDGET
+    prompt = _words(budget + 2_000)
+    wrapper.invoke(prompt)
+    truncated = inner.prompts[-1]
+    assert estimate_prompt_tokens(enc, truncated) <= budget
+    cfg = wrapper._model_cfg()
+    assert (
+        estimate_prompt_tokens(enc, truncated) + int(cfg["output_limit"])
+        <= int(cfg["total_limit"])
+    )
+    assert get_degradations()
+
+
+def test_undercounting_encoder_still_truncates_via_chars4(monkeypatch):
+    """When HF reports far fewer tokens than chars/4, still clip to budget."""
+    monkeypatch.setenv("LOCAL_TRUNCATION_SIDE", "left")
+    monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)
+    clear_degradations()
+
+    class UndercountEncoder:
+        """Reports ~1 token per 20 chars (severe undercount vs chars/4)."""
+
+        def encode(self, text: str):
+            n = max(1, len(text) // 20) if text else 0
+            return list(range(n))
+
+        def decode(self, ids):
+            # Cannot reconstruct; force char-clip path after id attempt.
+            return "x" * max(1, len(ids) * 20)
+
+    inner = RecordingLLM()
+    enc = UndercountEncoder()
+    wrapper = TruncatingLLMWrapper(
+        inner,
+        encoder=enc,
+        model_name="openrouter/meta-llama/llama-3.1-8b-instruct",
+    )
+    budget = OPENROUTER_SHARED_BUDGET
+    # Dense text: chars/4 >> undercount encode length; must still truncate.
+    prompt = "a" * ((budget + 5_000) * 4)
+    assert estimate_prompt_tokens(enc, prompt) > budget
+    wrapper.invoke(prompt)
+    truncated = inner.prompts[-1]
+    assert isinstance(truncated, str)
+    assert estimate_prompt_tokens(enc, truncated) <= budget
+    events = get_degradations()
+    assert events
+    assert events[0]["category"] == "prompt_truncation"
 
 
 def test_input_limit_only_budget(monkeypatch):
@@ -258,5 +330,5 @@ def test_gpt5nano_budget_uses_min_of_input_and_shared(monkeypatch):
         encoder=FakeEncoder(),
         model_name="openrouter/openai/gpt-5-nano",
     )
-    # min(400000, 528000-128000) - 64 = 399936
+    # min(400000, 528000-128000) - 4096 = 395904
     assert wrapper._allowed_prompt_tokens(10) == 400_000 - DEFAULT_PROMPT_SAFETY_BUFFER

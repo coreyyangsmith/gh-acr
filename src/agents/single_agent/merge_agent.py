@@ -28,15 +28,11 @@ from ..artifact_io import (
     write_agent_call,
     write_final_artifacts,
 )
+from ..prompt_budget import EvidenceBlock, fit_variable_blocks
 from ...utils.degradation import record_degradation
 from ...utils.run_progress import set_stage
 
 load_dotenv()
-
-try:
-    from langchain_openai import ChatOpenAI  # type: ignore
-except ImportError:  # pragma: no cover – fallback for minimal installs
-    from langchain_community.chat_models import ChatOpenAI  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +85,11 @@ def _get_runnable(model_name: str):  # noqa: D401
         _RUNNABLE_CACHE[model_name] = (None, None)  # type: ignore
         return _RUNNABLE_CACHE[model_name]
 
+    try:
+        from langchain_openai import ChatOpenAI  # type: ignore
+    except ImportError:  # pragma: no cover – fallback for minimal installs
+        from langchain_community.chat_models import ChatOpenAI  # type: ignore
+
     # Omit temperature for GPT-5 variants which do not support it
     if model_name.split("/", 1)[-1].startswith("gpt-5"):
         llm = ChatOpenAI(api_key=_OPENAI_API_KEY, model=model_name)  # type: ignore[call-arg]
@@ -108,13 +109,6 @@ def _count_tokens(encoder, text: str) -> int:  # noqa: D401
 # ---------------------------------------------------------------------------
 
 FileContents = Dict[str, str]
-
-# ---------------------------------------------------------------------------
-# Public LangGraph node
-# ---------------------------------------------------------------------------
-import logging
-
-logger = logging.getLogger(__name__)
 
 
 def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noqa: D401
@@ -203,25 +197,55 @@ def resolve_conflict_agent_node(state: Dict[str, Any]) -> Dict[str, Any]:  # noq
         }
         logger.debug("Token usage for %s: %s", path, pre_token_usage)
 
-        # Build prompt via simple string formatting to avoid templating engines
-        prompt_text = (
-            _PROMPT_STR
-            .replace("{file_path}", path)
-            .replace("{original}", original_text)
-            .replace("{diff_a}", diff_a_text)
-            .replace("{diff_b}", diff_b_text)
+        # Structure-aware fit: keep instructions + file path; clip evidence.
+        fit = fit_variable_blocks(
+            template=_PROMPT_STR,
+            render="format",
+            fixed_variables={"file_path": path},
+            blocks=[
+                EvidenceBlock(
+                    block_id="original",
+                    text=original_text,
+                    kind="context",
+                    file_path=path,
+                    priority=20,
+                ),
+                EvidenceBlock(
+                    block_id="diff_a",
+                    text=diff_a_text,
+                    side="A",
+                    kind="diff",
+                    file_path=path,
+                    priority=30,
+                ),
+                EvidenceBlock(
+                    block_id="diff_b",
+                    text=diff_b_text,
+                    side="B",
+                    kind="diff",
+                    file_path=path,
+                    priority=30,
+                ),
+            ],
+            encoder=encoder,
+            model_name=model_name,
+            node="resolve_conflict_agent",
+            file_path=path,
         )
+        prompt_text = fit.prompt
 
         call_dir = agent_call_dir(
             artifact_root,
             agent="agent",
             file_slug=file_path_to_slug(path),
         )
-        supporting = {
+        supporting: Dict[str, str] = {
             "original.txt": original_text,
             "a.diff": diff_a_text,
             "b.diff": diff_b_text,
         }
+        if fit.was_clipped:
+            supporting["truncation_report.json"] = fit.artifact_json()
 
         logger.debug("Invoking LLM for file: %s", path)
         result = resilient_invoke(

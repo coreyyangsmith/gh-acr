@@ -23,10 +23,16 @@ from typing import Any, Optional, Tuple
 from ...config.model_costs import MODEL_COSTS
 from ..token_utils import resolve_encoder
 from .base import BaseLLMHandler
+from .request_timeout import resolve_llm_request_timeout
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
+
+def resolve_openrouter_request_timeout() -> float:
+    """Return OpenRouter HTTP timeout seconds (env-overridable)."""
+    return resolve_llm_request_timeout(specific_env="OPENROUTER_REQUEST_TIMEOUT")
 
 # Prefer Groq when OPENROUTER_PROVIDER* is unset; allow_fallbacks=True so
 # other full-precision / unknown hosts remain usable if Groq is unavailable.
@@ -219,11 +225,13 @@ class OpenRouterHandler(BaseLLMHandler):
         )
         max_out = int(model_cfg.get("output_limit", 0))
 
+        request_timeout = resolve_openrouter_request_timeout()
         common_kwargs: dict[str, Any] = dict(
             api_key=api_key,
             base_url=base_url,
             model=backend_name,
             temperature=0,
+            timeout=request_timeout,
         )
         if default_headers:
             common_kwargs["default_headers"] = default_headers
@@ -248,10 +256,12 @@ class OpenRouterHandler(BaseLLMHandler):
         # Native HF tokenizers for qwen/llama; tiktoken for OpenAI-family models.
         enc = resolve_encoder(model_name)
         logger.info(
-            "[openrouter] Initialized model=%s base_url=%s tokenizer=%s",
+            "[openrouter] Initialized model=%s base_url=%s tokenizer=%s "
+            "timeout=%.1fs",
             backend_name,
             base_url,
             type(enc).__name__ if enc is not None else None,
+            request_timeout,
         )
         return enc, raw_llm
 
@@ -262,6 +272,7 @@ __all__ = [
     "DEFAULT_OPENROUTER_PROVIDER_ORDER",
     "DEFAULT_OPENROUTER_QUANTIZATIONS",
     "openrouter_model_family",
+    "resolve_openrouter_request_timeout",
     "resolve_provider_routing",
     "resolve_provider_preferences",
     "resolve_quantizations",

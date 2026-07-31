@@ -104,7 +104,17 @@ def _safe_slug(value: Any, *, max_len: int = 80) -> str:
 
 def is_retryable_error(error: BaseException) -> bool:
     """Classify whether an LLM exception should be retried."""
+    # Soft-skip / watchdog budget: never retry.
+    try:
+        from src.utils.run_heartbeat import WatchdogTimeout
+
+        if isinstance(error, WatchdogTimeout):
+            return False
+    except Exception:
+        pass
     name = type(error).__name__.lower()
+    if "watchdogtimeout" in name:
+        return False
     msg = str(error).lower()
     combined = f"{name} {msg}"
 
@@ -137,6 +147,26 @@ def is_retryable_error(error: BaseException) -> bool:
     return any(p in combined for p in _RETRYABLE_PATTERNS)
 
 
+def _unit_cancelled_error(ctx: dict[str, Any]) -> BaseException | None:
+    """Return WatchdogTimeout if the scenario×method was soft-skipped."""
+    try:
+        from src.utils.run_heartbeat import (
+            WatchdogTimeout,
+            cancelled_unit_reason,
+            is_unit_cancelled,
+        )
+    except Exception:
+        return None
+    scenario = ctx.get("scenario_id")
+    method = ctx.get("eval_method")
+    if not is_unit_cancelled(scenario, method):
+        return None
+    reason = cancelled_unit_reason(scenario, method) or "watchdog soft-skip"
+    return WatchdogTimeout(
+        f"unit cancelled scenario={scenario} method={method}: {reason}"
+    )
+
+
 def _extract_response_text(result: Any) -> str:
     if result is None:
         return ""
@@ -151,14 +181,80 @@ def _get_limiter(model_name: str | None):
         return None
     try:
         limits = get_limits_for_model(model_name)
+        rpd = limits.get("requests_per_day")
+        tpd = limits.get("tokens_per_day")
         return LimiterRegistry.get(
             key=model_name,
             rpm=int(limits.get("requests_per_minute", 60)),
             tpm=int(limits.get("tokens_per_minute", 150000)),
             backoff=BACKOFF_SETTINGS,
+            rpd=int(rpd) if rpd is not None else None,
+            tpd=int(tpd) if tpd is not None else None,
         )
     except Exception:
         return None
+
+
+def extract_retry_after_seconds(error: BaseException) -> float | None:
+    """Best-effort extraction of a provider ``Retry-After`` delay in seconds.
+
+    Looks at common exception attributes (``retry_after``, ``headers``,
+    ``response.headers``) and message text like ``retry-after: 2`` / ``try again
+    in 2s``.
+    """
+    # Direct attribute
+    for attr in ("retry_after", "retry_after_s", "retry_after_seconds"):
+        val = getattr(error, attr, None)
+        if val is not None:
+            try:
+                delay = float(val)
+                if delay >= 0:
+                    return delay
+            except (TypeError, ValueError):
+                pass
+
+    # Headers on the exception or nested response
+    headers = getattr(error, "headers", None)
+    if headers is None:
+        resp = getattr(error, "response", None)
+        headers = getattr(resp, "headers", None) if resp is not None else None
+    if headers is not None:
+        try:
+            raw = None
+            if hasattr(headers, "get"):
+                raw = headers.get("Retry-After") or headers.get("retry-after")
+            elif isinstance(headers, dict):
+                raw = headers.get("Retry-After") or headers.get("retry-after")
+            if raw is not None:
+                delay = float(raw)
+                if delay >= 0:
+                    return delay
+        except (TypeError, ValueError):
+            pass
+
+    # Message heuristics
+    msg = str(error)
+    match = re.search(
+        r"retry[- ]after[=:\s]+(\d+(?:\.\d+)?)",
+        msg,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            pass
+    match = re.search(
+        r"try again in\s+(\d+(?:\.\d+)?)\s*(s|sec|seconds)?",
+        msg,
+        flags=re.IGNORECASE,
+    )
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            pass
+    return None
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> Path:
@@ -398,10 +494,35 @@ def resilient_invoke(
     last_error: BaseException | None = None
     last_response: str | None = None
     last_latency: float | None = None
+    call_id = (
+        str(ctx.get("call_id") or "")
+        or f"{ctx.get('node')}:{ctx.get('scenario_id')}:{ctx.get('file_path')}:{id(prompt_text)}"
+    )
 
     try:
         # attempts = initial try + retries
         for attempt in range(1, retries + 2):
+            cancel_err = _unit_cancelled_error(ctx)
+            if cancel_err is not None:
+                last_error = cancel_err
+                attempt_log.append(
+                    {
+                        "attempt": attempt,
+                        "status": "cancelled",
+                        "error_type": type(cancel_err).__name__,
+                        "error_message": str(cancel_err),
+                        "retryable": False,
+                    }
+                )
+                logger.warning(
+                    "[resilient_invoke] unit cancelled; failing fast "
+                    "node=%s scenario=%s method=%s",
+                    ctx.get("node"),
+                    ctx.get("scenario_id"),
+                    ctx.get("eval_method"),
+                )
+                break
+
             t0 = time.perf_counter()
             try:
                 logger.info(
@@ -413,6 +534,19 @@ def resilient_invoke(
                     ctx.get("file_path"),
                     model_name,
                 )
+                try:
+                    from src.utils.run_heartbeat import register_active_llm_call
+
+                    register_active_llm_call(
+                        call_id,
+                        node=ctx.get("node"),
+                        scenario_id=ctx.get("scenario_id"),
+                        file_path=ctx.get("file_path"),
+                        model_name=model_name,
+                        attempt=attempt,
+                    )
+                except Exception:
+                    pass
                 result = llm.invoke(prompt_text)
                 latency = time.perf_counter() - t0
                 last_latency = latency
@@ -453,6 +587,30 @@ def resilient_invoke(
                 latency = time.perf_counter() - t0
                 last_latency = latency
                 last_error = exc
+                # Soft-skip during a hung call: prefer cancel over retrying timeout.
+                cancel_err = _unit_cancelled_error(ctx)
+                if cancel_err is not None:
+                    last_error = cancel_err
+                    attempt_log.append(
+                        {
+                            "attempt": attempt,
+                            "status": "cancelled",
+                            "latency_s": round(latency, 4),
+                            "error_type": type(cancel_err).__name__,
+                            "error_message": str(cancel_err),
+                            "underlying_error_type": type(exc).__name__,
+                            "underlying_error_message": str(exc),
+                            "retryable": False,
+                        }
+                    )
+                    logger.warning(
+                        "[resilient_invoke] unit cancelled after error; failing fast "
+                        "(%s): %s",
+                        type(exc).__name__,
+                        exc,
+                    )
+                    break
+
                 attempt_log.append(
                     {
                         "attempt": attempt,
@@ -473,16 +631,47 @@ def resilient_invoke(
                 if not is_retryable_error(exc) or attempt > retries:
                     break
 
+                # Soft-skip may have landed while the call was in flight / after
+                # timeout — do not burn another full request timeout on retry.
+                cancel_err = _unit_cancelled_error(ctx)
+                if cancel_err is not None:
+                    last_error = cancel_err
+                    attempt_log[-1]["status"] = "cancelled"
+                    attempt_log[-1]["retryable"] = False
+                    attempt_log[-1]["error_type"] = type(cancel_err).__name__
+                    attempt_log[-1]["error_message"] = str(cancel_err)
+                    break
+
+                retry_after = extract_retry_after_seconds(exc)
+                reason = (
+                    f"retry-after={retry_after:.2f}s"
+                    if retry_after is not None
+                    else "exponential_backoff"
+                )
                 # Back off before the next attempt
                 if limiter is not None:
-                    delay = limiter.backoff_sleep(attempt)
+                    delay = limiter.backoff_sleep(attempt, retry_after_s=retry_after)
                 else:
-                    base = float(BACKOFF_SETTINGS.get("initial_delay", 0.5))
-                    mult = float(BACKOFF_SETTINGS.get("multiplier", 2.0))
-                    max_delay = float(BACKOFF_SETTINGS.get("max_delay", 20.0))
-                    delay = min(max_delay, base * (mult ** max(0, attempt - 1)))
+                    if retry_after is not None and retry_after > 0:
+                        delay = float(retry_after)
+                    else:
+                        base = float(BACKOFF_SETTINGS.get("initial_delay", 0.5))
+                        mult = float(BACKOFF_SETTINGS.get("multiplier", 2.0))
+                        max_delay = float(BACKOFF_SETTINGS.get("max_delay", 20.0))
+                        delay = min(max_delay, base * (mult ** max(0, attempt - 1)))
                     time.sleep(delay)
-                logger.info("[resilient_invoke] backing off %.2fs before retry", delay)
+                attempt_log[-1]["retry_delay_s"] = round(delay, 4)
+                attempt_log[-1]["retry_reason"] = reason
+                logger.info(
+                    "[resilient_invoke] backing off %.2fs before retry "
+                    "(attempt=%d/%d reason=%s elapsed=%.2fs node=%s)",
+                    delay,
+                    attempt,
+                    retries + 1,
+                    reason,
+                    latency,
+                    ctx.get("node"),
+                )
 
         assert last_error is not None
         trace_path = write_failure_trace(
@@ -517,6 +706,12 @@ def resilient_invoke(
             pass
         raise last_error
     finally:
+        try:
+            from src.utils.run_heartbeat import unregister_active_llm_call
+
+            unregister_active_llm_call(call_id)
+        except Exception:
+            pass
         if _clear_node is not None:
             try:
                 _clear_node()
@@ -643,6 +838,7 @@ __all__ = [
     "resilient_invoke",
     "invoke_and_parse",
     "is_retryable_error",
+    "extract_retry_after_seconds",
     "write_failure_trace",
     "ParseExhausted",
     "ParsedResult",

@@ -82,6 +82,12 @@ def _run_kwargs(**overrides):
         method_concurrency=1,
         resume=False,
         trace_replay=False,
+        watchdog=False,
+        watchdog_stale_s=None,
+        watchdog_max_unit_s=None,
+        watchdog_max_llm_s=None,
+        watchdog_max_prep_s=None,
+        watchdog_mode="skip",
     )
     base.update(overrides)
     return base
@@ -804,3 +810,54 @@ def test_run_all_does_not_delete_clones(
             )
         )
         assert rmtree.call_count == 0
+
+
+def test_run_all_prep_timeout_records_failures(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """Slow ensure_prepared is cut by watchdog_max_prep_s; methods get timeout failures."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
+    df = pd.DataFrame([{"id": "s1", "name": "o/r1", "difficulty": "easy"}])
+    report_calls: list[tuple[str, str]] = []
+
+    def _slow_prep(scenario_id, sample_row=None):
+        import time
+
+        time.sleep(2.0)
+        return _fake_prepared(scenario_id, sample_row)
+
+    async def _fake_report(app, scenario_id, output_root, **kwargs):
+        method = kwargs.get("eval_method", "base_a")
+        report_calls.append((str(scenario_id), method))
+        return [_result_row(str(scenario_id), method)]
+
+    with patch.object(run_all_mod, "load_benchmark", return_value=df), patch.object(
+        run_all_mod, "build_graph", return_value=MagicMock()
+    ), patch.object(run_all_mod, "run_and_save_report", side_effect=_fake_report), patch.object(
+        run_all_mod, "ensure_prepared", side_effect=_slow_prep
+    ), patch.object(run_all_mod, "BATCH_SIZE", 10):
+        asyncio.run(
+            run_all_mod._run_all(
+                **_run_kwargs(
+                    methods=["agent", "base_a"],
+                    results_filename="prep_timeout.csv",
+                    concurrency=1,
+                    watchdog_max_prep_s=0.2,
+                )
+            )
+        )
+
+    assert report_calls == []
+    ledger_path = tmp_path / "data" / "prep_timeout_run_log.jsonl"
+    assert ledger_path.exists()
+    events = [
+        json.loads(line)
+        for line in ledger_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    failures = [e for e in events if e.get("status") == "failure"]
+    assert len(failures) == 2
+    assert {e.get("eval_method") for e in failures} == {"agent", "base_a"}
+    assert all(e.get("failure_category") == "timeout" for e in failures)

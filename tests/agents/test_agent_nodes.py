@@ -30,6 +30,63 @@ def test_single_agent_fallback_without_llm(synthetic_agent_state):
     assert out["resolved_contents"] == synthetic_agent_state["parent_a_contents"]
 
 
+def test_single_agent_huge_inputs_budgeted_with_truncation_report(
+    synthetic_agent_state, tmp_path, monkeypatch
+):
+    """Single-agent path fits evidence; over-budget prompts write truncation_report."""
+    from src.utils.degradation import clear_degradations, get_degradations
+    import src.agents.prompt_budget.fit as fit_mod
+
+    clear_degradations()
+    monkeypatch.setenv("PROMPT_TRUNCATION_BUFFER", "0")
+    monkeypatch.setattr(fit_mod, "allowed_prompt_tokens", lambda *a, **k: 80)
+    monkeypatch.setattr(fit_mod, "REPAIR_HEADROOM_TOKENS", 0)
+
+    from src.agents.single_agent.merge_agent import resolve_conflict_agent_node
+
+    huge = " ".join(f"code{i}" for i in range(300))
+    synthetic_agent_state["artifact_root"] = str(tmp_path / "agent_arts")
+    synthetic_agent_state["model_name"] = "openrouter/meta-llama/llama-3.1-8b-instruct"
+    synthetic_agent_state["ancestor_contents"] = {"src/main.py": huge}
+    synthetic_agent_state["diffs_a"] = {"src/main.py": huge}
+    synthetic_agent_state["diffs_b"] = {"src/main.py": huge}
+    synthetic_agent_state["parent_a_contents"] = {"src/main.py": huge}
+    synthetic_agent_state["parent_b_contents"] = {"src/main.py": huge}
+
+    llm = RecordingLLM()
+
+    def _invoke(prompt, config=None):
+        llm.prompts.append(prompt)
+        return type("Msg", (), {"content": "merged = True\n"})()
+
+    llm.invoke = _invoke  # type: ignore[method-assign]
+
+    with patch(
+        "src.agents.single_agent.merge_agent.get_backend",
+        return_value=(FakeEncoder(), llm),
+    ):
+        out = resolve_conflict_agent_node(synthetic_agent_state)
+
+    assert out["status"] == "resolved_agent"
+    assert llm.prompts
+    assert "Output ONLY the merged file content" in llm.prompts[0]
+    assert "src/main.py" in llm.prompts[0]
+    events = get_degradations()
+    assert any(e["category"] == "prompt_truncation" for e in events)
+    reports = list((tmp_path / "agent_arts").rglob("truncation_report.json"))
+    assert reports, "expected truncation_report.json from single-agent fit"
+    import json
+    from pathlib import Path
+
+    data = json.loads(Path(reports[0]).read_text(encoding="utf-8"))
+    assert data["was_clipped"] is True
+    assert data["node"] == "resolve_conflict_agent"
+    # Wrapper should not need to fire when structured fit already clipped.
+    assert not any(
+        "wrapper_fallback" in str(e.get("detail", "")) for e in events
+    )
+
+
 def test_summarizer_node_with_llm(synthetic_agent_state, mock_get_backend):
     from src.agents.multi_agent.nodes import create_summarizer_node
 

@@ -177,3 +177,55 @@ def test_local_qwen32_analyzer_over_budget_does_not_crash(tmp_path, monkeypatch)
     assert detail["truncation_mode"] == "structured"
     assert detail["model_name"] == "local:Qwen/Qwen3-32B"
     assert detail["was_clipped"] is True
+
+
+def test_summarizer_over_budget_keeps_schema_and_records_artifact(tmp_path, monkeypatch):
+    clear_degradations()
+    monkeypatch.setenv("PROMPT_TRUNCATION_BUFFER", "0")
+
+    from src.agents.multi_agent.nodes import create_summarizer_node
+    import src.agents.prompt_budget.fit as fit_mod
+
+    monkeypatch.setattr(fit_mod, "allowed_prompt_tokens", lambda *a, **k: 200)
+    monkeypatch.setattr(fit_mod, "REPAIR_HEADROOM_TOKENS", 0)
+
+    huge = " ".join(f"line{i}" for i in range(400))
+    state = {
+        "scenario_id": "sum-s1",
+        "eval_method": "better_judge",
+        "model_name": "openrouter/meta-llama/llama-3.1-8b-instruct",
+        "artifact_root": str(tmp_path / "arts_sum"),
+        "ancestor_contents": {"gef.py": huge},
+        "diffs_a": {"gef.py": huge},
+        "diffs_b": {"gef.py": huge},
+        "sample_row": {"scenario_json": {"files_in_merge_conflict": ["gef.py"]}},
+    }
+
+    llm = RecordingLLM()
+
+    def _invoke(prompt, config=None):
+        llm.prompts.append(prompt)
+        return type("Msg", (), {"content": '{"changes":[],"likely_intent":"x"}'})()
+
+    llm.invoke = _invoke  # type: ignore[method-assign]
+
+    with patch(
+        "src.agents.multi_agent.nodes.get_backend",
+        return_value=(FakeEncoder(), llm),
+    ):
+        out = create_summarizer_node("better_judge")(state)
+
+    assert out["status"] == "summarised"
+    assert llm.prompts
+    # Schema / instructions survive structured fit.
+    assert "Diff Summarizer" in llm.prompts[0] or "Schema Specification" in llm.prompts[0]
+    assert "likely_intent" in llm.prompts[0]
+    events = get_degradations()
+    assert any(e["category"] == "prompt_truncation" for e in events)
+    art_root = tmp_path / "arts_sum"
+    reports = list(art_root.rglob("truncation_report.json"))
+    assert reports, f"expected truncation_report under {art_root}"
+    data = json.loads(reports[0].read_text(encoding="utf-8"))
+    assert data["was_clipped"] is True
+    assert data["truncation_mode"] == "structured"
+    assert data["node"] == "summarizer_agent"

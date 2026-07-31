@@ -11,7 +11,7 @@ so concurrent workers are not paced by the local token bucket.
 Configuration Levels
 --------------------
 1. **BACKOFF_SETTINGS**: Retry behavior for transient errors
-2. **MODEL_RATE_LIMITS**: Per-model RPM/TPM limits
+2. **MODEL_RATE_LIMITS**: Per-model RPM/TPM (and optional RPD/TPD) limits
 3. **Default limits**: Fallback for unlisted models
 
 Environment Variables
@@ -30,10 +30,14 @@ Default Limits:
 
 Model-Specific Overrides:
 - RL_RPM_GPT41_NANO, RL_TPM_GPT41_NANO, etc.
+- RL_RPM_GROQ_LLAMA31_8B, RL_TPM_GROQ_LLAMA31_8B,
+  RL_RPD_GROQ_LLAMA31_8B, RL_TPD_GROQ_LLAMA31_8B
 
 Recommended values for concurrent hosted-API runs (tune to your account tier):
 - OpenAI Tier 1 gpt-4o-mini: ~500 RPM / ~200k TPM → set RL_RPM_GPT4O_MINI=400, RL_TPM_GPT4O_MINI=180000
 - OpenAI Tier 3+ gpt-4o-mini: often 5000+ RPM / 2M+ TPM → raise accordingly
+- Groq llama-3.1-8b-instant (published): 30 RPM / 6K TPM / 14.4K RPD / 500K TPD
+  → defaults below are ~90% of published ceilings; enable ``RL_ENABLE_WAITING=1``
 - Unlisted models: set RL_DEFAULT_RPM / RL_DEFAULT_TPM above your planned concurrency
 
 Example Usage
@@ -93,6 +97,14 @@ how many input tokens can be used.
 # Per-Model Rate Limits
 # -----------------------------------------------------------------------------
 
+# Groq published ceilings for llama-3.1-8b-instant (developer tier docs):
+#   RPM=30, RPD=14400, TPM=6000, TPD=500000
+# Soft defaults keep ~10% headroom to reduce 429s under concurrency.
+_GROQ_LLAMA31_8B_PUBLISHED_RPM = 30
+_GROQ_LLAMA31_8B_PUBLISHED_TPM = 6000
+_GROQ_LLAMA31_8B_PUBLISHED_RPD = 14400
+_GROQ_LLAMA31_8B_PUBLISHED_TPD = 500000
+
 MODEL_RATE_LIMITS: Dict[str, Dict[str, Any]] = {
     "openai/gpt-4.1-nano-2025-04-14": {
         "requests_per_minute": int(os.getenv("RL_RPM_GPT41_NANO", "120")),
@@ -107,6 +119,29 @@ MODEL_RATE_LIMITS: Dict[str, Dict[str, Any]] = {
         "tokens_per_minute": int(os.getenv("RL_TPM_GPT4O_MINI", "180000")),
         "expected_output_ratio": float(os.getenv("RL_OUTRATIO_GPT4O_MINI", str(EXPECTED_OUTPUT_RATIO_DEFAULT))),
     },
+    "groq:llama-3.1-8b-instant": {
+        # Soft caps ~90% of Groq published developer-tier ceilings.
+        # Source: https://console.groq.com/docs/rate-limits
+        "requests_per_minute": int(
+            os.getenv("RL_RPM_GROQ_LLAMA31_8B", str(int(_GROQ_LLAMA31_8B_PUBLISHED_RPM * 0.9)))
+        ),
+        "tokens_per_minute": int(
+            os.getenv("RL_TPM_GROQ_LLAMA31_8B", str(int(_GROQ_LLAMA31_8B_PUBLISHED_TPM * 0.9)))
+        ),
+        "requests_per_day": int(
+            os.getenv("RL_RPD_GROQ_LLAMA31_8B", str(_GROQ_LLAMA31_8B_PUBLISHED_RPD))
+        ),
+        "tokens_per_day": int(
+            os.getenv("RL_TPD_GROQ_LLAMA31_8B", str(_GROQ_LLAMA31_8B_PUBLISHED_TPD))
+        ),
+        "expected_output_ratio": float(
+            os.getenv("RL_OUTRATIO_GROQ_LLAMA31_8B", str(EXPECTED_OUTPUT_RATIO_DEFAULT))
+        ),
+        "published_requests_per_minute": _GROQ_LLAMA31_8B_PUBLISHED_RPM,
+        "published_tokens_per_minute": _GROQ_LLAMA31_8B_PUBLISHED_TPM,
+        "published_requests_per_day": _GROQ_LLAMA31_8B_PUBLISHED_RPD,
+        "published_tokens_per_day": _GROQ_LLAMA31_8B_PUBLISHED_TPD,
+    },
 }
 """Per-model rate limit configurations.
 
@@ -120,7 +155,7 @@ def get_limits_for_model(model_name: str) -> Dict[str, Any]:
     """Return per-minute RPM/TPM limits for a model, with sane defaults.
 
     The lookup is performed on the fully qualified model key used elsewhere
-    in the codebase (e.g., "openai/<name>").
+    in the codebase (e.g., "openai/<name>" or "groq:<model>").
 
     Parameters
     ----------
@@ -130,10 +165,13 @@ def get_limits_for_model(model_name: str) -> Dict[str, Any]:
     Returns
     -------
     Dict[str, Any]
-        A dict containing:
+        A dict containing at least:
         - requests_per_minute: int
         - tokens_per_minute: int
         - expected_output_ratio: float
+        Optional daily quotas when configured:
+        - requests_per_day: int
+        - tokens_per_day: int
 
     Examples
     --------

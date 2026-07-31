@@ -106,3 +106,177 @@ def test_classify_failure_credits():
         == "credits"
     )
     assert classify_failure(RuntimeError("payment required")) == "credits"
+
+
+def test_extract_retry_after_from_attribute():
+    from src.agents.resilient_invoke import extract_retry_after_seconds
+
+    err = RuntimeError("rate limited")
+    err.retry_after_s = 3.5  # type: ignore[attr-defined]
+    assert extract_retry_after_seconds(err) == 3.5
+
+
+def test_extract_retry_after_from_headers():
+    from src.agents.resilient_invoke import extract_retry_after_seconds
+
+    class Err(Exception):
+        def __init__(self):
+            super().__init__("429")
+            self.status_code = 429
+            self.headers = {"Retry-After": "2"}
+
+    assert extract_retry_after_seconds(Err()) == 2.0
+
+
+def test_extract_retry_after_from_message():
+    from src.agents.resilient_invoke import extract_retry_after_seconds
+
+    err = RuntimeError("Error 429: retry-after: 7")
+    assert extract_retry_after_seconds(err) == 7.0
+
+
+def test_resilient_invoke_uses_retry_after(monkeypatch, tmp_path):
+    from src.agents import resilient_invoke as ri
+
+    class RateLimitedThenOk:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, prompt: str):
+            self.calls += 1
+            if self.calls == 1:
+                err = RuntimeError("Error code: 429 - rate limit")
+                err.status_code = 429  # type: ignore[attr-defined]
+                err.headers = {"Retry-After": "1.25"}  # type: ignore[attr-defined]
+                raise err
+            return SimpleNamespace(content="ok")
+
+    sleeps: list[float] = []
+
+    def fake_sleep(seconds: float):
+        sleeps.append(float(seconds))
+
+    monkeypatch.setattr(ri.time, "sleep", fake_sleep)
+    # Avoid writing failure traces under repo logs/
+    monkeypatch.setattr(ri, "_FAILURES_DIR", tmp_path)
+
+    llm = RateLimitedThenOk()
+    result = ri.resilient_invoke(
+        llm,
+        "prompt",
+        context={"model_name": None, "node": "test"},
+        max_retries=2,
+    )
+    assert result.content == "ok"
+    assert llm.calls == 2
+    assert sleeps == [1.25]
+
+
+def test_resilient_invoke_cancelled_fails_fast(monkeypatch, tmp_path):
+    from src.agents import resilient_invoke as ri
+    from src.utils.run_heartbeat import (
+        WatchdogTimeout,
+        clear_cancelled_units,
+        mark_unit_cancelled,
+    )
+
+    clear_cancelled_units()
+    mark_unit_cancelled("scen-1", "agent", reason="watchdog soft-skip")
+
+    class NeverCall:
+        def invoke(self, prompt: str):
+            raise AssertionError("should not invoke when already cancelled")
+
+    monkeypatch.setattr(ri, "_FAILURES_DIR", tmp_path)
+    with pytest.raises(WatchdogTimeout):
+        ri.resilient_invoke(
+            NeverCall(),
+            "prompt",
+            context={
+                "model_name": None,
+                "node": "test",
+                "scenario_id": "scen-1",
+                "eval_method": "agent",
+            },
+            max_retries=5,
+        )
+    clear_cancelled_units()
+
+
+def test_resilient_invoke_timeout_then_cancel_skips_retry(monkeypatch, tmp_path):
+    from src.agents import resilient_invoke as ri
+    from src.utils.run_heartbeat import (
+        WatchdogTimeout,
+        clear_cancelled_units,
+        mark_unit_cancelled,
+    )
+
+    clear_cancelled_units()
+    sleeps: list[float] = []
+    monkeypatch.setattr(ri.time, "sleep", lambda s: sleeps.append(float(s)))
+    monkeypatch.setattr(ri, "_FAILURES_DIR", tmp_path)
+
+    class TimeoutOnce:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, prompt: str):
+            self.calls += 1
+            mark_unit_cancelled("scen-2", "agent", reason="llm overtime")
+            err = TimeoutError("request timed out")
+            err.status_code = 408  # type: ignore[attr-defined]
+            raise err
+
+    llm = TimeoutOnce()
+    with pytest.raises(WatchdogTimeout):
+        ri.resilient_invoke(
+            llm,
+            "prompt",
+            context={
+                "model_name": None,
+                "node": "test",
+                "scenario_id": "scen-2",
+                "eval_method": "agent",
+            },
+            max_retries=5,
+        )
+    assert llm.calls == 1
+    assert sleeps == []
+    clear_cancelled_units()
+
+
+def test_resilient_invoke_timeout_without_cancel_may_retry(monkeypatch, tmp_path):
+    from src.agents import resilient_invoke as ri
+    from src.utils.run_heartbeat import clear_cancelled_units
+
+    clear_cancelled_units()
+    sleeps: list[float] = []
+    monkeypatch.setattr(ri.time, "sleep", lambda s: sleeps.append(float(s)))
+    monkeypatch.setattr(ri, "_FAILURES_DIR", tmp_path)
+
+    class TimeoutThenOk:
+        def __init__(self):
+            self.calls = 0
+
+        def invoke(self, prompt: str):
+            self.calls += 1
+            if self.calls == 1:
+                raise TimeoutError("request timed out")
+            return SimpleNamespace(content="ok")
+
+    llm = TimeoutThenOk()
+    result = ri.resilient_invoke(
+        llm,
+        "prompt",
+        context={
+            "model_name": None,
+            "node": "test",
+            "scenario_id": "scen-3",
+            "eval_method": "agent",
+        },
+        max_retries=2,
+    )
+    assert result.content == "ok"
+    assert llm.calls == 2
+    assert len(sleeps) == 1
+    clear_cancelled_units()

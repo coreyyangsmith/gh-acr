@@ -22,6 +22,7 @@ def test_missing_api_key(clear_api_keys):
 
 def test_create_passes_model(monkeypatch):
     monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    monkeypatch.delenv("GROQ_REQUEST_TIMEOUT", raising=False)
     captured: dict = {}
 
     class FakeChatGroq:
@@ -44,11 +45,33 @@ def test_create_passes_model(monkeypatch):
     assert captured.get("groq_api_key") == "gsk-test"
     # MODEL_COSTS entry has output_limit 128_000
     assert captured.get("max_tokens") == 128_000
+    # Default bounded timeout so hung calls become retryable
+    assert captured.get("request_timeout") == 120.0
     # Groq API has no precision / quantization / dtype parameter to set.
     assert "dtype" not in captured
     assert "quantization" not in captured
     assert "precision" not in captured
     assert "model_kwargs" not in captured
+
+
+def test_create_honors_request_timeout_env(monkeypatch):
+    monkeypatch.setenv("GROQ_API_KEY", "gsk-test")
+    monkeypatch.setenv("GROQ_REQUEST_TIMEOUT", "45.5")
+    captured: dict = {}
+
+    class FakeChatGroq:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    import sys
+    from types import ModuleType
+
+    fake_mod = ModuleType("langchain_groq")
+    fake_mod.ChatGroq = FakeChatGroq  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "langchain_groq", fake_mod)
+
+    GroqHandler().create("groq:llama-3.1-8b-instant")
+    assert captured.get("request_timeout") == 45.5
 
 
 def test_parse_rejects_wrong_scheme():

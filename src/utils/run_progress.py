@@ -2,6 +2,7 @@
 
 Used by ``src.cli.run_all`` to report global progress across
 ``scenarios × methods`` work units, plus concise per-worker stage updates.
+Optionally writes a durable heartbeat JSON for stalled-run detection.
 """
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import threading
 import time
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -103,9 +105,18 @@ class RunProgress:
     disable_tqdm
         Force-disable the tqdm bar (also disabled when not a TTY or
         ``GHACR_NO_PROGRESS=1``).
+    heartbeat_path
+        Optional path for a durable JSON heartbeat written on progress updates.
     """
 
-    def __init__(self, total: int, *, disable_tqdm: bool | None = None):
+    def __init__(
+        self,
+        total: int,
+        *,
+        disable_tqdm: bool | None = None,
+        heartbeat_path: Path | str | None = None,
+        heartbeat_min_interval_s: float = 5.0,
+    ):
         self.total = max(0, int(total))
         self.done = 0
         self.ok = 0
@@ -116,6 +127,11 @@ class RunProgress:
         self._free_workers: list[str] = []
         self._in_flight: dict[str, _InFlight] = {}
         self._pbar = None
+        self._heartbeat_path = Path(heartbeat_path) if heartbeat_path else None
+        self._heartbeat_min_interval_s = max(0.5, float(heartbeat_min_interval_s))
+        self._last_heartbeat_write = 0.0
+        self._heartbeat_ticker_stop = threading.Event()
+        self._heartbeat_ticker: Optional[threading.Thread] = None
 
         env_disable = (os.getenv("GHACR_NO_PROGRESS") or "").strip() in ("1", "true", "True", "yes")
         is_tty = bool(getattr(sys.stderr, "isatty", lambda: False)())
@@ -148,15 +164,83 @@ class RunProgress:
         global _active
         with _active_lock:
             _active = self
+        self.write_heartbeat(force=True)
+        self._start_heartbeat_ticker()
         return self
 
     def deactivate(self) -> None:
         """Clear the process-wide active pointer if it is this instance."""
         global _active
+        self._stop_heartbeat_ticker()
         with _active_lock:
             if _active is self:
                 _active = None
+        self.write_heartbeat(force=True)
         self.close()
+
+    def _start_heartbeat_ticker(self) -> None:
+        """Refresh heartbeat periodically so long stages do not look dead."""
+        if self._heartbeat_path is None or self._heartbeat_ticker is not None:
+            return
+        self._heartbeat_ticker_stop.clear()
+        interval = max(5.0, self._heartbeat_min_interval_s)
+
+        def _tick() -> None:
+            while not self._heartbeat_ticker_stop.wait(interval):
+                self.write_heartbeat(force=True)
+
+        self._heartbeat_ticker = threading.Thread(
+            target=_tick, name="ghacr-heartbeat-ticker", daemon=True
+        )
+        self._heartbeat_ticker.start()
+
+    def _stop_heartbeat_ticker(self) -> None:
+        self._heartbeat_ticker_stop.set()
+        if self._heartbeat_ticker is not None:
+            self._heartbeat_ticker.join(timeout=self._heartbeat_min_interval_s + 2.0)
+            self._heartbeat_ticker = None
+
+    def abandon_in_flight(
+        self,
+        *,
+        scenario: str,
+        method: str,
+        reason: str,
+    ) -> str | None:
+        """Mark a matching in-flight unit failed and free its worker slot.
+
+        Returns the worker id if one was abandoned, else None.
+        """
+        with self._lock:
+            match_id: str | None = None
+            for wid, entry in self._in_flight.items():
+                if entry.scenario == scenario and entry.method == method:
+                    match_id = wid
+                    break
+            if match_id is None:
+                return None
+            self._in_flight.pop(match_id, None)
+            self.done += 1
+            self.failed += 1
+            if self._pbar is not None:
+                try:
+                    self._pbar.update(1)
+                except Exception:
+                    pass
+            if match_id not in self._free_workers:
+                self._free_workers.append(match_id)
+            self._refresh_tqdm_postfix_unlocked()
+            snap = self._snapshot_unlocked()
+        logger.warning(
+            "[%s] scenario=%s method=%s abandoned (%s) | %s",
+            match_id,
+            scenario,
+            method,
+            reason,
+            snap,
+        )
+        self.write_heartbeat(force=True)
+        return match_id
 
     def close(self) -> None:
         """Close the tqdm bar if open."""
@@ -187,6 +271,7 @@ class RunProgress:
             if worker_id not in self._free_workers:
                 self._free_workers.append(worker_id)
             self._refresh_tqdm_postfix_unlocked()
+        self.write_heartbeat()
 
     # ------------------------------------------------------------------
     # Progress updates
@@ -207,6 +292,7 @@ class RunProgress:
             scenario,
             method,
         )
+        self.write_heartbeat()
 
     def set_stage(
         self,
@@ -242,6 +328,8 @@ class RunProgress:
                 stage,
                 extra,
             )
+        if not same:
+            self.write_heartbeat()
 
     def mark_stage_done(
         self,
@@ -310,6 +398,60 @@ class RunProgress:
             snap,
         )
         logger.info("%s", self.snapshot_line())
+        self.write_heartbeat(force=True)
+
+    # ------------------------------------------------------------------
+    # Heartbeat
+    # ------------------------------------------------------------------
+
+    def write_heartbeat(self, *, force: bool = False) -> None:
+        """Persist a durable heartbeat snapshot (throttled unless ``force``)."""
+        if self._heartbeat_path is None:
+            return
+        now = time.perf_counter()
+        if (
+            not force
+            and (now - self._last_heartbeat_write) < self._heartbeat_min_interval_s
+        ):
+            return
+        try:
+            from src.utils.rate_limiter import LimiterRegistry
+            from src.utils.run_heartbeat import list_active_llm_calls, write_heartbeat
+
+            with self._lock:
+                in_flight = []
+                for wid, entry in self._in_flight.items():
+                    in_flight.append(
+                        {
+                            "worker": wid,
+                            "scenario": entry.scenario,
+                            "method": entry.method,
+                            "stage": entry.stage,
+                            "detail": entry.detail,
+                            "age_s": round(now - entry.started_at, 3),
+                        }
+                    )
+                payload = {
+                    "done": self.done,
+                    "ok": self.ok,
+                    "failed": self.failed,
+                    "total": self.total,
+                    "elapsed_s": round(now - self.t0, 3),
+                    "in_flight_count": len(in_flight),
+                    "in_flight": in_flight,
+                    "snapshot": self._snapshot_unlocked(),
+                }
+            metrics = LimiterRegistry.metrics()
+            total_retries = sum(int(m.get("total_retries") or 0) for m in metrics.values())
+            wait_events = sum(int(m.get("wait_events") or 0) for m in metrics.values())
+            payload["total_retries"] = total_retries
+            payload["wait_events"] = wait_events
+            payload["limiter_metrics"] = metrics
+            payload["active_llm_calls"] = list_active_llm_calls()
+            write_heartbeat(self._heartbeat_path, payload)
+            self._last_heartbeat_write = now
+        except Exception:
+            logger.debug("heartbeat write failed", exc_info=True)
 
     # ------------------------------------------------------------------
     # Formatting

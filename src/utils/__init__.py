@@ -36,7 +36,7 @@ The rate limiter enforces both RPM and TPM limits for LLM APIs:
 """
 
 from .logger import setup_logger, logger
-from .rate_limiter import RateLimiter, LimiterRegistry
+from .rate_limiter import RateLimiter, LimiterRegistry, DailyQuotaExceeded
 from .run_ledger import RunLedger, capture_logs
 
 __all__ = [
@@ -44,6 +44,7 @@ __all__ = [
     "logger",
     "RateLimiter",
     "LimiterRegistry",
+    "DailyQuotaExceeded",
     "RunLedger",
     "capture_logs",
 ]

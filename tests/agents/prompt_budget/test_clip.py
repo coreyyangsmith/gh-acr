@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.agents.prompt_budget import TRUNC_MARKER_FMT, head_tail_clip
+from src.agents.token_utils import estimate_prompt_tokens
 from tests.helpers import FakeEncoder
 
 
@@ -12,7 +13,7 @@ def test_head_tail_preserves_ends_and_inserts_marker():
     clipped, before, after, dropped = head_tail_clip(
         words, encoder=enc, target_tokens=30, block_id="diff_a"
     )
-    assert before == 100
+    assert before == estimate_prompt_tokens(enc, words)
     assert dropped > 0
     assert after <= 30
     # FakeEncoder re-decodes ids as tN; ends of the id stream must survive.
@@ -28,9 +29,9 @@ def test_omit_when_target_zero():
     clipped, before, after, dropped = head_tail_clip(
         text, encoder=enc, target_tokens=0, block_id="x"
     )
-    assert before == 20
-    assert dropped == 20
-    assert "GHACR_OMITTED" in clipped
+    assert before == estimate_prompt_tokens(enc, text)
+    assert dropped == before
+    assert "GHACR_OMITTED" in clipped or clipped.startswith("[omitted:")
     assert after >= 1
 
 
@@ -41,6 +42,6 @@ def test_no_clip_when_under_target():
         text, encoder=enc, target_tokens=10, block_id="y"
     )
     assert clipped == text
-    assert before == after == 3
+    assert before == after == estimate_prompt_tokens(enc, text)
     assert dropped == 0
     assert TRUNC_MARKER_FMT  # imported constant exists

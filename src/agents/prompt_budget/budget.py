@@ -11,7 +11,9 @@ from typing import Any, Mapping, Optional
 
 from ...config.model_costs import MODEL_COSTS, get_model_config
 
-DEFAULT_PROMPT_SAFETY_BUFFER = 64
+# Provider token counts (esp. OpenRouter Llama) can exceed local HF counts;
+# keep enough headroom that input + reserved output stays under total_limit.
+DEFAULT_PROMPT_SAFETY_BUFFER = 4096
 
 
 def prompt_safety_buffer() -> int:
@@ -54,13 +56,19 @@ def allowed_prompt_tokens(
         total_limit = 0
 
     buffer = prompt_safety_buffer()
+    sliding = bool(model_cfg.get("sliding_window"))
     candidates: list[int] = []
     if input_limit > 0:
         candidates.append(input_limit)
-    if total_limit > 0 and output_limit > 0:
+    # Sliding-window APIs (e.g. Groq) often advertise output_limit ≈ total_limit;
+    # subtracting that collapses the prompt budget to ~0. Prefer input_limit.
+    if not sliding:
+        if total_limit > 0 and output_limit > 0:
+            candidates.append(total_limit - output_limit)
+        elif total_limit > 0:
+            candidates.append(total_limit)
+    elif total_limit > 0 and output_limit > 0 and output_limit < total_limit:
         candidates.append(total_limit - output_limit)
-    elif total_limit > 0:
-        candidates.append(total_limit)
 
     if candidates:
         return max(1, min(candidates) - buffer)

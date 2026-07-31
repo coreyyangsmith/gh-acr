@@ -156,8 +156,8 @@ MODEL_COSTS: Dict[str, Dict[str, Any]] = {
         "tokenizer": "gpt2",
     },
     "local:meta-llama/Llama-3.2-1B": {
-        "input_limit": 128_000,
-        "output_limit": 128_000,
+        "input_limit": 126_000,
+        "output_limit": 2_048,
         "sliding_window": True,
         "total_limit": 128_000,
         "input_cost_per_1k": 0,
@@ -165,8 +165,8 @@ MODEL_COSTS: Dict[str, Dict[str, Any]] = {
         "tokenizer": "llama",
     },
     "local:meta-llama/Llama-3.1-8B": {
-        "input_limit": 128_000,
-        "output_limit": 128_000,
+        "input_limit": 126_000,
+        "output_limit": 2_048,
         "sliding_window": False,
         "total_limit": 128_000,
         "input_cost_per_1k": 0,
@@ -174,8 +174,8 @@ MODEL_COSTS: Dict[str, Dict[str, Any]] = {
         "tokenizer": "llama",
     },
     "local:meta-llama/Llama-3.1-8B-Instruct": {
-        "input_limit": 128_000,
-        "output_limit": 128_000,
+        "input_limit": 126_000,
+        "output_limit": 2_048,
         "sliding_window": False,
         "total_limit": 128_000,
         "input_cost_per_1k": 0,

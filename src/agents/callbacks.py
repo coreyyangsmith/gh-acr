@@ -71,8 +71,15 @@ class RateLimitAndCostHandler(BaseCallbackHandler):
         self.expected_output_ratio: float = float(limits.get("expected_output_ratio", 0.25))
         rpm = int(limits.get("requests_per_minute", 60))
         tpm = int(limits.get("tokens_per_minute", 150000))
+        rpd = limits.get("requests_per_day")
+        tpd = limits.get("tokens_per_day")
         self._limiter = LimiterRegistry.get(
-            key=f"{model_name}", rpm=rpm, tpm=tpm, backoff=BACKOFF_SETTINGS
+            key=f"{model_name}",
+            rpm=rpm,
+            tpm=tpm,
+            backoff=BACKOFF_SETTINGS,
+            rpd=int(rpd) if rpd is not None else None,
+            tpd=int(tpd) if tpd is not None else None,
         )
         self._reservations: dict[Any, dict[str, int]] = {}
 

@@ -210,9 +210,28 @@ def count_tokens(encoder: Optional[Any], text: str) -> int:  # noqa: D401
     return len(text.split())
 
 
+def chars_per_token_estimate(text: str) -> int:
+    """Conservative chars/4 token estimate (ceil)."""
+    if not text:
+        return 0
+    return (len(text) + 3) // 4
+
+
+def estimate_prompt_tokens(encoder: Optional[Any], text: str) -> int:
+    """Conservative prompt size for budgeting / truncation decisions.
+
+    Takes the max of the encoder count and a chars/4 heuristic so provider
+    overcounts (seen on OpenRouter Llama) still trigger clipping when the
+    native HF tokenizer underestimates.
+    """
+    return max(count_tokens(encoder, text), chars_per_token_estimate(text))
+
+
 __all__ = [
     "tiktoken_encoder",
     "resolve_encoder",
     "hf_repo_for_model",
     "count_tokens",
+    "chars_per_token_estimate",
+    "estimate_prompt_tokens",
 ]

@@ -23,6 +23,8 @@ def test_missing_api_key(clear_api_keys):
 
 def test_create_passes_model_and_temperature(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("OPENAI_REQUEST_TIMEOUT", raising=False)
+    monkeypatch.delenv("GHACR_LLM_REQUEST_TIMEOUT", raising=False)
     captured: dict = {}
 
     class FakeChatOpenAI:
@@ -41,6 +43,28 @@ def test_create_passes_model_and_temperature(monkeypatch):
     assert captured.get("model") == "gpt-4o-mini"
     assert captured.get("temperature") == 0
     assert captured.get("api_key") == "sk-test"
+    assert captured.get("timeout") == 600.0
+
+
+def test_create_honors_request_timeout_env(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("OPENAI_REQUEST_TIMEOUT", "77.5")
+    captured: dict = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    with (
+        patch("langchain_openai.ChatOpenAI", FakeChatOpenAI),
+        patch(
+            "src.agents.handlers.openai_handler.tiktoken_encoder",
+            return_value=None,
+        ),
+    ):
+        OpenAIHandler().create("openai/gpt-4o-mini")
+
+    assert captured.get("timeout") == 77.5
 
 
 def test_gpt5_skips_temperature(monkeypatch):

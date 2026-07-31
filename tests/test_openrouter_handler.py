@@ -40,6 +40,8 @@ def test_missing_api_key(clear_api_keys):
 def test_create_default_base_url(monkeypatch, clear_api_keys):
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-test")
     monkeypatch.delenv("OPENROUTER_QUANTIZATIONS", raising=False)
+    monkeypatch.delenv("OPENROUTER_REQUEST_TIMEOUT", raising=False)
+    monkeypatch.delenv("GHACR_LLM_REQUEST_TIMEOUT", raising=False)
     captured: dict = {}
 
     class FakeChatOpenAI:
@@ -59,6 +61,7 @@ def test_create_default_base_url(monkeypatch, clear_api_keys):
     assert captured.get("base_url") == DEFAULT_OPENROUTER_BASE_URL
     assert captured.get("api_key") == "or-test"
     assert captured.get("temperature") == 0
+    assert captured.get("timeout") == 600.0
     assert "default_headers" not in captured
     assert captured.get("extra_body") == {
         "provider": {
@@ -67,6 +70,29 @@ def test_create_default_base_url(monkeypatch, clear_api_keys):
             "quantizations": list(DEFAULT_OPENROUTER_QUANTIZATIONS),
         }
     }
+
+
+def test_create_honors_request_timeout_env(monkeypatch, clear_api_keys):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-test")
+    monkeypatch.setenv("OPENROUTER_REQUEST_TIMEOUT", "42")
+    monkeypatch.setenv("OPENROUTER_QUANTIZATIONS", "off")
+    monkeypatch.setenv("OPENROUTER_PROVIDER", "off")
+    captured: dict = {}
+
+    class FakeChatOpenAI:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    with (
+        patch("langchain_openai.ChatOpenAI", FakeChatOpenAI),
+        patch(
+            "src.agents.handlers.openrouter_handler.resolve_encoder",
+            return_value=None,
+        ),
+    ):
+        OpenRouterHandler().create("openrouter/openai/gpt-4o-mini")
+
+    assert captured.get("timeout") == 42.0
 
 
 def test_create_respects_base_url_and_headers(monkeypatch, clear_api_keys):

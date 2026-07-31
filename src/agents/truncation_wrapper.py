@@ -4,7 +4,7 @@ import logging
 import os
 from typing import Any, Optional
 
-from .token_utils import count_tokens
+from .token_utils import estimate_prompt_tokens
 from .prompt_budget.budget import (
     DEFAULT_PROMPT_SAFETY_BUFFER,
     allowed_prompt_tokens as shared_allowed_prompt_tokens,
@@ -25,6 +25,9 @@ class TruncatingLLMWrapper:
     the shared context budget. The allowed prompt budget is
     ``min(input_limit, total_limit - max_tokens) - buffer``. Default truncation
     side is left (keep tail).
+
+    Budget decisions use ``estimate_prompt_tokens`` (max of encoder count and
+    chars/4) so provider overcounts still trigger clipping.
     """
 
     def __init__(self, inner: Any, *, encoder: Optional[Any], model_name: str):
@@ -55,12 +58,57 @@ class TruncatingLLMWrapper:
         )
         return 0
 
+    def _clip_by_estimate(self, text: str, target_tokens: int, side: str) -> str:
+        """Shrink *text* until ``estimate_prompt_tokens`` <= *target_tokens*."""
+        enc = self._encoder
+        if estimate_prompt_tokens(enc, text) <= target_tokens:
+            return text
+
+        # Prefer encoder id clipping when it actually reduces the estimate.
+        if enc is not None and hasattr(enc, "encode") and hasattr(enc, "decode"):
+            try:
+                ids = enc.encode(text)  # type: ignore[attr-defined]
+                try:
+                    id_list = list(ids)
+                except TypeError:  # pragma: no cover
+                    id_list = ids
+                if len(id_list) > target_tokens:
+                    keep = (
+                        id_list[:target_tokens]
+                        if side == "right"
+                        else id_list[-target_tokens:]
+                    )
+                    truncated = enc.decode(keep)  # type: ignore[attr-defined]
+                    if estimate_prompt_tokens(enc, truncated) <= target_tokens:
+                        return truncated
+            except Exception as e:
+                logger.warning(
+                    "[TruncatingLLMWrapper] Encoder truncation failed: %s, "
+                    "falling back to character-based",
+                    e,
+                )
+
+        # Binary search on character length (chars/4 drives the estimate when
+        # the encoder undercounts).
+        lo, hi = 1, len(text)
+        best = text[:1] if side == "right" else text[-1:]
+        while lo <= hi:
+            mid = (lo + hi) // 2
+            candidate = text[:mid] if side == "right" else text[-mid:]
+            est = estimate_prompt_tokens(enc, candidate)
+            if est <= target_tokens:
+                best = candidate
+                lo = mid + 1
+            else:
+                hi = mid - 1
+        return best
+
     def _truncate_text(self, text: str) -> str:
         try:
             if not text:
                 return text
             enc = self._encoder
-            prompt_tokens = count_tokens(enc, text)
+            prompt_tokens = estimate_prompt_tokens(enc, text)
             allowed = self._allowed_prompt_tokens(prompt_tokens)
             if allowed <= 0 or prompt_tokens <= allowed:
                 return text
@@ -101,37 +149,15 @@ class TruncatingLLMWrapper:
                 node="truncating_llm_wrapper",
             )
 
-            if hasattr(enc, "encode") and hasattr(enc, "decode"):
-                try:
-                    ids = enc.encode(text)  # type: ignore[attr-defined]
-                    try:
-                        id_list = list(ids)
-                    except TypeError:  # pragma: no cover
-                        id_list = ids
-                    keep = (
-                        id_list[:target_tokens]
-                        if side == "right"
-                        else id_list[-target_tokens:]
-                    )
-                    truncated = enc.decode(keep)  # type: ignore[attr-defined]
-                    logger.info(
-                        "[TruncatingLLMWrapper] Truncation complete: "
-                        "original_chars=%d, truncated_chars=%d",
-                        len(text),
-                        len(truncated),
-                    )
-                    return truncated
-                except Exception as e:
-                    logger.warning(
-                        "[TruncatingLLMWrapper] Encoder truncation failed: %s, "
-                        "falling back to word-based",
-                        e,
-                    )
-            words = text.split()
-            truncated_words = (
-                words[:target_tokens] if side == "right" else words[-target_tokens:]
+            truncated = self._clip_by_estimate(text, target_tokens, side)
+            logger.info(
+                "[TruncatingLLMWrapper] Truncation complete: "
+                "original_chars=%d, truncated_chars=%d, estimate_after=%d",
+                len(text),
+                len(truncated),
+                estimate_prompt_tokens(enc, truncated),
             )
-            return " ".join(truncated_words)
+            return truncated
         except Exception as e:
             logger.error("[TruncatingLLMWrapper] Truncation failed entirely: %s", e)
             return text

@@ -8,8 +8,14 @@ from typing import Any, Optional, Tuple
 from ...config.model_costs import MODEL_COSTS
 from ..token_utils import tiktoken_encoder
 from .base import BaseLLMHandler
+from .request_timeout import resolve_llm_request_timeout
 
 logger = logging.getLogger(__name__)
+
+
+def resolve_openai_request_timeout() -> float:
+    """Return OpenAI HTTP timeout seconds (env-overridable)."""
+    return resolve_llm_request_timeout(specific_env="OPENAI_REQUEST_TIMEOUT")
 
 
 class OpenAIHandler(BaseLLMHandler):
@@ -33,8 +39,13 @@ class OpenAIHandler(BaseLLMHandler):
         )
         max_out = int(model_cfg.get("output_limit", 0))
         is_gpt5 = backend_name.startswith("gpt-5")
+        request_timeout = resolve_openai_request_timeout()
 
-        common_kwargs: dict[str, Any] = dict(api_key=api_key, model=backend_name)
+        common_kwargs: dict[str, Any] = dict(
+            api_key=api_key,
+            model=backend_name,
+            timeout=request_timeout,
+        )
         if not is_gpt5:
             common_kwargs["temperature"] = 0
 
@@ -44,6 +55,11 @@ class OpenAIHandler(BaseLLMHandler):
             raw_llm = ChatOpenAI(**common_kwargs)  # type: ignore[call-arg]
 
         enc = tiktoken_encoder(backend_name)
+        logger.info(
+            "[openai] Initialized model=%s timeout=%.1fs",
+            backend_name,
+            request_timeout,
+        )
         return enc, raw_llm
 
 
@@ -52,4 +68,8 @@ def create_openai_backend(model_name: str) -> Tuple[Optional[Any], Any]:
     return OpenAIHandler().create(model_name)
 
 
-__all__ = ["OpenAIHandler", "create_openai_backend"]
+__all__ = [
+    "OpenAIHandler",
+    "create_openai_backend",
+    "resolve_openai_request_timeout",
+]

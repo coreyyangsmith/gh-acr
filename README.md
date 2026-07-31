@@ -195,9 +195,40 @@ Outputs go to `results/` by default.
 
 ## Groq Usage
 
+Direct Groq model id: `groq:llama-3.1-8b-instant` (API: `llama-3.1-8b-instant`).
+
+Published developer-tier limits (see [Groq rate limits](https://console.groq.com/docs/rate-limits)):
+**30 RPM / 6,000 TPM / 14,400 RPD / 500,000 TPD**. Soft client defaults are ~90% of those ceilings (`27` RPM / `5400` TPM). Enable local pacing for concurrent runs:
+
 ```bash
 $env:GROQ_API_KEY="<your_key>"
-uv run python -m src.cli.run_all --mode clone --methods agent bypass7 --model-name groq:llama-3.1-8b-instant --results-filename 2025_09_30_groq.csv
+$env:RL_ENABLE_WAITING="1"
+# Optional overrides / timeout / watchdog:
+# $env:GROQ_REQUEST_TIMEOUT="120"
+# $env:OPENROUTER_REQUEST_TIMEOUT="600"
+# $env:OPENAI_REQUEST_TIMEOUT="600"
+# $env:GHACR_LLM_REQUEST_TIMEOUT="600"
+# $env:GHACR_WATCHDOG="1"
+uv run python -m src.cli.run_all --mode clone --methods agent bypass7 `
+  --model-name groq:llama-3.1-8b-instant `
+  --concurrency 2 --method-concurrency 2 `
+  --results-filename 2025_09_30_groq.csv `
+  --watchdog
+```
+
+Check live health (heartbeat + latest ledger event) without starting work:
+
+```bash
+uv run python -m src.cli.run_all --status --results-filename 2025_09_30_groq.csv
+```
+
+If a run stalls or the watchdog soft-skips / aborts, diagnostics are written next to the results CSV (`*_watchdog_stacks.txt`). Soft-skip (`--watchdog-mode skip`, default) marks the unit as a ledger timeout and cancels further LLM retries; OpenAI/OpenRouter HTTP timeouts (default 600s) free blocked workers so concurrency can advance. Restart safely with `--resume` — completed `success` / `degraded` units in `*_run_log.jsonl` are skipped (timeout failures are retried):
+
+```bash
+uv run python -m src.cli.run_all --mode clone --methods agent bypass7 `
+  --model-name groq:llama-3.1-8b-instant `
+  --results-filename 2025_09_30_groq.csv `
+  --resume --watchdog
 ```
 
 Outputs are nested under `data/groq_<model>/...` for Windows-safe paths.

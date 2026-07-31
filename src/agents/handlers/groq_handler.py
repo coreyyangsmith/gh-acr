@@ -10,6 +10,7 @@ filter in ``openrouter_handler`` instead of this direct Groq path.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional, Tuple
 
 from ...config.model_costs import MODEL_COSTS
@@ -17,12 +18,40 @@ from .base import BaseLLMHandler
 
 logger = logging.getLogger(__name__)
 
+# Bounded HTTP timeout so hung Groq calls become retryable instead of freezing
+# the worker forever. Override via GROQ_REQUEST_TIMEOUT (seconds).
+_DEFAULT_GROQ_REQUEST_TIMEOUT_S = 120.0
+
+
+def resolve_groq_request_timeout() -> float:
+    """Return the Groq ``request_timeout`` in seconds (env-overridable)."""
+    raw = (os.getenv("GROQ_REQUEST_TIMEOUT") or "").strip()
+    if not raw:
+        return _DEFAULT_GROQ_REQUEST_TIMEOUT_S
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "[groq] Invalid GROQ_REQUEST_TIMEOUT=%r; using default %.1fs",
+            raw,
+            _DEFAULT_GROQ_REQUEST_TIMEOUT_S,
+        )
+        return _DEFAULT_GROQ_REQUEST_TIMEOUT_S
+    if value <= 0:
+        logger.warning(
+            "[groq] Non-positive GROQ_REQUEST_TIMEOUT=%r; using default %.1fs",
+            raw,
+            _DEFAULT_GROQ_REQUEST_TIMEOUT_S,
+        )
+        return _DEFAULT_GROQ_REQUEST_TIMEOUT_S
+    return value
+
 
 class GroqHandler(BaseLLMHandler):
     """ChatGroq backend using ``GROQ_API_KEY``.
 
     Precision/quantization is not configurable via the Groq API; this handler
-    only sets model id, temperature, and max tokens.
+    only sets model id, temperature, max tokens, and request timeout.
     """
 
     scheme = "groq"
@@ -45,17 +74,23 @@ class GroqHandler(BaseLLMHandler):
             f"groq/{backend_name}", {}
         )
         max_out = int(model_cfg.get("output_limit", 0))
+        request_timeout = resolve_groq_request_timeout()
         # No dtype / quantization kwargs: Groq API has none to set.
-        common_kwargs = dict(
-            groq_api_key=api_key, model=backend_name, temperature=0
+        common_kwargs: dict[str, Any] = dict(
+            groq_api_key=api_key,
+            model=backend_name,
+            temperature=0,
+            request_timeout=request_timeout,
         )
         if max_out > 0:
             raw_llm = ChatGroq(max_tokens=max_out, **common_kwargs)  # type: ignore[call-arg]
         else:
             raw_llm = ChatGroq(**common_kwargs)  # type: ignore[call-arg]
         logger.info(
-            "[groq] Initialized model=%s (precision not API-configurable)",
+            "[groq] Initialized model=%s request_timeout=%.1fs "
+            "(precision not API-configurable)",
             backend_name,
+            request_timeout,
         )
         return None, raw_llm
 
@@ -65,4 +100,8 @@ def create_groq_backend(model_name: str) -> Tuple[Optional[Any], Any]:
     return GroqHandler().create(model_name)
 
 
-__all__ = ["GroqHandler", "create_groq_backend"]
+__all__ = [
+    "GroqHandler",
+    "create_groq_backend",
+    "resolve_groq_request_timeout",
+]

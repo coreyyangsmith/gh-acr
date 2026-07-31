@@ -36,6 +36,14 @@ from src.utils.run_progress import (
     reset_current_worker_id,
     set_current_worker_id,
 )
+from src.utils.run_heartbeat import (
+    RunWatchdog,
+    WatchdogTimeout,
+    format_status_report,
+    heartbeat_path_for_results,
+    mark_unit_cancelled,
+    read_heartbeat,
+)
 from src.agents.graph_router import build_graph
 from src.agents.observability import get_llm_calls
 from src.cli.runner import run_and_save_report, RESULTS_SCHEMA_COLUMNS
@@ -45,6 +53,20 @@ ProcessMode = Literal["clone"]
 
 _DEFAULT_CONCURRENCY = 8
 _DEFAULT_METHOD_CONCURRENCY_CAP = 8
+_DEFAULT_WATCHDOG_STALE_S = 600.0
+_DEFAULT_WATCHDOG_MAX_UNIT_S = 7200.0
+_DEFAULT_WATCHDOG_MAX_LLM_S = 900.0
+_DEFAULT_WATCHDOG_MAX_PREP_S = 1800.0
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = (os.getenv(name) or "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
 
 
 class CreditsExhaustedAbort(RuntimeError):
@@ -129,6 +151,13 @@ def main(
     method_concurrency: int | None = None,
     resume: bool = False,
     trace_replay: bool = False,
+    status: bool = False,
+    watchdog: bool = False,
+    watchdog_stale_s: float | None = None,
+    watchdog_max_unit_s: float | None = None,
+    watchdog_max_llm_s: float | None = None,
+    watchdog_max_prep_s: float | None = None,
+    watchdog_mode: str = "skip",
 ):
     """Run the full benchmark across all evaluation methods.
 
@@ -176,14 +205,56 @@ def main(
         stages the ablation changes. Schedules ``better_judge`` before ablations
         within each scenario. Provenance is written to artifact metadata, the
         run ledger, and results CSV columns.
+    status
+        If True, print heartbeat/ledger status for ``results_filename`` and exit.
+    watchdog
+        If True (or ``GHACR_WATCHDOG=1``), monitor for stalled units / hung LLM
+        calls. Default mode soft-skips overdue units and continues.
+    watchdog_stale_s
+        Heartbeat staleness warn threshold seconds (default 600 /
+        ``GHACR_WATCHDOG_STALE_S``). In skip mode this does not abort the run.
+    watchdog_max_unit_s
+        Max in-flight unit age seconds before soft-skip (default 7200 /
+        ``GHACR_WATCHDOG_MAX_UNIT_S``). Set ``<=0`` to disable.
+    watchdog_max_llm_s
+        Max single LLM invoke age seconds before soft-skip (default 900 /
+        ``GHACR_WATCHDOG_MAX_LLM_S``). Set ``<=0`` to disable.
+    watchdog_max_prep_s
+        Max seconds for scenario prep/clone before failing pending methods
+        (default 1800 / ``GHACR_WATCHDOG_MAX_PREP_S``). Set ``<=0`` to disable.
+    watchdog_mode
+        ``skip`` (default): soft-skip overdue units and continue.
+        ``abort``: dump diagnostics and exit the process (legacy).
 
     Notes
     -----
+    Soft-skip marks ledger timeouts and cancels cooperative retries, but
+    OpenAI/OpenRouter HTTP ``timeout`` (default 600s) is what frees blocked
+    ThreadPoolExecutor workers after a hung API call.
     Clones under ``GHACR_CLONE_DIR`` / ``./repos`` and prepared context under
     ``data/context_cache`` (or ``GHACR_CONTEXT_CACHE_DIR``) persist across
     batches and model runs. Prep runs once per scenario, then pending methods
     execute in parallel.
     """
+    if status:
+        setup_logger()
+        if results_filename:
+            rp = Path(results_filename)
+            results_path = rp if rp.is_absolute() else (Path.cwd() / "data" / rp.name)
+        else:
+            date_str = datetime.date.today().strftime("%Y_%m_%d")
+            results_path = Path.cwd() / "data" / f"{date_str}_results_all.csv"
+        hb_path = heartbeat_path_for_results(results_path)
+        ledger_path = results_path.with_name(f"{results_path.stem}_run_log.jsonl")
+        failures_path = results_path.with_name(f"{results_path.stem}_failures.jsonl")
+        print(
+            format_status_report(
+                heartbeat=read_heartbeat(hb_path),
+                ledger_path=ledger_path,
+                failures_path=failures_path,
+            )
+        )
+        return
 
     asyncio.run(
         _run_all(
@@ -203,6 +274,12 @@ def main(
             method_concurrency=method_concurrency,
             resume=resume,
             trace_replay=trace_replay,
+            watchdog=watchdog,
+            watchdog_stale_s=watchdog_stale_s,
+            watchdog_max_unit_s=watchdog_max_unit_s,
+            watchdog_max_llm_s=watchdog_max_llm_s,
+            watchdog_max_prep_s=watchdog_max_prep_s,
+            watchdog_mode=watchdog_mode,
         )
     )
 
@@ -225,6 +302,12 @@ async def _run_all(
     method_concurrency: int | None = None,
     resume: bool = False,
     trace_replay: bool = False,
+    watchdog: bool = False,
+    watchdog_stale_s: float | None = None,
+    watchdog_max_unit_s: float | None = None,
+    watchdog_max_llm_s: float | None = None,
+    watchdog_max_prep_s: float | None = None,
+    watchdog_mode: str = "skip",
 ):
     # Configure root logger so all modules propagate here
     logger = setup_logger()
@@ -232,6 +315,42 @@ async def _run_all(
     workers = _resolve_concurrency(concurrency)
     method_workers = _resolve_method_concurrency(method_concurrency, len(methods_to_run))
     run_t0 = time.perf_counter()
+    env_watchdog = (os.getenv("GHACR_WATCHDOG") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    watchdog_enabled = bool(watchdog or env_watchdog)
+    stale_s = (
+        float(watchdog_stale_s)
+        if watchdog_stale_s is not None
+        else _env_float("GHACR_WATCHDOG_STALE_S", _DEFAULT_WATCHDOG_STALE_S)
+    )
+    max_unit_s = (
+        float(watchdog_max_unit_s)
+        if watchdog_max_unit_s is not None
+        else _env_float("GHACR_WATCHDOG_MAX_UNIT_S", _DEFAULT_WATCHDOG_MAX_UNIT_S)
+    )
+    max_llm_s = (
+        float(watchdog_max_llm_s)
+        if watchdog_max_llm_s is not None
+        else _env_float("GHACR_WATCHDOG_MAX_LLM_S", _DEFAULT_WATCHDOG_MAX_LLM_S)
+    )
+    max_prep_s = (
+        float(watchdog_max_prep_s)
+        if watchdog_max_prep_s is not None
+        else _env_float("GHACR_WATCHDOG_MAX_PREP_S", _DEFAULT_WATCHDOG_MAX_PREP_S)
+    )
+    if max_unit_s <= 0:
+        max_unit_s = None
+    if max_llm_s <= 0:
+        max_llm_s = None
+    if max_prep_s <= 0:
+        max_prep_s = None
+    wd_mode = (watchdog_mode or os.getenv("GHACR_WATCHDOG_MODE") or "skip").strip().lower()
+    if wd_mode not in {"skip", "abort"}:
+        wd_mode = "skip"
 
     # Log run configuration for debugging
     logger.info("=" * 70)
@@ -253,6 +372,13 @@ async def _run_all(
     )
     logger.info("  resume: %s", resume)
     logger.info("  trace_replay: %s", trace_replay)
+    logger.info("  watchdog: %s mode=%s (stale=%.0fs max_unit=%s max_llm=%s max_prep=%s)",
+                watchdog_enabled,
+                wd_mode,
+                stale_s,
+                max_unit_s,
+                max_llm_s,
+                max_prep_s)
     logger.info("  wall_clock_start: %.6f (perf_counter)", run_t0)
     logger.info("=" * 70)
 
@@ -336,6 +462,7 @@ async def _run_all(
     # Success/failure/degraded ledger next to the results CSV (crash-resilient JSONL)
     ledger_path = results_path.with_name(f"{results_path.stem}_run_log.jsonl")
     failures_path = results_path.with_name(f"{results_path.stem}_failures.jsonl")
+    hb_path = heartbeat_path_for_results(results_path)
 
     done_units: set[tuple[str, str]] = set()
     if resume:
@@ -365,7 +492,7 @@ async def _run_all(
         )
         done_units = done_in_scope
         ledger = RunLedger.from_existing(ledger_path, failures_path=failures_path)
-        progress = RunProgress(remaining_units).activate()
+        progress = RunProgress(remaining_units, heartbeat_path=hb_path).activate()
     else:
         if results_path.exists():
             logger.info("Removing existing results file: %s", results_path)
@@ -377,10 +504,65 @@ async def _run_all(
             logger.info("Removing existing failures log: %s", failures_path)
             failures_path.unlink()
         ledger = RunLedger(ledger_path, failures_path=failures_path)
-        progress = RunProgress(total_units).activate()
+        progress = RunProgress(total_units, heartbeat_path=hb_path).activate()
 
     logger.info("Run ledger: %s", ledger_path)
     logger.info("Failures log: %s", failures_path)
+    logger.info("Heartbeat: %s", hb_path)
+
+    watchdog_thread: RunWatchdog | None = None
+    watchdog_skipped: dict[tuple[str, str], str] = {}
+    watchdog_skip_lock = threading.Lock()
+
+    def _on_watchdog_skip(item: dict[str, Any]) -> None:
+        scenario = str(item.get("scenario") or "")
+        method = str(item.get("method") or "")
+        reason = str(item.get("reason") or "watchdog timeout")
+        if not scenario or not method or scenario == "?" or method == "?":
+            return
+        key = (scenario, method)
+        with watchdog_skip_lock:
+            if key in watchdog_skipped:
+                return
+            watchdog_skipped[key] = reason
+        mark_unit_cancelled(scenario, method, reason=reason)
+        progress.abandon_in_flight(scenario=scenario, method=method, reason=reason)
+        err = WatchdogTimeout(reason)
+        ledger.record_failure(
+            scenario_id=scenario,
+            eval_method=method,
+            model_name=model_name,
+            error=err,
+            failure_category="timeout",
+            processing_time_s=float(item.get("age_s") or 0.0) or None,
+            watchdog_skip=True,
+        )
+        logger.warning(
+            "[run_all] Watchdog soft-skipped scenario=%s method=%s; continuing",
+            scenario,
+            method,
+        )
+
+    if watchdog_enabled:
+        watchdog_thread = RunWatchdog(
+            heartbeat_path=hb_path,
+            stale_s=stale_s,
+            max_unit_age_s=max_unit_s,
+            max_llm_call_age_s=max_llm_s,
+            diagnostics_dir=results_path.parent,
+            mode=wd_mode,
+            on_skip=_on_watchdog_skip,
+            on_refresh=lambda: progress.write_heartbeat(force=True),
+        )
+        watchdog_thread.start()
+        logger.info(
+            "Watchdog enabled: mode=%s stale=%.0fs max_unit=%s max_llm=%s max_prep=%s",
+            wd_mode,
+            stale_s,
+            max_unit_s,
+            max_llm_s,
+            max_prep_s,
+        )
 
     csv_lock = threading.Lock()
     credits_abort = threading.Event()
@@ -440,6 +622,15 @@ async def _run_all(
             ) -> list:
                 if credits_abort.is_set():
                     return []
+                with watchdog_skip_lock:
+                    if (scenario_key, method) in watchdog_skipped:
+                        logger.info(
+                            "[run_all] scenario=%s method=%s already watchdog-skipped; "
+                            "not starting",
+                            scenario_key,
+                            method,
+                        )
+                        return []
                 row_start = time.perf_counter()
                 worker_id = progress.acquire_worker()
                 worker_token = set_current_worker_id(worker_id)
@@ -459,6 +650,15 @@ async def _run_all(
                             trace_replay=trace_replay,
                         )
                         elapsed = time.perf_counter() - row_start
+                        with watchdog_skip_lock:
+                            if (scenario_key, method) in watchdog_skipped:
+                                logger.warning(
+                                    "[run_all] scenario=%s method=%s finished after "
+                                    "watchdog soft-skip; discarding late result",
+                                    scenario_key,
+                                    method,
+                                )
+                                return []
                         data_rows = [
                             r
                             for r in (per_file_results or [])
@@ -573,6 +773,16 @@ async def _run_all(
                         return per_file_results or []
                     except Exception as exc:  # pragma: no cover – runtime resilience
                         elapsed = time.perf_counter() - row_start
+                        with watchdog_skip_lock:
+                            already_skipped = (scenario_key, method) in watchdog_skipped
+                        if already_skipped:
+                            logger.warning(
+                                "[run_all] scenario=%s method=%s errored after "
+                                "watchdog soft-skip; suppressing duplicate failure",
+                                scenario_key,
+                                method,
+                            )
+                            return []
                         tb = traceback.format_exc()
                         logger.exception(
                             "[run_all] Error processing scenario %s (%s)",
@@ -617,6 +827,7 @@ async def _run_all(
                     m
                     for m in methods_to_run
                     if (scenario_key, m) not in done_units
+                    and (scenario_key, m) not in watchdog_skipped
                 ]
                 if not pending_methods:
                     logger.info(
@@ -636,17 +847,39 @@ async def _run_all(
                     )
 
                 sample = _row_to_sample(row)
+                prep_worker_id = progress.acquire_worker()
+                prep_token = set_current_worker_id(prep_worker_id)
+                progress.mark_started(prep_worker_id, scenario_key, "prep")
+                progress.set_stage(prep_worker_id, "prep", detail="ensure_prepared")
+                prep_t0 = time.perf_counter()
                 try:
-                    # Blocking prep/clone off the event loop
-                    prepared = await asyncio.to_thread(
+                    # Blocking prep/clone off the event loop; optional wall budget.
+                    prep_coro = asyncio.to_thread(
                         ensure_prepared, scenario_key, sample
                     )
+                    if max_prep_s is not None:
+                        prepared = await asyncio.wait_for(
+                            prep_coro, timeout=max_prep_s
+                        )
+                    else:
+                        prepared = await prep_coro
                 except Exception as exc:
-                    logger.exception(
-                        "[run_all] Prep failed for scenario %s: %s",
-                        scenario_key,
-                        exc,
-                    )
+                    if isinstance(exc, asyncio.TimeoutError):
+                        exc = WatchdogTimeout(
+                            f"prep/clone exceeded {max_prep_s:.0f}s "
+                            f"for scenario={scenario_key}"
+                        )
+                        logger.error(
+                            "[run_all] Prep timed out for scenario %s after %.0fs",
+                            scenario_key,
+                            max_prep_s or 0.0,
+                        )
+                    else:
+                        logger.exception(
+                            "[run_all] Prep failed for scenario %s: %s",
+                            scenario_key,
+                            exc,
+                        )
                     # Record failure for each pending method so resume can retry
                     for method in pending_methods:
                         worker_id = progress.acquire_worker()
@@ -661,15 +894,26 @@ async def _run_all(
                                 error=exc,
                                 traceback_text=traceback.format_exc(),
                                 captured_logs=[],
-                                processing_time_s=0.0,
+                                processing_time_s=round(
+                                    time.perf_counter() - prep_t0, 3
+                                ),
                                 llm_calls=[],
                                 prep=True,
+                                failure_category=(
+                                    "timeout"
+                                    if isinstance(exc, WatchdogTimeout)
+                                    else None
+                                ),
                             )
                             progress.mark_done(worker_id, ok=False, elapsed_s=0.0)
                         finally:
                             progress.release_worker(worker_id)
                             reset_current_worker_id(worker_token)
                     return []
+                finally:
+                    # Prep is not a counted work unit; only clear heartbeat presence.
+                    progress.release_worker(prep_worker_id)
+                    reset_current_worker_id(prep_token)
 
                 out: list = []
 
@@ -849,6 +1093,8 @@ async def _run_all(
             ledger.degraded_count,
         )
     finally:
+        if watchdog_thread is not None:
+            watchdog_thread.stop()
         progress.deactivate()
 
 

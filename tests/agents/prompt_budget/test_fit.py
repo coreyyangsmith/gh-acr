@@ -196,14 +196,42 @@ def test_fit_local_qwen32_uses_real_budget_and_clips(monkeypatch):
         node="conflict_analyzer",
     )
     assert report.was_clipped
-    assert report.tokens_after <= 30_656
-    assert report.budget_tokens == 30_656
+    assert report.tokens_after <= 26_624
+    assert report.budget_tokens == 26_624
     assert "Instructions stay forever" in report.prompt
     assert "Return exactly one string" in report.prompt
     assert not any(
         e.get("category") == "prompt_truncation" and "wrapper_fallback" in str(e.get("detail", ""))
         for e in get_degradations()
     )
+
+
+def test_fit_dense_code_like_text_uses_chars4_under_llama_budget(monkeypatch):
+    """Dense text (few spaces) must use chars/4 so FakeEncoder undercount still clips."""
+    monkeypatch.delenv("PROMPT_TRUNCATION_BUFFER", raising=False)
+    clear_degradations()
+    enc = FakeEncoder()
+    import src.agents.prompt_budget.fit as fit_mod
+
+    monkeypatch.setattr(fit_mod, "REPAIR_HEADROOM_TOKENS", 0)
+
+    # One "word" but huge chars/4 estimate.
+    dense = "x" * 200_000
+    report = fit_global_ab_prompt(
+        template=JUDGE_TEMPLATE,
+        render="format",
+        paths=["dense.py"],
+        summaries={"dense.py": {"summary_a": dense, "summary_b": dense}},
+        diffs_a={"dense.py": dense},
+        diffs_b={"dense.py": dense},
+        encoder=enc,
+        model_name="openrouter/meta-llama/llama-3.1-8b-instruct",
+        node="conflict_analyzer",
+    )
+    assert report.was_clipped
+    assert report.tokens_after <= report.budget_tokens
+    assert report.budget_tokens == 110_592
+    assert "Instructions stay forever" in report.prompt
 
 
 def test_resolver_omits_feedback_before_patches(monkeypatch):

@@ -8,7 +8,9 @@ import pytest
 
 from src.agents import token_utils
 from src.agents.token_utils import (
+    chars_per_token_estimate,
     count_tokens,
+    estimate_prompt_tokens,
     hf_repo_for_model,
     resolve_encoder,
     tiktoken_encoder,
@@ -25,6 +27,33 @@ def test_count_tokens_with_encoder():
 def test_count_tokens_without_encoder_falls_back_to_words():
     assert count_tokens(None, "one two three") == 3
     assert count_tokens(None, "") == 0
+
+
+def test_count_tokens_encode_exception_falls_back_to_words():
+    class Boom:
+        def encode(self, text: str):
+            raise RuntimeError("boom")
+
+    assert count_tokens(Boom(), "alpha beta gamma") == 3
+
+
+def test_estimate_prompt_tokens_takes_max_of_hf_and_chars4():
+    enc = FakeEncoder()
+    # Sparse whitespace: word count vs chars/4 — take the max.
+    sparse = "one two three four"
+    assert estimate_prompt_tokens(enc, sparse) == max(4, (len(sparse) + 3) // 4)
+    assert estimate_prompt_tokens(enc, sparse) == 5  # chars/4 wins (len=18)
+    # Dense code-like: chars/4 wins over FakeEncoder's single "word".
+    dense = "x" * 1000
+    assert count_tokens(enc, dense) == 1
+    assert estimate_prompt_tokens(enc, dense) == (1000 + 3) // 4
+    assert estimate_prompt_tokens(None, "") == 0
+
+
+def test_chars_per_token_estimate():
+    assert chars_per_token_estimate("") == 0
+    assert chars_per_token_estimate("abcd") == 1
+    assert chars_per_token_estimate("abcde") == 2
 
 
 def test_tiktoken_encoder_returns_usable_or_none():
@@ -150,3 +179,18 @@ def test_load_hf_tokenizer_includes_underlying_error(monkeypatch: pytest.MonkeyP
 
     assert ei.value.__cause__ is not None
     token_utils._load_hf_tokenizer.cache_clear()
+
+
+@pytest.mark.slow
+def test_llama_hf_tokenizer_golden_count_when_available():
+    """Optional: real Llama HF tokenizer count for a short fixed string."""
+    try:
+        enc = resolve_encoder("openrouter/meta-llama/llama-3.1-8b-instruct")
+    except Exception as exc:
+        pytest.skip(f"Llama HF tokenizer unavailable: {exc}")
+    if enc is None:
+        pytest.skip("Llama HF tokenizer unavailable")
+    text = "def add(a, b):\n    return a + b\n"
+    n = count_tokens(enc, text)
+    assert n >= 8
+    assert estimate_prompt_tokens(enc, text) >= n
