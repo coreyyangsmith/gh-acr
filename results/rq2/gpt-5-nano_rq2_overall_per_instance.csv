@@ -1,2 +1,2 @@
-model,n_instances,mean_delta_exact_match,std_delta_exact_match,win_rate_exact_match,mean_delta_similarity,std_delta_similarity,win_rate_similarity,mean_delta_bleu3,std_delta_bleu3,win_rate_bleu3,mean_delta_rouge_l,std_delta_rouge_l,win_rate_rouge_l
-gpt-5-nano,1888,0.017478813559322032,0.3057679041521762,0.055614406779661014,-0.012906971850092486,0.2032012672560673,0.5127118644067796,-0.028990395165318532,0.21651009138365807,0.3961864406779661,-0.014753662155722378,0.18011778030187262,0.4692796610169492
+model,n_instances
+gpt-5-nano,1036

@@ -134,11 +134,54 @@ def test_resolve_encoder_propagates_native_tokenizer_failure():
     with patch(
         "src.agents.token_utils._load_hf_tokenizer",
         side_effect=RuntimeError(
-            "Native tokenizer for 'Qwen/Qwen3-32B' requires the 'transformers' package"
+            "Failed to load Hugging Face tokenizer 'Qwen/Qwen3-32B' for token counting"
         ),
     ):
-        with pytest.raises(RuntimeError, match="transformers"):
+        with pytest.raises(RuntimeError, match="token counting"):
             resolve_encoder("openrouter/qwen/qwen3-32b")
+
+def test_load_hf_tokenizer_prefers_tokenizers_path(monkeypatch: pytest.MonkeyPatch):
+    token_utils._load_hf_tokenizer.cache_clear()
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token_abc")
+
+    fake_tok = MagicMock(name="TokenizersAdapter")
+    with patch(
+        "src.agents.token_utils._load_hf_tokenizer_via_tokenizers",
+        return_value=fake_tok,
+    ) as via_tok:
+        with patch(
+            "src.agents.token_utils._load_hf_tokenizer_via_transformers"
+        ) as via_tf:
+            tok = token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
+
+    assert tok is fake_tok
+    via_tok.assert_called_once_with(
+        "meta-llama/Llama-3.1-8B-Instruct", "hf_test_token_abc"
+    )
+    via_tf.assert_not_called()
+    token_utils._load_hf_tokenizer.cache_clear()
+
+
+def test_load_hf_tokenizer_falls_back_to_transformers(monkeypatch: pytest.MonkeyPatch):
+    token_utils._load_hf_tokenizer.cache_clear()
+    monkeypatch.setenv("HF_TOKEN", "hf_test_token_abc")
+
+    fake_tok = MagicMock(name="TransformersTokenizer")
+    with patch(
+        "src.agents.token_utils._load_hf_tokenizer_via_tokenizers",
+        side_effect=RuntimeError("no tokenizer.json"),
+    ):
+        with patch(
+            "src.agents.token_utils._load_hf_tokenizer_via_transformers",
+            return_value=fake_tok,
+        ) as via_tf:
+            tok = token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
+
+    assert tok is fake_tok
+    via_tf.assert_called_once_with(
+        "meta-llama/Llama-3.1-8B-Instruct", "hf_test_token_abc"
+    )
+    token_utils._load_hf_tokenizer.cache_clear()
 
 
 def test_load_hf_tokenizer_forwards_hf_token(monkeypatch: pytest.MonkeyPatch):
@@ -149,8 +192,12 @@ def test_load_hf_tokenizer_forwards_hf_token(monkeypatch: pytest.MonkeyPatch):
     transformers_mod = MagicMock()
     transformers_mod.AutoTokenizer.from_pretrained = MagicMock(return_value=fake_tok)
 
-    with patch.dict("sys.modules", {"transformers": transformers_mod}):
-        tok = token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
+    with patch(
+        "src.agents.token_utils._load_hf_tokenizer_via_tokenizers",
+        side_effect=RuntimeError("force transformers fallback"),
+    ):
+        with patch.dict("sys.modules", {"transformers": transformers_mod}):
+            tok = token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
 
     assert tok is fake_tok
     transformers_mod.AutoTokenizer.from_pretrained.assert_called_once_with(
@@ -168,17 +215,55 @@ def test_load_hf_tokenizer_includes_underlying_error(monkeypatch: pytest.MonkeyP
     monkeypatch.delenv("HF_API_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACE_TOKEN", raising=False)
 
-    transformers_mod = MagicMock()
-    transformers_mod.AutoTokenizer.from_pretrained = MagicMock(
-        side_effect=OSError("You are trying to access a gated repo. 401 Client Error.")
-    )
+    with patch(
+        "src.agents.token_utils._load_hf_tokenizer_via_tokenizers",
+        side_effect=OSError("tokenizer.json missing"),
+    ):
+        with patch(
+            "src.agents.token_utils._load_hf_tokenizer_via_transformers",
+            side_effect=OSError(
+                "You are trying to access a gated repo. 401 Client Error."
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="gated repo") as ei:
+                token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
 
-    with patch.dict("sys.modules", {"transformers": transformers_mod}):
-        with pytest.raises(RuntimeError, match="Underlying error:.*gated repo") as ei:
-            token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
-
+    assert "tokenizers path failed" in str(ei.value)
     assert ei.value.__cause__ is not None
     token_utils._load_hf_tokenizer.cache_clear()
+
+
+def test_load_hf_tokenizer_reports_broken_transformers_import(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    token_utils._load_hf_tokenizer.cache_clear()
+    monkeypatch.delenv("HF_TOKEN", raising=False)
+
+    with patch(
+        "src.agents.token_utils._load_hf_tokenizer_via_tokenizers",
+        side_effect=ModuleNotFoundError("No module named 'tokenizers'"),
+    ):
+        with patch(
+            "src.agents.token_utils._load_hf_tokenizer_via_transformers",
+            side_effect=ModuleNotFoundError(
+                "No module named 'torch._higher_order_ops.triton_kernel_wrap'"
+            ),
+        ):
+            with pytest.raises(RuntimeError, match="triton_kernel_wrap") as ei:
+                token_utils._load_hf_tokenizer("meta-llama/Llama-3.1-8B-Instruct")
+
+    assert "transformers fallback failed" in str(ei.value)
+    token_utils._load_hf_tokenizer.cache_clear()
+
+
+def test_tokenizers_encoder_adapter_encode():
+    inner = MagicMock()
+    encoding = MagicMock()
+    encoding.ids = [11, 22, 33]
+    inner.encode.return_value = encoding
+    adapter = token_utils._TokenizersEncoderAdapter(inner)
+    assert adapter.encode("hello") == [11, 22, 33]
+    inner.encode.assert_called_once_with("hello")
 
 
 @pytest.mark.slow

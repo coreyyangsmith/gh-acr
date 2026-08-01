@@ -75,7 +75,13 @@ def _log_environment_diagnostics(logger) -> None:
 
     # LangFuse (presence only; never log secret values)
     logger.info("--- LangFuse Configuration ---")
-    for var in ("LANGFUSE_PUBLIC_KEY", "LANGFUSE_SECRET_KEY", "LANGFUSE_BASE_URL", "LANGFUSE_TRACING_ENABLED"):
+    for var in (
+        "LANGFUSE_PUBLIC_KEY",
+        "LANGFUSE_SECRET_KEY",
+        "LANGFUSE_BASE_URL",
+        "LANGFUSE_TRACING_ENABLED",
+        "LANGFUSE_FAILURE_THRESHOLD",
+    ):
         val = os.getenv(var, "<not set>")
         if var.endswith("_KEY") and val != "<not set>":
             val = val[:4] + "****" if len(val) > 4 else "****"

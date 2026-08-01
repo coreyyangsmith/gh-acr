@@ -1,2 +1,2 @@
-model,n_instances,mean_delta_exact_match,std_delta_exact_match,win_rate_exact_match,mean_delta_similarity,std_delta_similarity,win_rate_similarity,mean_delta_bleu3,std_delta_bleu3,win_rate_bleu3,mean_delta_rouge_l,std_delta_rouge_l,win_rate_rouge_l
-Llama-3.1-8B-Instruct,1888,0.11917372881355932,0.3240786630915359,0.11917372881355932,0.3852032119944336,0.3343575691313938,0.9046610169491526,0.4456679691925076,0.3997621439821823,0.8797669491525424,0.3146422088724133,0.30894923298435806,0.8967161016949152
+model,n_instances
+llama-3.1-8b-instruct,1360

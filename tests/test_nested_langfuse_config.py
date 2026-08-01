@@ -14,8 +14,10 @@ from src.agents.observability import langfuse_tracing as lt
 @pytest.fixture(autouse=True)
 def _reset_context():
     clear_run_context()
+    lt.reset_langfuse_circuit_breaker()
     yield
     clear_run_context()
+    lt.reset_langfuse_circuit_breaker()
 
 
 @pytest.mark.parametrize(

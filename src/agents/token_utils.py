@@ -124,33 +124,83 @@ def hf_repo_for_model(model_name: str, tokenizer_family: str | None = None) -> s
     )
 
 
-@lru_cache(maxsize=None)
-def _load_hf_tokenizer(repo_id: str) -> Any:
-    """Load and cache a Hugging Face tokenizer; never silently fall back."""
+class _TokenizersEncoderAdapter:
+    """Minimal encode()-compatible wrapper around ``tokenizers.Tokenizer``."""
+
+    def __init__(self, tokenizer: Any):
+        self._tokenizer = tokenizer
+
+    def encode(self, text: str) -> list[int]:
+        return list(self._tokenizer.encode(text).ids)
+
+
+def _load_hf_tokenizer_via_tokenizers(repo_id: str, hf_token: str | None) -> Any:
+    """Load tokenizer.json via huggingface_hub + tokenizers (no Torch needed)."""
+    from huggingface_hub import hf_hub_download  # type: ignore
+    from tokenizers import Tokenizer  # type: ignore
+
+    path = hf_hub_download(
+        repo_id=repo_id,
+        filename="tokenizer.json",
+        token=hf_token,
+    )
+    return _TokenizersEncoderAdapter(Tokenizer.from_file(path))
+
+
+def _load_hf_tokenizer_via_transformers(repo_id: str, hf_token: str | None) -> Any:
+    """Fallback loader using transformers.AutoTokenizer (may import Torch)."""
     try:
         from transformers import AutoTokenizer  # type: ignore
-    except ImportError as exc:  # pragma: no cover - depends on optional extra
+    except Exception as exc:  # pragma: no cover - optional / broken env path
         raise RuntimeError(
-            f"Native tokenizer for {repo_id!r} requires the 'transformers' package. "
-            "Install with: uv sync --extra local-llm"
+            f"Native tokenizer fallback for {repo_id!r} could not import "
+            f"'transformers.AutoTokenizer' ({type(exc).__name__}: {exc}). "
+            "Prefer the lightweight path (tokenizers + huggingface_hub via "
+            "`uv sync`), or install a matching local-llm stack with: "
+            "uv sync --extra local-llm"
         ) from exc
+    return AutoTokenizer.from_pretrained(
+        repo_id,
+        trust_remote_code=True,
+        token=hf_token,
+    )
+
+
+@lru_cache(maxsize=None)
+def _load_hf_tokenizer(repo_id: str) -> Any:
+    """Load and cache a Hugging Face tokenizer; never silently fall back.
+
+    Prefers ``tokenizers`` + ``huggingface_hub`` so OpenRouter/Groq token
+    counting does not require Torch. Falls back to ``transformers`` only when
+    tokenizer.json cannot be loaded that way.
+    """
     # Lazy import avoids circular deps at module load; parity with local_backend.
     from .handlers.hf_utils import get_hf_token
 
     hf_token = get_hf_token()
+    tokenizers_error: Exception | None = None
     try:
-        return AutoTokenizer.from_pretrained(
-            repo_id,
-            trust_remote_code=True,
-            token=hf_token,
-        )
+        return _load_hf_tokenizer_via_tokenizers(repo_id, hf_token)
     except Exception as exc:
+        tokenizers_error = exc
+
+    try:
+        return _load_hf_tokenizer_via_transformers(repo_id, hf_token)
+    except Exception as exc:
+        details = f"Underlying error: {exc}"
+        if tokenizers_error is not None:
+            details = (
+                f"tokenizers path failed ({type(tokenizers_error).__name__}: "
+                f"{tokenizers_error}); transformers fallback failed "
+                f"({type(exc).__name__}: {exc})"
+            )
         raise RuntimeError(
             f"Failed to load Hugging Face tokenizer {repo_id!r} for token counting. "
-            "Ensure the model is cached locally or set HF_TOKEN for gated repos "
-            "(e.g. meta-llama/*), and accept the model license on Hugging Face if "
-            f"required. Underlying error: {exc}. "
-            "Install tokenizers via: uv sync --extra local-llm"
+            "Ensure tokenizers + huggingface_hub are installed (`uv sync`), the "
+            "model is cached locally or HF_TOKEN is set for gated repos "
+            "(e.g. meta-llama/*), and the model license is accepted on Hugging Face "
+            f"if required. {details}. "
+            "For local model inference also run: uv sync --extra local-llm"
         ) from exc
 
 

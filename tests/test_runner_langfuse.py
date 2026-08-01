@@ -16,8 +16,10 @@ from src.cli.runner import run_and_save_report
 @pytest.fixture(autouse=True)
 def _reset_context():
     clear_run_context()
+    lt.reset_langfuse_circuit_breaker()
     yield
     clear_run_context()
+    lt.reset_langfuse_circuit_breaker()
 
 
 def _minimal_success_result(*, scenario_id: str = "42", eval_method: str = "agent"):

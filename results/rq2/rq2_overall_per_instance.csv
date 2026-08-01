@@ -1,2 +1,2 @@
-model,n_instances,mean_delta_exact_match,std_delta_exact_match,win_rate_exact_match,mean_delta_similarity,std_delta_similarity,win_rate_similarity,mean_delta_bleu3,std_delta_bleu3,win_rate_bleu3,mean_delta_rouge_l,std_delta_rouge_l,win_rate_rouge_l
-all_models,1888,0.11334745762711865,0.317101041496516,0.11334745762711865,0.3189104921663928,0.25954665011379197,0.9560381355932204,0.2956680200628929,0.2741268859527219,0.9348516949152542,0.2788463976059675,0.2525558417456783,0.9597457627118644
+model,n_instances
+all_models,1364

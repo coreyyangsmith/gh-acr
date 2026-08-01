@@ -103,6 +103,8 @@ Requires-Dist: rouge-score==0.1.2
 Requires-Dist: sacrebleu==2.4.3
 Requires-Dist: rapidfuzz==3.13.0
 Requires-Dist: pytest>=8
+Requires-Dist: tokenizers==0.22.0
+Requires-Dist: huggingface_hub==0.34.4
 Provides-Extra: analysis
 Requires-Dist: plotly==5.24.1; extra == "analysis"
 Requires-Dist: dash==2.18.2; extra == "analysis"
@@ -110,8 +112,6 @@ Requires-Dist: matplotlib-venn==0.11.10; extra == "analysis"
 Requires-Dist: radon>=6.0.1; extra == "analysis"
 Provides-Extra: local-llm
 Requires-Dist: transformers==4.56.1; extra == "local-llm"
-Requires-Dist: tokenizers==0.22.0; extra == "local-llm"
-Requires-Dist: huggingface_hub==0.34.4; extra == "local-llm"
 Requires-Dist: safetensors==0.5.3; extra == "local-llm"
 Requires-Dist: accelerate==1.10.1; extra == "local-llm"
 Requires-Dist: torch==2.7.1; extra == "local-llm"
@@ -250,6 +250,7 @@ uv run python -m src.cli.run_all --mode clone [options]
 | `--n-easy N --n-medium M --n-hard K` | Sample by difficulty instead |
 | `--model-name` | LLM override (see below) |
 | `--results-filename FILE` | Custom output CSV name (under `data/`) |
+| `--resume` | Keep existing CSV/ledger/failures log; skip units already recorded as success; re-run failures, degradations, and missing units |
 | `--start-index N --end-index M` | Batch processing by row index |
 
 ### Model name formats
@@ -280,8 +281,13 @@ uv run python -m src.cli.run_all --mode clone --methods base_a base_b agent bypa
 
 ### Output locations
 
-- **Consolidated CSV**: `data/YYYY_MM_DD_results_all.csv` (or the name passed to `--results-filename`)
+- **Consolidated CSV**: `data/YYYY_MM_DD_results_all.csv` (or the name passed to `--results-filename`) — successful units only
+- **Run ledger**: `data/<results_stem>_run_log.jsonl` — per-unit `success` / `failure` / `degraded` / `summary` records
+- **Failures log**: `data/<results_stem>_failures.jsonl` — failure and degraded units only (for diagnosis and `--resume` re-runs)
 - **Per-scenario artifacts**: `data/<model_name>/<scenario_id>/` (diffs, ground truth, agent outputs)
+- **LLM failure traces**: `logs/llm_failures/` when an LLM call exhausts retries
+
+Soft degradations (prompt truncation, JSON/heuristic fallbacks, unclear judge verdicts) complete without raising but are recorded as `degraded` (not written to the results CSV) so `--resume` can re-run them.
 
 ### Analyzing results
 
@@ -310,9 +316,40 @@ Outputs go to `results/` by default.
 
 ## Groq Usage
 
+Direct Groq model id: `groq:llama-3.1-8b-instant` (API: `llama-3.1-8b-instant`).
+
+Published developer-tier limits (see [Groq rate limits](https://console.groq.com/docs/rate-limits)):
+**30 RPM / 6,000 TPM / 14,400 RPD / 500,000 TPD**. Soft client defaults are ~90% of those ceilings (`27` RPM / `5400` TPM). Enable local pacing for concurrent runs:
+
 ```bash
 $env:GROQ_API_KEY="<your_key>"
-uv run python -m src.cli.run_all --mode clone --methods agent bypass7 --model-name groq:llama-3.1-8b-instant --results-filename 2025_09_30_groq.csv
+$env:RL_ENABLE_WAITING="1"
+# Optional overrides / timeout / watchdog:
+# $env:GROQ_REQUEST_TIMEOUT="120"
+# $env:OPENROUTER_REQUEST_TIMEOUT="600"
+# $env:OPENAI_REQUEST_TIMEOUT="600"
+# $env:GHACR_LLM_REQUEST_TIMEOUT="600"
+# $env:GHACR_WATCHDOG="1"
+uv run python -m src.cli.run_all --mode clone --methods agent bypass7 `
+  --model-name groq:llama-3.1-8b-instant `
+  --concurrency 2 --method-concurrency 2 `
+  --results-filename 2025_09_30_groq.csv `
+  --watchdog
+```
+
+Check live health (heartbeat + latest ledger event) without starting work:
+
+```bash
+uv run python -m src.cli.run_all --status --results-filename 2025_09_30_groq.csv
+```
+
+If a run stalls or the watchdog soft-skips / aborts, diagnostics are written next to the results CSV (`*_watchdog_stacks.txt`). Soft-skip (`--watchdog-mode skip`, default) marks the unit as a ledger timeout and cancels further LLM retries; OpenAI/OpenRouter HTTP timeouts (default 600s) free blocked workers so concurrency can advance. Restart safely with `--resume` — completed `success` / `degraded` units in `*_run_log.jsonl` are skipped (timeout failures are retried):
+
+```bash
+uv run python -m src.cli.run_all --mode clone --methods agent bypass7 `
+  --model-name groq:llama-3.1-8b-instant `
+  --results-filename 2025_09_30_groq.csv `
+  --resume --watchdog
 ```
 
 Outputs are nested under `data/groq_<model>/...` for Windows-safe paths.

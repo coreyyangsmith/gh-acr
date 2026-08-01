@@ -6,6 +6,11 @@ one shared CallbackHandler and wraps the run in a parent observation so all
 multi-agent LLM calls nest under a single method-named trace
 (``bypass7``, ``force_mix``, ``agent``, ``base_a``, ``base_b``).
 
+Tracing is optional and non-blocking: export/flush/observation failures are
+swallowed. After ``LANGFUSE_FAILURE_THRESHOLD`` (default 3) failures in a
+process, tracing is disabled for the remainder of the run so evaluation
+continues without further telemetry attempts.
+
 Trace attributes (Langfuse v4 / CallbackHandler metadata keys):
 - ``langfuse_trace_name`` = eval method (low-cardinality operation id)
 - ``langfuse_session_id`` = scenario id (Sessions view / per-scenario grouping)
@@ -16,6 +21,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from contextlib import contextmanager
 from contextvars import ContextVar
 from typing import Any, Iterator
@@ -34,10 +40,104 @@ _last_llm_calls: ContextVar[list[dict[str, Any]]] = ContextVar(
 )
 
 _FALSEY = {"0", "false", "no", "off", ""}
+_MAX_OTEL_ATTR_CHARS = 4096
+_DEFAULT_FAILURE_THRESHOLD = 3
+_export_guard_installed = False
+
+# Process-level circuit breaker: repeated telemetry failures disable tracing
+# for the rest of the evaluation run without aborting work.
+_circuit_lock = threading.Lock()
+_failure_count = 0
+_disabled_due_to_failures = False
+
+
+def _failure_threshold() -> int:
+    raw = (os.getenv("LANGFUSE_FAILURE_THRESHOLD") or "").strip()
+    if not raw:
+        return _DEFAULT_FAILURE_THRESHOLD
+    try:
+        return max(1, int(raw))
+    except Exception:
+        return _DEFAULT_FAILURE_THRESHOLD
+
+
+def reset_langfuse_circuit_breaker() -> None:
+    """Clear the failure circuit breaker (primarily for tests)."""
+    global _failure_count, _disabled_due_to_failures
+    with _circuit_lock:
+        _failure_count = 0
+        _disabled_due_to_failures = False
+
+
+def get_langfuse_failure_count() -> int:
+    """Return how many LangFuse failures have been recorded this process."""
+    with _circuit_lock:
+        return _failure_count
+
+
+def is_langfuse_circuit_open() -> bool:
+    """Return True when repeated failures have disabled tracing for this run."""
+    with _circuit_lock:
+        return _disabled_due_to_failures
+
+
+def _record_langfuse_failure(where: str, exc: BaseException | str | None = None) -> None:
+    """Count a non-fatal LangFuse failure; open the circuit after the threshold."""
+    global _failure_count, _disabled_due_to_failures
+    detail = ""
+    if isinstance(exc, BaseException):
+        detail = f"{type(exc).__name__}: {exc}"
+    elif exc is not None:
+        detail = str(exc)
+
+    with _circuit_lock:
+        _failure_count += 1
+        count = _failure_count
+        threshold = _failure_threshold()
+        newly_opened = False
+        if not _disabled_due_to_failures and count >= threshold:
+            _disabled_due_to_failures = True
+            newly_opened = True
+        disabled = _disabled_due_to_failures
+
+    if newly_opened:
+        logger.warning(
+            "[langfuse] disabling tracing for the rest of this run after %d "
+            "failure(s) (threshold=%d); evaluation continues without telemetry. "
+            "last_error_at=%s %s",
+            count,
+            threshold,
+            where,
+            detail,
+        )
+        try:
+            _shared_handler.set(None)
+        except Exception:
+            pass
+        return
+
+    if disabled:
+        # Already open: keep logs quiet beyond the first disable message.
+        logger.debug("[langfuse] %s failed while circuit open: %s", where, detail)
+        return
+
+    logger.warning(
+        "[langfuse] %s failed (non-fatal, %d/%d): %s",
+        where,
+        count,
+        threshold,
+        detail,
+    )
 
 
 def is_langfuse_enabled() -> bool:
-    """Return True when LangFuse credentials are present and tracing is not disabled."""
+    """Return True when LangFuse credentials are present and tracing is not disabled.
+
+    Returns False when credentials are missing, ``LANGFUSE_TRACING_ENABLED`` is
+    falsy, or the failure circuit breaker has opened for this process.
+    """
+    if is_langfuse_circuit_open():
+        return False
     flag = os.getenv("LANGFUSE_TRACING_ENABLED", "1").strip().lower()
     if flag in _FALSEY:
         return False
@@ -145,6 +245,118 @@ def _wrap_handler_with_cost_details(handler: Any) -> Any:
     return handler
 
 
+def _sanitize_otel_attribute_value(value: Any) -> Any:
+    """Coerce attribute values to OTEL-safe primitives and bound string size."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, bytes):
+        try:
+            value = value.decode("utf-8", errors="replace")
+        except Exception:
+            return ""
+    if isinstance(value, str):
+        text = value.encode("utf-8", errors="replace").decode("utf-8", errors="replace")
+        if len(text) > _MAX_OTEL_ATTR_CHARS:
+            return text[: _MAX_OTEL_ATTR_CHARS - 3] + "..."
+        return text
+    if isinstance(value, (list, tuple)):
+        out: list[Any] = []
+        for item in value[:64]:
+            if isinstance(item, bool):
+                out.append(item)
+            elif isinstance(item, (int, float)):
+                out.append(item)
+            else:
+                out.append(_sanitize_otel_attribute_value(str(item)))
+        return out
+    # Nested / unsupported types become short strings.
+    return _sanitize_otel_attribute_value(str(value))
+
+
+def _sanitize_span_attributes(attributes: Any) -> dict[str, Any]:
+    if not isinstance(attributes, dict):
+        return {}
+    cleaned: dict[str, Any] = {}
+    for key, value in attributes.items():
+        try:
+            key_s = str(key)
+        except Exception:
+            continue
+        if not key_s or key_s.lower() in {"proto", "constructor", "prototype"}:
+            continue
+        cleaned[key_s] = _sanitize_otel_attribute_value(value)
+    return cleaned
+
+
+def _install_resilient_span_export_guard() -> None:
+    """Make Langfuse/OTLP span export failures non-fatal to evaluation runs.
+
+    Large LLM inputs/outputs can trigger ``google.protobuf.message.EncodeError``
+    inside the OTEL exporter. That must never abort scenario processing.
+    """
+    global _export_guard_installed
+    if _export_guard_installed:
+        return
+    try:
+        from langfuse._client.span_exporter import (  # type: ignore
+            LangfuseTransformingSpanExporter,
+        )
+        from opentelemetry.sdk.trace.export import SpanExportResult  # type: ignore
+    except Exception as exc:  # pragma: no cover - optional dependency path
+        logger.debug("[langfuse] export guard unavailable: %s", exc)
+        _export_guard_installed = True
+        return
+
+    if getattr(LangfuseTransformingSpanExporter.export, "_ghacr_guarded", False):
+        _export_guard_installed = True
+        return
+
+    original_export = LangfuseTransformingSpanExporter.export
+
+    def _safe_export(self: Any, spans: Any) -> Any:
+        if is_langfuse_circuit_open():
+            try:
+                return SpanExportResult.FAILURE
+            except Exception:  # pragma: no cover
+                return None
+        try:
+            # Best-effort truncation of oversized attributes before protobuf encode.
+            safe_spans = []
+            for span in spans or []:
+                try:
+                    attrs = getattr(span, "attributes", None)
+                    if attrs:
+                        cleaned = _sanitize_span_attributes(dict(attrs))
+                        clone = getattr(self, "_clone_span", None)
+                        if callable(clone):
+                            span = clone(span=span, attributes=cleaned)
+                except Exception:
+                    pass
+                safe_spans.append(span)
+            result = original_export(self, safe_spans)
+            # Treat explicit FAILURE returns as a counted telemetry fault.
+            try:
+                if result == SpanExportResult.FAILURE:
+                    _record_langfuse_failure("span_export", "SpanExportResult.FAILURE")
+            except Exception:
+                pass
+            return result
+        except Exception as exc:
+            _record_langfuse_failure("span_export", exc)
+            try:
+                return SpanExportResult.FAILURE
+            except Exception:  # pragma: no cover
+                return None
+
+    _safe_export._ghacr_guarded = True  # type: ignore[attr-defined]
+    LangfuseTransformingSpanExporter.export = _safe_export  # type: ignore[method-assign]
+    _export_guard_installed = True
+
+
 def _ensure_shared_handler() -> Any | None:
     """Create or return the per-scenario shared CallbackHandler."""
     existing = _shared_handler.get()
@@ -152,13 +364,18 @@ def _ensure_shared_handler() -> Any | None:
         return existing
     if not is_langfuse_enabled():
         return None
+    _install_resilient_span_export_guard()
+    # Bound OTEL attribute payloads when the SDK honors the env var.
+    os.environ.setdefault(
+        "OTEL_ATTRIBUTE_VALUE_LENGTH_LIMIT", str(_MAX_OTEL_ATTR_CHARS)
+    )
     handler_cls = _import_callback_handler()
     if handler_cls is None:
         return None
     try:
         handler = _wrap_handler_with_cost_details(handler_cls())
     except Exception as exc:
-        logger.warning("[langfuse] Failed to construct CallbackHandler: %s", exc)
+        _record_langfuse_failure("callback_handler_init", exc)
         return None
     _shared_handler.set(handler)
     return handler
@@ -290,7 +507,7 @@ def scenario_observation(name: str) -> Iterator[Any | None]:
 
             client = Langfuse()
         except Exception as exc:  # pragma: no cover
-            logger.debug("[langfuse] scenario_observation unavailable: %s", exc)
+            _record_langfuse_failure("scenario_observation_client", exc)
             yield None
             return
 
@@ -308,17 +525,16 @@ def scenario_observation(name: str) -> Iterator[Any | None]:
         try:
             cm = start(name=name)
         except Exception as exc:  # pragma: no cover
-            logger.debug("[langfuse] start observation failed: %s", exc)
+            _record_langfuse_failure("scenario_observation_start", exc)
             yield None
             return
     except Exception as exc:  # pragma: no cover
-        logger.debug("[langfuse] start observation failed: %s", exc)
+        _record_langfuse_failure("scenario_observation_start", exc)
         yield None
         return
 
     with cm as obs:
         yield obs
-
 
 def update_observation_cost_metadata(
     observation: Any | None,
@@ -331,24 +547,25 @@ def update_observation_cost_metadata(
     model_name: str | None = None,
 ) -> None:
     """Attach scenario-level token/cost totals to a LangFuse parent observation."""
-    if observation is None:
+    if observation is None or not is_langfuse_enabled():
         return
-    metadata = {
-        "tokens_in": int(tokens_in),
-        "tokens_out": int(tokens_out),
-        "cost_in": float(cost_in),
-        "cost_out": float(cost_out),
-        "total_cost": float(total_cost),
-    }
-    if model_name:
-        metadata["model_name"] = str(model_name)
+    metadata = _sanitize_span_attributes(
+        {
+            "tokens_in": int(tokens_in),
+            "tokens_out": int(tokens_out),
+            "cost_in": float(cost_in),
+            "cost_out": float(cost_out),
+            "total_cost": float(total_cost),
+            **({"model_name": str(model_name)} if model_name else {}),
+        }
+    )
     try:
         update = getattr(observation, "update", None)
         if callable(update):
             update(metadata=metadata)
             return
     except Exception as exc:
-        logger.debug("[langfuse] observation cost metadata update failed: %s", exc)
+        _record_langfuse_failure("observation_cost_metadata", exc)
     try:
         from langfuse import get_client  # type: ignore
 
@@ -359,7 +576,7 @@ def update_observation_cost_metadata(
         if callable(fn):
             fn(metadata=metadata)
     except Exception as exc:
-        logger.debug("[langfuse] current span cost metadata update failed: %s", exc)
+        _record_langfuse_failure("current_span_cost_metadata", exc)
 
 
 def build_langfuse_invoke_config(
@@ -452,20 +669,26 @@ def build_langfuse_invoke_config(
 
 
 def flush_langfuse() -> None:
-    """Best-effort flush of pending LangFuse events."""
+    """Best-effort flush of pending LangFuse events.
+
+    Export/serialization failures (e.g. protobuf EncodeError on oversized
+    attributes) are logged and swallowed so evaluation continues. Repeated
+    failures open the circuit breaker and disable further tracing attempts.
+    """
     if not is_langfuse_enabled():
         return
+    _install_resilient_span_export_guard()
     try:
         from langfuse import get_client  # type: ignore
 
         get_client().flush()
-    except Exception:
+    except Exception as first_exc:
         try:
             from langfuse import Langfuse  # type: ignore
 
             Langfuse().flush()
         except Exception as exc:  # pragma: no cover
-            logger.debug("[langfuse] flush failed: %s", exc)
+            _record_langfuse_failure("flush", exc or first_exc)
 
 
 class LangfuseLLMWrapper:
@@ -509,12 +732,15 @@ __all__ = [
     "clear_llm_node",
     "clear_run_context",
     "flush_langfuse",
+    "get_langfuse_failure_count",
     "get_llm_calls",
     "get_llm_node",
     "get_run_context",
     "get_shared_handler",
+    "is_langfuse_circuit_open",
     "is_langfuse_enabled",
     "make_trace_name",
+    "reset_langfuse_circuit_breaker",
     "scenario_observation",
     "set_llm_node",
     "set_run_context",

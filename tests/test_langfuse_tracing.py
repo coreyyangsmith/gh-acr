@@ -25,8 +25,10 @@ from src.config.eval_methods import ALL_EVAL_METHODS
 @pytest.fixture(autouse=True)
 def _reset_context():
     clear_run_context()
+    lt.reset_langfuse_circuit_breaker()
     yield
     clear_run_context()
+    lt.reset_langfuse_circuit_breaker()
 
 
 @pytest.fixture
@@ -454,6 +456,125 @@ def test_flush_swallows_total_failure(langfuse_keys):
             flush_langfuse()  # must not raise
 
 
+def test_sanitize_otel_attribute_value_truncates_and_coerces():
+    long = "x" * (lt._MAX_OTEL_ATTR_CHARS + 50)
+    out = lt._sanitize_otel_attribute_value(long)
+    assert isinstance(out, str)
+    assert len(out) == lt._MAX_OTEL_ATTR_CHARS
+    assert out.endswith("...")
+    assert lt._sanitize_otel_attribute_value(None) == ""
+    assert lt._sanitize_otel_attribute_value(b"abc") == "abc"
+    assert lt._sanitize_otel_attribute_value({"a": 1}) == str({"a": 1})
+    assert lt._sanitize_otel_attribute_value([1, "ok", {"n": 2}]) == [
+        1,
+        "ok",
+        str({"n": 2}),
+    ]
+
+
+def test_install_resilient_span_export_guard_catches_encode_error(langfuse_keys):
+    from langfuse._client import span_exporter as se
+    from opentelemetry.sdk.trace.export import SpanExportResult
+
+    original = se.LangfuseTransformingSpanExporter.export
+
+    def _boom(self, spans):
+        raise RuntimeError("Failed to serialize proto")
+
+    try:
+        se.LangfuseTransformingSpanExporter.export = _boom
+        lt._export_guard_installed = False
+        lt._install_resilient_span_export_guard()
+
+        exporter = se.LangfuseTransformingSpanExporter(
+            exporter=MagicMock(), media_manager=None, mask_otel_spans=None
+        )
+        result = exporter.export([])
+        assert result == SpanExportResult.FAILURE
+        assert getattr(
+            se.LangfuseTransformingSpanExporter.export, "_ghacr_guarded", False
+        )
+
+        # Second install is a no-op and keeps the guard flag.
+        lt._install_resilient_span_export_guard()
+        assert getattr(
+            se.LangfuseTransformingSpanExporter.export, "_ghacr_guarded", False
+        )
+    finally:
+        se.LangfuseTransformingSpanExporter.export = original
+        lt._export_guard_installed = False
+        # Reinstall a clean guard over the real exporter for later tests.
+        if hasattr(original, "_ghacr_guarded"):
+            # original was already a guard; keep process consistent
+            lt._export_guard_installed = True
+        else:
+            lt._install_resilient_span_export_guard()
+
+
+def test_circuit_breaker_disables_tracing_after_threshold(langfuse_keys, monkeypatch):
+    monkeypatch.setenv("LANGFUSE_FAILURE_THRESHOLD", "3")
+    assert is_langfuse_enabled() is True
+    assert lt.is_langfuse_circuit_open() is False
+
+    lt._record_langfuse_failure("flush", RuntimeError("boom-1"))
+    lt._record_langfuse_failure("flush", RuntimeError("boom-2"))
+    assert is_langfuse_enabled() is True
+    assert lt.get_langfuse_failure_count() == 2
+
+    lt._record_langfuse_failure("flush", RuntimeError("boom-3"))
+    assert lt.is_langfuse_circuit_open() is True
+    assert is_langfuse_enabled() is False
+    assert lt.get_langfuse_failure_count() == 3
+
+    # Further telemetry is a no-op; evaluation path stays unblocked.
+    existing = {"run_name": "keep", "callbacks": []}
+    assert build_langfuse_invoke_config(existing) is existing
+    flush_langfuse()  # must not raise
+    with lt.scenario_observation("agent") as obs:
+        assert obs is None
+
+
+def test_span_export_failures_trip_circuit_and_stop_attempts(langfuse_keys, monkeypatch):
+    from langfuse._client import span_exporter as se
+    from opentelemetry.sdk.trace.export import SpanExportResult
+
+    monkeypatch.setenv("LANGFUSE_FAILURE_THRESHOLD", "2")
+    original = se.LangfuseTransformingSpanExporter.export
+
+    def _boom(self, spans):
+        raise RuntimeError("Failed to serialize proto")
+
+    try:
+        se.LangfuseTransformingSpanExporter.export = _boom
+        lt._export_guard_installed = False
+        lt._install_resilient_span_export_guard()
+        exporter = se.LangfuseTransformingSpanExporter(
+            exporter=MagicMock(), media_manager=None, mask_otel_spans=None
+        )
+
+        assert exporter.export([]) == SpanExportResult.FAILURE
+        assert exporter.export([]) == SpanExportResult.FAILURE
+        assert lt.is_langfuse_circuit_open() is True
+        assert is_langfuse_enabled() is False
+        # Once open, export returns FAILURE without counting further attempts.
+        assert exporter.export([]) == SpanExportResult.FAILURE
+        assert lt.get_langfuse_failure_count() == 2
+    finally:
+        se.LangfuseTransformingSpanExporter.export = original
+        lt._export_guard_installed = bool(getattr(original, "_ghacr_guarded", False))
+        if not lt._export_guard_installed:
+            lt._install_resilient_span_export_guard()
+
+
+def test_flush_failures_open_circuit(langfuse_keys, monkeypatch):
+    monkeypatch.setenv("LANGFUSE_FAILURE_THRESHOLD", "1")
+    with patch("langfuse.get_client", side_effect=RuntimeError("boom"), create=True):
+        with patch("langfuse.Langfuse", side_effect=RuntimeError("boom2"), create=True):
+            flush_langfuse()
+    assert lt.is_langfuse_circuit_open() is True
+    assert is_langfuse_enabled() is False
+    flush_langfuse()  # second call is a no-op while circuit is open
+
 # ---------------------------------------------------------------------------
 # Context isolation across threads
 # ---------------------------------------------------------------------------
@@ -493,12 +614,15 @@ def test_observability_package_exports():
         "clear_llm_node",
         "clear_run_context",
         "flush_langfuse",
+        "get_langfuse_failure_count",
         "get_llm_calls",
         "get_llm_node",
         "get_run_context",
         "get_shared_handler",
+        "is_langfuse_circuit_open",
         "is_langfuse_enabled",
         "make_trace_name",
+        "reset_langfuse_circuit_breaker",
         "scenario_observation",
         "set_llm_node",
         "set_run_context",
@@ -572,8 +696,8 @@ def test_cost_injecting_observation_adds_cost_details(langfuse_keys):
     assert result is proxy
     kwargs = inner.update.call_args.kwargs
     assert "cost_details" in kwargs
-    assert abs(kwargs["cost_details"]["input"] - 1000 / 1000 * 0.00002) < 1e-12
-    assert abs(kwargs["cost_details"]["output"] - 500 / 1000 * 0.00003) < 1e-12
+    assert abs(kwargs["cost_details"]["input"] - 1000 / 1000 * 0.00005) < 1e-12
+    assert abs(kwargs["cost_details"]["output"] - 500 / 1000 * 0.00008) < 1e-12
     assert abs(kwargs["cost_details"]["total"] - kwargs["cost_details"]["input"] - kwargs["cost_details"]["output"]) < 1e-12
 
 

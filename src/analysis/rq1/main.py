@@ -165,6 +165,30 @@ def generate_all_rq1_figures(
     if "eval_method" not in df.columns:
         raise ValueError("Input CSV must have 'eval_method' column")
 
+    # Auto-map multi-agent method when CSV uses better_judge (etc.) instead of bypass7
+    present_methods = df["eval_method"].dropna().astype(str).unique().tolist()
+    resolved = config.resolve_methods_from_data(present_methods)
+    if resolved.multi_agent_method != config.multi_agent_method:
+        logger.info(
+            "Multi-agent method %r not in CSV; using %r (present: %s)",
+            config.multi_agent_method,
+            resolved.multi_agent_method,
+            sorted(present_methods),
+        )
+        config = resolved
+    elif config.multi_agent_method not in present_methods:
+        raise ValueError(
+            f"Configured multi-agent method {config.multi_agent_method!r} not found in "
+            f"eval_method values: {sorted(present_methods)}. "
+            f"Pass --multi-agent-method <name> explicitly."
+        )
+    else:
+        logger.info(
+            "Comparing %s vs %s",
+            config.single_agent_method,
+            config.multi_agent_method,
+        )
+
     outputs: dict[str, Path] = {}
 
     # 0. All Methods Comparison (with baselines)
@@ -432,9 +456,13 @@ def generate_all_rq1_figures(
                 outputs["all_methods_instance_csv"] = path
                 logger.info(f"  Saved: {path}")
 
-            # Paired delta statistics (common agent/bypass IDs across all models)
+            # Paired delta statistics (common single/multi IDs across all models)
             logger.info("  Computing paired delta statistics (common set)...")
-            common = common_agent_bypass_ids(df)
+            common = common_agent_bypass_ids(
+                df,
+                single_method=config.single_agent_method,
+                multi_method=config.multi_agent_method,
+            )
             if common:
                 df_common = df[df["id"].astype(str).isin(common)].copy()
                 paired_stats = compute_paired_delta_statistics(
@@ -466,7 +494,11 @@ def generate_all_rq1_figures(
                     outputs["paired_delta_stats_instance_csv"] = path
                     logger.info(f"  Saved: {path}")
             else:
-                logger.warning("  Could not compute common agent/bypass ID set for paired deltas")
+                logger.warning(
+                    "  Could not compute common %s/%s ID set for paired deltas",
+                    config.single_agent_method,
+                    config.multi_agent_method,
+                )
         else:
             logger.warning("  No 'id' column found - skipping per-instance metrics")
 

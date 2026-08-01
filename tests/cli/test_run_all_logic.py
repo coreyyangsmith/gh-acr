@@ -789,27 +789,35 @@ def test_run_all_preps_once_per_scenario_runs_methods(
 def test_run_all_does_not_delete_clones(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-    """Batch completion must not call _robust_rmtree on clone dirs."""
+    """Multi-batch runs complete without clone cleanup (clones persist)."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "data").mkdir()
-    df = pd.DataFrame([{"id": "s1", "name": "o/r1", "difficulty": "easy"}])
+    df = pd.DataFrame(
+        [
+            {"id": "s1", "name": "o/r1", "difficulty": "easy"},
+            {"id": "s2", "name": "o/r2", "difficulty": "easy"},
+        ]
+    )
 
     async def _fake_report(app, scenario_id, output_root, **kwargs):
         return [_result_row(str(scenario_id))]
+
+    # Ensure run_all itself never references a clone-cleanup helper.
+    assert not hasattr(run_all_mod, "_robust_rmtree")
 
     with patch.object(run_all_mod, "load_benchmark", return_value=df), patch.object(
         run_all_mod, "build_graph", return_value=MagicMock()
     ), patch.object(run_all_mod, "run_and_save_report", side_effect=_fake_report), patch.object(
         run_all_mod, "ensure_prepared", side_effect=_fake_prepared
-    ), patch.object(run_all_mod, "BATCH_SIZE", 1), patch(
-        "src.merge_pipeline.pipeline_clone._robust_rmtree"
-    ) as rmtree:
+    ), patch.object(run_all_mod, "BATCH_SIZE", 1):
         asyncio.run(
             run_all_mod._run_all(
                 **_run_kwargs(results_filename="no_rm.csv", concurrency=1)
             )
         )
-        assert rmtree.call_count == 0
+
+    out = pd.read_csv(tmp_path / "data" / "no_rm.csv")
+    assert sorted(out["id"].astype(str).tolist()) == ["s1", "s2"]
 
 
 def test_run_all_prep_timeout_records_failures(
@@ -861,3 +869,243 @@ def test_run_all_prep_timeout_records_failures(
     assert len(failures) == 2
     assert {e.get("eval_method") for e in failures} == {"agent", "base_a"}
     assert all(e.get("failure_category") == "timeout" for e in failures)
+
+
+def test_partition_methods_for_replay():
+    phase1, ablations = run_all_mod._partition_methods_for_replay(
+        ["agent", "better_judge", "bj_no_judge", "bypass7"],
+        trace_replay=True,
+    )
+    assert phase1[0] == "better_judge"
+    assert "bj_no_judge" not in phase1
+    assert ablations == ["bj_no_judge"]
+    assert set(phase1) == {"better_judge", "agent", "bypass7"}
+
+    all_methods, empty = run_all_mod._partition_methods_for_replay(
+        ["agent", "bj_no_judge"],
+        trace_replay=False,
+    )
+    assert empty == []
+    assert all_methods == ["agent", "bj_no_judge"]
+
+
+def test_run_all_global_scheduler_steals_across_scenarios(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """A free worker must run scenario B while scenario A's slow method is in flight."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
+    df = pd.DataFrame(
+        [
+            {"id": "s1", "name": "o/r1", "difficulty": "easy"},
+            {"id": "s2", "name": "o/r2", "difficulty": "easy"},
+        ]
+    )
+    started: list[tuple[str, str]] = []
+    lock = threading.Lock()
+    # Created lazily inside the running loop so the Events bind to it.
+    s1_agent_started: asyncio.Event | None = None
+    s2_started: asyncio.Event | None = None
+
+    async def _fake_report(app, scenario_id, output_root, **kwargs):
+        nonlocal s1_agent_started, s2_started
+        if s1_agent_started is None:
+            s1_agent_started = asyncio.Event()
+            s2_started = asyncio.Event()
+        method = kwargs.get("eval_method", "agent")
+        sid = str(scenario_id)
+        with lock:
+            started.append((sid, method))
+        if sid == "s1" and method == "agent":
+            s1_agent_started.set()
+            try:
+                await asyncio.wait_for(s2_started.wait(), timeout=2.0)
+            except asyncio.TimeoutError:
+                pytest.fail("s2 should start while s1 agent runs")
+            await asyncio.sleep(0.05)
+        else:
+            if sid == "s2":
+                s2_started.set()
+            await asyncio.sleep(0.02)
+        return [_result_row(sid, method)]
+
+    with patch.object(run_all_mod, "load_benchmark", return_value=df), patch.object(
+        run_all_mod, "build_graph", return_value=MagicMock()
+    ), patch.object(run_all_mod, "run_and_save_report", side_effect=_fake_report), patch.object(
+        run_all_mod, "ensure_prepared", side_effect=_fake_prepared
+    ), patch.object(run_all_mod, "BATCH_SIZE", 10):
+        asyncio.run(
+            run_all_mod._run_all(
+                **_run_kwargs(
+                    methods=["agent"],
+                    results_filename="steal.csv",
+                    concurrency=2,
+                    method_concurrency=1,
+                )
+            )
+        )
+
+    assert s1_agent_started is not None and s1_agent_started.is_set()
+    assert s2_started is not None and s2_started.is_set()
+    assert set(started) == {("s1", "agent"), ("s2", "agent")}
+
+
+def test_run_all_per_scenario_method_concurrency_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """method_concurrency caps parallel methods within one scenario."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
+    df = pd.DataFrame([{"id": "s1", "name": "o/r1", "difficulty": "easy"}])
+    active = {"n": 0, "max": 0}
+    lock = threading.Lock()
+
+    async def _fake_report(app, scenario_id, output_root, **kwargs):
+        with lock:
+            active["n"] += 1
+            active["max"] = max(active["max"], active["n"])
+        try:
+            await asyncio.sleep(0.1)
+        finally:
+            with lock:
+                active["n"] -= 1
+        return [_result_row(str(scenario_id), kwargs.get("eval_method", "agent"))]
+
+    with patch.object(run_all_mod, "load_benchmark", return_value=df), patch.object(
+        run_all_mod, "build_graph", return_value=MagicMock()
+    ), patch.object(run_all_mod, "run_and_save_report", side_effect=_fake_report), patch.object(
+        run_all_mod, "ensure_prepared", side_effect=_fake_prepared
+    ), patch.object(run_all_mod, "BATCH_SIZE", 10):
+        asyncio.run(
+            run_all_mod._run_all(
+                **_run_kwargs(
+                    methods=["agent", "better_judge", "bypass7"],
+                    results_filename="cap.csv",
+                    concurrency=1,
+                    method_concurrency=2,
+                )
+            )
+        )
+
+    assert active["max"] == 2
+
+
+def test_run_all_trace_replay_orders_better_judge_before_ablations(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """With trace_replay, bj_* units start only after better_judge finishes."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
+    df = pd.DataFrame(
+        [
+            {"id": "s1", "name": "o/r1", "difficulty": "easy"},
+            {"id": "s2", "name": "o/r2", "difficulty": "easy"},
+        ]
+    )
+    events: list[tuple[str, str, str]] = []
+    lock = threading.Lock()
+    bj_done = {"s1": threading.Event(), "s2": threading.Event()}
+
+    async def _fake_report(app, scenario_id, output_root, **kwargs):
+        method = kwargs.get("eval_method", "agent")
+        sid = str(scenario_id)
+        with lock:
+            events.append((sid, method, "start"))
+        if method == "better_judge":
+            await asyncio.sleep(0.08)
+            bj_done[sid].set()
+        elif method.startswith("bj_"):
+            assert bj_done[sid].is_set(), (
+                f"{method} started before better_judge finished for {sid}"
+            )
+            await asyncio.sleep(0.01)
+        else:
+            await asyncio.sleep(0.01)
+        with lock:
+            events.append((sid, method, "end"))
+        return [_result_row(sid, method)]
+
+    with patch.object(run_all_mod, "load_benchmark", return_value=df), patch.object(
+        run_all_mod, "build_graph", return_value=MagicMock()
+    ), patch.object(run_all_mod, "run_and_save_report", side_effect=_fake_report), patch.object(
+        run_all_mod, "ensure_prepared", side_effect=_fake_prepared
+    ), patch.object(run_all_mod, "BATCH_SIZE", 10):
+        asyncio.run(
+            run_all_mod._run_all(
+                **_run_kwargs(
+                    methods=["agent", "better_judge", "bj_no_judge"],
+                    results_filename="replay_order.csv",
+                    concurrency=2,
+                    method_concurrency=3,
+                    trace_replay=True,
+                )
+            )
+        )
+
+    for sid in ("s1", "s2"):
+        bj_end = next(
+            i
+            for i, (s, m, e) in enumerate(events)
+            if s == sid and m == "better_judge" and e == "end"
+        )
+        abl_start = next(
+            i
+            for i, (s, m, e) in enumerate(events)
+            if s == sid and m == "bj_no_judge" and e == "start"
+        )
+        assert bj_end < abl_start
+
+    out = pd.read_csv(tmp_path / "data" / "replay_order.csv")
+    assert len(out) == 6  # 2 scenarios × 3 methods
+
+
+def test_run_all_method_failure_does_not_block_siblings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+    """One method failure still lets other methods for the scenario complete."""
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "data").mkdir()
+    monkeypatch.setenv("GHACR_NO_PROGRESS", "1")
+    df = pd.DataFrame([{"id": "s1", "name": "o/r1", "difficulty": "easy"}])
+    called: list[str] = []
+
+    async def _fake_report(app, scenario_id, output_root, **kwargs):
+        method = kwargs.get("eval_method", "agent")
+        called.append(method)
+        if method == "agent":
+            raise RuntimeError("boom")
+        return [_result_row(str(scenario_id), method)]
+
+    with patch.object(run_all_mod, "load_benchmark", return_value=df), patch.object(
+        run_all_mod, "build_graph", return_value=MagicMock()
+    ), patch.object(run_all_mod, "run_and_save_report", side_effect=_fake_report), patch.object(
+        run_all_mod, "ensure_prepared", side_effect=_fake_prepared
+    ), patch.object(run_all_mod, "BATCH_SIZE", 10):
+        asyncio.run(
+            run_all_mod._run_all(
+                **_run_kwargs(
+                    methods=["agent", "better_judge"],
+                    results_filename="fail_sibling.csv",
+                    concurrency=1,
+                    method_concurrency=2,
+                )
+            )
+        )
+
+    assert set(called) == {"agent", "better_judge"}
+    out = pd.read_csv(tmp_path / "data" / "fail_sibling.csv")
+    assert list(out["eval_method"].astype(str)) == ["better_judge"]
+    ledger_path = tmp_path / "data" / "fail_sibling_run_log.jsonl"
+    events = [
+        json.loads(line)
+        for line in ledger_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert any(e.get("status") == "failure" and e.get("eval_method") == "agent" for e in events)
+    assert any(
+        e.get("status") == "success" and e.get("eval_method") == "better_judge"
+        for e in events
+    )

@@ -8,7 +8,7 @@ import os
 import threading
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -76,7 +76,7 @@ class CreditsExhaustedAbort(RuntimeError):
 
 
 def _resolve_concurrency(concurrency: int | None) -> int:
-    """Resolve scenario worker-pool size from CLI arg or INFERENCE_CONCURRENCY env."""
+    """Resolve max concurrent scenario preparations (CLI or INFERENCE_CONCURRENCY)."""
     if concurrency is not None:
         return max(1, int(concurrency))
     env = (os.getenv("INFERENCE_CONCURRENCY") or "").strip()
@@ -95,6 +95,50 @@ def _resolve_method_concurrency(
     if method_concurrency is not None:
         return max(1, int(method_concurrency))
     return max(1, min(int(n_methods), _DEFAULT_METHOD_CONCURRENCY_CAP))
+
+
+def _partition_methods_for_replay(
+    pending: list[str],
+    *,
+    trace_replay: bool,
+) -> tuple[list[str], list[str]]:
+    """Split pending methods into immediately runnable and deferred ablations.
+
+    When ``trace_replay`` is on, ``bj_*`` ablations wait until ``better_judge``
+    finishes for the same scenario (snapshot availability / fallback).
+    """
+    if not trace_replay:
+        return list(pending), []
+    from src.agents.trace_replay import BJ_ABLATION_METHODS
+
+    canonical = [m for m in pending if m == "better_judge"]
+    ablations = [m for m in pending if m in BJ_ABLATION_METHODS]
+    others = [
+        m for m in pending if m != "better_judge" and m not in BJ_ABLATION_METHODS
+    ]
+    return canonical + others, ablations
+
+
+@dataclass
+class _MethodUnit:
+    """One ``(scenario, method)`` work item for the global method queue."""
+
+    scenario_key: str
+    repo_slug: str
+    method: str
+
+
+@dataclass
+class _ScenarioGate:
+    """Per-scenario prep single-flight + fairness + replay release state."""
+
+    scenario_sem: asyncio.Semaphore
+    prep_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    prepared: dict[str, Any] | None = None
+    prep_failed: bool = False
+    pending_ablations: list[str] = field(default_factory=list)
+    repo_slug: str = ""
+    sample: dict[str, Any] = field(default_factory=dict)
 
 
 def _stamp_soft_degradation_flags(
@@ -189,11 +233,15 @@ def main(
     sample_seed
         Random seed for sample_percent (default: 42).
     concurrency
-        Max concurrent **scenarios** within a batch (default: 8, or
+        Max concurrent **scenario preparations** within a batch (default: 8, or
         INFERENCE_CONCURRENCY). Peak LLM pressure ≈ concurrency ×
-        method_concurrency; lower this when running many methods in parallel.
+        method_concurrency (global method-worker slots); lower this when running
+        many methods in parallel.
     method_concurrency
-        Max parallel methods per scenario (default: min(len(methods), 8)).
+        Max parallel methods per scenario / fairness cap (default:
+        min(len(methods), 8)). Global method workers =
+        concurrency × method_concurrency; finished workers immediately take the
+        next ready ``(scenario, method)`` unit from any prepared scenario.
     resume
         If True, keep existing results CSV / run ledger / failures log and skip
         ``(scenario_id, eval_method)`` units already recorded as success or
@@ -230,11 +278,12 @@ def main(
     -----
     Soft-skip marks ledger timeouts and cancels cooperative retries, but
     OpenAI/OpenRouter HTTP ``timeout`` (default 600s) is what frees blocked
-    ThreadPoolExecutor workers after a hung API call.
+    workers after a hung API call.
     Clones under ``GHACR_CLONE_DIR`` / ``./repos`` and prepared context under
     ``data/context_cache`` (or ``GHACR_CONTEXT_CACHE_DIR``) persist across
-    batches and model runs. Prep runs once per scenario, then pending methods
-    execute in parallel.
+    batches and model runs. Prep runs once per scenario (single-flight), then
+    pending methods are scheduled on a global ready queue so finished workers
+    immediately pick up other scenarios' methods.
     """
     if status:
         setup_logger()
@@ -364,10 +413,10 @@ async def _run_all(
     logger.info("  n_easy: %s, n_medium: %s, n_hard: %s", n_easy, n_medium, n_hard)
     logger.info("  start_index: %s, end_index: %s", start_index, end_index)
     logger.info("  sample_percent: %s, sample_seed: %s", sample_percent, sample_seed)
-    logger.info("  scenario_concurrency: %s", workers)
-    logger.info("  method_concurrency: %s", method_workers)
+    logger.info("  prep_concurrency: %s", workers)
+    logger.info("  method_concurrency_per_scenario: %s", method_workers)
     logger.info(
-        "  peak_llm_slots≈%s (scenario_concurrency × method_concurrency)",
+        "  global_method_slots=%s (prep_concurrency × method_concurrency)",
         workers * method_workers,
     )
     logger.info("  resume: %s", resume)
@@ -601,15 +650,17 @@ async def _run_all(
 
     try:
         total = len(benchmark_df)
+        global_slots = max(1, workers * method_workers)
         for start in range(0, total, BATCH_SIZE):
             batch_df = benchmark_df.iloc[start : start + BATCH_SIZE]
             logger.info(
-                "=== Batch scenarios %s-%s | scenario_concurrency=%s "
-                "method_concurrency=%s | %s ===",
+                "=== Batch scenarios %s-%s | prep_concurrency=%s "
+                "method_concurrency=%s global_slots=%s | %s ===",
                 start + 1,
                 min(start + BATCH_SIZE, total),
                 workers,
                 method_workers,
+                global_slots,
                 progress.snapshot_line(),
             )
 
@@ -817,191 +868,6 @@ async def _run_all(
                         progress.release_worker(worker_id)
                         reset_current_worker_id(worker_token)
 
-            async def process_scenario(row) -> list:
-                """Prep once, then run pending methods (possibly in parallel)."""
-                if credits_abort.is_set():
-                    return []
-                scenario_key = _scenario_key_from_row(row)
-                repo_slug = str(row.get("name", "") or "")
-                pending_methods = [
-                    m
-                    for m in methods_to_run
-                    if (scenario_key, m) not in done_units
-                    and (scenario_key, m) not in watchdog_skipped
-                ]
-                if not pending_methods:
-                    logger.info(
-                        "Scenario %s: all methods already done; skipping",
-                        scenario_key,
-                    )
-                    return []
-
-                skipped = len(methods_to_run) - len(pending_methods)
-                if skipped:
-                    logger.info(
-                        "Scenario %s: skipping %d already-successful method(s); "
-                        "running %s",
-                        scenario_key,
-                        skipped,
-                        pending_methods,
-                    )
-
-                sample = _row_to_sample(row)
-                prep_worker_id = progress.acquire_worker()
-                prep_token = set_current_worker_id(prep_worker_id)
-                progress.mark_started(prep_worker_id, scenario_key, "prep")
-                progress.set_stage(prep_worker_id, "prep", detail="ensure_prepared")
-                prep_t0 = time.perf_counter()
-                try:
-                    # Blocking prep/clone off the event loop; optional wall budget.
-                    prep_coro = asyncio.to_thread(
-                        ensure_prepared, scenario_key, sample
-                    )
-                    if max_prep_s is not None:
-                        prepared = await asyncio.wait_for(
-                            prep_coro, timeout=max_prep_s
-                        )
-                    else:
-                        prepared = await prep_coro
-                except Exception as exc:
-                    if isinstance(exc, asyncio.TimeoutError):
-                        exc = WatchdogTimeout(
-                            f"prep/clone exceeded {max_prep_s:.0f}s "
-                            f"for scenario={scenario_key}"
-                        )
-                        logger.error(
-                            "[run_all] Prep timed out for scenario %s after %.0fs",
-                            scenario_key,
-                            max_prep_s or 0.0,
-                        )
-                    else:
-                        logger.exception(
-                            "[run_all] Prep failed for scenario %s: %s",
-                            scenario_key,
-                            exc,
-                        )
-                    # Record failure for each pending method so resume can retry
-                    for method in pending_methods:
-                        worker_id = progress.acquire_worker()
-                        worker_token = set_current_worker_id(worker_id)
-                        progress.mark_started(worker_id, scenario_key, method)
-                        try:
-                            ledger.record_failure(
-                                scenario_id=scenario_key,
-                                repo=repo_slug or None,
-                                eval_method=method,
-                                model_name=model_name,
-                                error=exc,
-                                traceback_text=traceback.format_exc(),
-                                captured_logs=[],
-                                processing_time_s=round(
-                                    time.perf_counter() - prep_t0, 3
-                                ),
-                                llm_calls=[],
-                                prep=True,
-                                failure_category=(
-                                    "timeout"
-                                    if isinstance(exc, WatchdogTimeout)
-                                    else None
-                                ),
-                            )
-                            progress.mark_done(worker_id, ok=False, elapsed_s=0.0)
-                        finally:
-                            progress.release_worker(worker_id)
-                            reset_current_worker_id(worker_token)
-                    return []
-                finally:
-                    # Prep is not a counted work unit; only clear heartbeat presence.
-                    progress.release_worker(prep_worker_id)
-                    reset_current_worker_id(prep_token)
-
-                out: list = []
-
-                def _partition_methods_for_replay(
-                    pending: list[str],
-                ) -> tuple[list[str], list[str]]:
-                    """When trace_replay is on, run better_judge before bj_* ablations."""
-                    if not trace_replay:
-                        return list(pending), []
-                    from src.agents.trace_replay import BJ_ABLATION_METHODS
-
-                    canonical = [m for m in pending if m == "better_judge"]
-                    ablations = [m for m in pending if m in BJ_ABLATION_METHODS]
-                    others = [
-                        m
-                        for m in pending
-                        if m != "better_judge" and m not in BJ_ABLATION_METHODS
-                    ]
-                    # Phase 1: non-ablation methods including better_judge (canonical first)
-                    phase1 = canonical + others
-                    return phase1, ablations
-
-                phase1_methods, ablation_methods = _partition_methods_for_replay(
-                    pending_methods
-                )
-
-                async def _run_method_list(methods_list: list[str]) -> list:
-                    local_out: list = []
-                    if not methods_list:
-                        return local_out
-                    if method_workers <= 1 or len(methods_list) <= 1:
-                        for method in methods_list:
-                            if credits_abort.is_set():
-                                break
-                            rows = await process_method(
-                                scenario_key=scenario_key,
-                                repo_slug=repo_slug,
-                                method=method,
-                                prepared=prepared,
-                            )
-                            if rows:
-                                local_out.extend(rows)
-                        return local_out
-
-                    def _run_method_sync(method: str):
-                        if credits_abort.is_set():
-                            return []
-                        return asyncio.run(
-                            process_method(
-                                scenario_key=scenario_key,
-                                repo_slug=repo_slug,
-                                method=method,
-                                prepared=prepared,
-                            )
-                        )
-
-                    pool_size = min(method_workers, len(methods_list))
-                    with ThreadPoolExecutor(max_workers=pool_size) as pool:
-                        futures = [
-                            pool.submit(_run_method_sync, method)
-                            for method in methods_list
-                        ]
-                        for fut in as_completed(futures):
-                            try:
-                                rows = fut.result()
-                            except CreditsExhaustedAbort:
-                                for other in futures:
-                                    other.cancel()
-                                raise
-                            if rows:
-                                local_out.extend(rows)
-                    return local_out
-
-                if trace_replay and ablation_methods:
-                    logger.info(
-                        "Scenario %s: trace_replay scheduling phase1=%s then ablations=%s",
-                        scenario_key,
-                        phase1_methods,
-                        ablation_methods,
-                    )
-                phase1_rows = await _run_method_list(phase1_methods)
-                if phase1_rows:
-                    out.extend(phase1_rows)
-                ablation_rows = await _run_method_list(ablation_methods)
-                if ablation_rows:
-                    out.extend(ablation_rows)
-                return out
-
             if credits_abort.is_set():
                 logger.error(
                     "[run_all] Aborting remaining batches due to insufficient credits."
@@ -1024,45 +890,298 @@ async def _run_all(
                 )
                 continue
 
-            batch_appended = 0
-            try:
-                if workers <= 1:
-                    for row in pending_rows:
-                        if credits_abort.is_set():
-                            break
-                        per_file_results = await process_scenario(row)
-                        if per_file_results:
-                            _append_results(per_file_results)
-                            batch_appended += 1
-                else:
-                    def _run_scenario_sync(row_data):
-                        if credits_abort.is_set():
-                            return []
-                        return asyncio.run(process_scenario(row_data))
+            # ------------------------------------------------------------------
+            # Global method scheduler: bounded prep → ready queue → workers.
+            # Finished method workers immediately take the next ready unit from
+            # any prepared scenario (work stealing across scenarios).
+            # ------------------------------------------------------------------
+            method_queue: asyncio.Queue[_MethodUnit | None] = asyncio.Queue()
+            gates: dict[str, _ScenarioGate] = {}
+            prep_sem = asyncio.Semaphore(workers)
+            append_count = 0
+            append_count_lock = threading.Lock()
 
-                    pool_size = min(workers, len(pending_rows))
-                    with ThreadPoolExecutor(max_workers=pool_size) as pool:
-                        futures = [
-                            pool.submit(_run_scenario_sync, row) for row in pending_rows
-                        ]
-                        for fut in as_completed(futures):
+            def _record_prep_failures(
+                *,
+                scenario_key: str,
+                repo_slug: str,
+                pending_methods: list[str],
+                exc: BaseException,
+                prep_t0: float,
+            ) -> None:
+                for method in pending_methods:
+                    worker_id = progress.acquire_worker()
+                    worker_token = set_current_worker_id(worker_id)
+                    progress.mark_started(worker_id, scenario_key, method)
+                    try:
+                        ledger.record_failure(
+                            scenario_id=scenario_key,
+                            repo=repo_slug or None,
+                            eval_method=method,
+                            model_name=model_name,
+                            error=exc,
+                            traceback_text=traceback.format_exc(),
+                            captured_logs=[],
+                            processing_time_s=round(
+                                time.perf_counter() - prep_t0, 3
+                            ),
+                            llm_calls=[],
+                            prep=True,
+                            failure_category=(
+                                "timeout"
+                                if isinstance(exc, WatchdogTimeout)
+                                else None
+                            ),
+                        )
+                        progress.mark_done(worker_id, ok=False, elapsed_s=0.0)
+                    finally:
+                        progress.release_worker(worker_id)
+                        reset_current_worker_id(worker_token)
+
+            async def _enqueue_methods(
+                scenario_key: str,
+                repo_slug: str,
+                methods: list[str],
+            ) -> None:
+                for method in methods:
+                    if credits_abort.is_set():
+                        return
+                    with watchdog_skip_lock:
+                        if (scenario_key, method) in watchdog_skipped:
+                            continue
+                    await method_queue.put(
+                        _MethodUnit(
+                            scenario_key=scenario_key,
+                            repo_slug=repo_slug,
+                            method=method,
+                        )
+                    )
+
+            async def _release_ablations(gate: _ScenarioGate, scenario_key: str) -> None:
+                ablations = list(gate.pending_ablations)
+                gate.pending_ablations.clear()
+                if ablations:
+                    logger.info(
+                        "Scenario %s: releasing trace_replay ablations=%s",
+                        scenario_key,
+                        ablations,
+                    )
+                    await _enqueue_methods(scenario_key, gate.repo_slug, ablations)
+
+            async def prep_scenario(row) -> None:
+                """Prep once (bounded), then enqueue ready methods."""
+                if credits_abort.is_set():
+                    return
+                scenario_key = _scenario_key_from_row(row)
+                repo_slug = str(row.get("name", "") or "")
+                with watchdog_skip_lock:
+                    skipped_now = set(watchdog_skipped)
+                pending_methods = [
+                    m
+                    for m in methods_to_run
+                    if (scenario_key, m) not in done_units
+                    and (scenario_key, m) not in skipped_now
+                ]
+                if not pending_methods:
+                    logger.info(
+                        "Scenario %s: all methods already done; skipping",
+                        scenario_key,
+                    )
+                    return
+
+                skipped = len(methods_to_run) - len(pending_methods)
+                if skipped:
+                    logger.info(
+                        "Scenario %s: skipping %d already-successful method(s); "
+                        "running %s",
+                        scenario_key,
+                        skipped,
+                        pending_methods,
+                    )
+
+                gate = _ScenarioGate(
+                    scenario_sem=asyncio.Semaphore(method_workers),
+                    repo_slug=repo_slug,
+                    sample=_row_to_sample(row),
+                )
+                gates[scenario_key] = gate
+
+                phase1_methods, ablation_methods = _partition_methods_for_replay(
+                    pending_methods, trace_replay=trace_replay
+                )
+                bj_in_pending = "better_judge" in pending_methods
+
+                async with prep_sem:
+                    if credits_abort.is_set():
+                        return
+                    prep_worker_id = progress.acquire_worker()
+                    prep_token = set_current_worker_id(prep_worker_id)
+                    progress.mark_started(prep_worker_id, scenario_key, "prep")
+                    progress.set_stage(
+                        prep_worker_id, "prep", detail="ensure_prepared"
+                    )
+                    prep_t0 = time.perf_counter()
+                    try:
+                        async with gate.prep_lock:
+                            if gate.prepared is not None or gate.prep_failed:
+                                return
+                            prep_coro = asyncio.to_thread(
+                                ensure_prepared, scenario_key, gate.sample
+                            )
                             try:
-                                per_file_results = fut.result()
+                                if max_prep_s is not None:
+                                    prepared = await asyncio.wait_for(
+                                        prep_coro, timeout=max_prep_s
+                                    )
+                                else:
+                                    prepared = await prep_coro
+                            except Exception as exc:
+                                gate.prep_failed = True
+                                if isinstance(exc, asyncio.TimeoutError):
+                                    exc = WatchdogTimeout(
+                                        f"prep/clone exceeded {max_prep_s:.0f}s "
+                                        f"for scenario={scenario_key}"
+                                    )
+                                    logger.error(
+                                        "[run_all] Prep timed out for scenario %s "
+                                        "after %.0fs",
+                                        scenario_key,
+                                        max_prep_s or 0.0,
+                                    )
+                                else:
+                                    logger.exception(
+                                        "[run_all] Prep failed for scenario %s: %s",
+                                        scenario_key,
+                                        exc,
+                                    )
+                                _record_prep_failures(
+                                    scenario_key=scenario_key,
+                                    repo_slug=repo_slug,
+                                    pending_methods=pending_methods,
+                                    exc=exc,
+                                    prep_t0=prep_t0,
+                                )
+                                return
+                            gate.prepared = prepared
+                    finally:
+                        progress.release_worker(prep_worker_id)
+                        reset_current_worker_id(prep_token)
+
+                if credits_abort.is_set() or gate.prepared is None:
+                    return
+
+                if trace_replay and ablation_methods:
+                    logger.info(
+                        "Scenario %s: trace_replay scheduling phase1=%s; "
+                        "ablations deferred=%s (bj_pending=%s)",
+                        scenario_key,
+                        phase1_methods,
+                        ablation_methods,
+                        bj_in_pending,
+                    )
+
+                await _enqueue_methods(scenario_key, repo_slug, phase1_methods)
+                if ablation_methods:
+                    if bj_in_pending:
+                        with watchdog_skip_lock:
+                            bj_skipped = (
+                                scenario_key,
+                                "better_judge",
+                            ) in watchdog_skipped
+                        if bj_skipped:
+                            # Canonical will never run; release ablations for fallback.
+                            await _enqueue_methods(
+                                scenario_key, repo_slug, ablation_methods
+                            )
+                        else:
+                            gate.pending_ablations = list(ablation_methods)
+                    else:
+                        # Canonical already done / not requested — run ablations now.
+                        await _enqueue_methods(
+                            scenario_key, repo_slug, ablation_methods
+                        )
+
+            async def method_worker() -> None:
+                nonlocal append_count
+                while True:
+                    unit = await method_queue.get()
+                    try:
+                        if unit is None:
+                            return
+                        if credits_abort.is_set():
+                            continue
+                        gate = gates.get(unit.scenario_key)
+                        if gate is None or gate.prepared is None or gate.prep_failed:
+                            logger.warning(
+                                "[run_all] Dropping unit scenario=%s method=%s "
+                                "(missing prepared context)",
+                                unit.scenario_key,
+                                unit.method,
+                            )
+                            continue
+                        with watchdog_skip_lock:
+                            already_skipped = (
+                                unit.scenario_key,
+                                unit.method,
+                            ) in watchdog_skipped
+                        if already_skipped:
+                            if unit.method == "better_judge":
+                                await _release_ablations(gate, unit.scenario_key)
+                            continue
+
+                        async with gate.scenario_sem:
+                            if credits_abort.is_set():
+                                if unit.method == "better_judge":
+                                    await _release_ablations(
+                                        gate, unit.scenario_key
+                                    )
+                                continue
+                            try:
+                                rows = await process_method(
+                                    scenario_key=unit.scenario_key,
+                                    repo_slug=unit.repo_slug,
+                                    method=unit.method,
+                                    prepared=gate.prepared,
+                                )
                             except CreditsExhaustedAbort:
-                                for other in futures:
-                                    other.cancel()
                                 credits_abort.set()
-                                raise
-                            if per_file_results:
-                                _append_results(per_file_results)
-                                batch_appended += 1
-            except CreditsExhaustedAbort:
+                                if unit.method == "better_judge":
+                                    await _release_ablations(
+                                        gate, unit.scenario_key
+                                    )
+                                continue
+                            if rows:
+                                _append_results(rows)
+                                with append_count_lock:
+                                    append_count += 1
+                        if unit.method == "better_judge":
+                            await _release_ablations(gate, unit.scenario_key)
+                    finally:
+                        method_queue.task_done()
+
+            n_method_workers = min(
+                global_slots,
+                max(1, len(pending_rows) * max(1, len(methods_to_run))),
+            )
+            worker_tasks = [
+                asyncio.create_task(method_worker(), name=f"method-worker-{i}")
+                for i in range(n_method_workers)
+            ]
+            try:
+                await asyncio.gather(*(prep_scenario(row) for row in pending_rows))
+                await method_queue.join()
+            finally:
+                for _ in range(n_method_workers):
+                    await method_queue.put(None)
+                await asyncio.gather(*worker_tasks, return_exceptions=True)
+
+            if credits_abort.is_set():
                 logger.error(
                     "[run_all] Aborting remaining batches due to insufficient credits."
                 )
                 break
 
-            if batch_appended == 0:
+            if append_count == 0:
                 logger.warning(
                     "Batch %s-%s: no results to append.",
                     start + 1,

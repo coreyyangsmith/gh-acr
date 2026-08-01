@@ -28,18 +28,37 @@ from .config import RQ1Config, DEFAULT_CONFIG
 GranularityType = Literal["file", "instance"]
 
 
-def common_agent_bypass_ids(df: pd.DataFrame) -> set[str]:
-    """Scenario IDs present for both ``agent`` and ``bypass7`` for every ``model_name``.
+def common_agent_bypass_ids(
+    df: pd.DataFrame,
+    *,
+    single_method: str = "agent",
+    multi_method: str = "bypass7",
+) -> set[str]:
+    """Scenario IDs present for both single and multi methods for every ``model_name``.
 
     Matches the common-set definition used in final paper figures.
+    ``multi_method`` defaults to ``bypass7`` but should be ``better_judge``
+    (or another multi-agent id) when that is what the results CSV contains.
     """
     if "id" not in df.columns or "eval_method" not in df.columns or "model_name" not in df.columns:
         return set()
-    ab = df[df["eval_method"].isin(["agent", "bypass7"])]
+    ab = df[df["eval_method"].isin([single_method, multi_method])]
+    # Only count IDs that have both methods within each model
     models = ab["model_name"].dropna().unique()
     if len(models) == 0:
         return set()
-    per_model = {m: set(ab[ab["model_name"] == m]["id"].astype(str).unique()) for m in models}
+    per_model: dict[object, set[str]] = {}
+    for m in models:
+        model_df = ab[ab["model_name"] == m]
+        single_ids = set(
+            model_df[model_df["eval_method"] == single_method]["id"].astype(str).unique()
+        )
+        multi_ids = set(
+            model_df[model_df["eval_method"] == multi_method]["id"].astype(str).unique()
+        )
+        per_model[m] = single_ids & multi_ids
+    if not per_model:
+        return set()
     return set.intersection(*per_model.values())
 
 
@@ -322,6 +341,18 @@ def prepare_paired_data(
     # Keep only rows with both methods present for at least one metric
     single_cols = [f"{config.single_agent_method}_{m}" for m in value_cols]
     multi_cols = [f"{config.multi_agent_method}_{m}" for m in value_cols]
+    single_cols = [c for c in single_cols if c in wide.columns]
+    multi_cols = [c for c in multi_cols if c in wide.columns]
+
+    # One (or both) methods missing entirely from this slice → no pairs
+    if not single_cols or not multi_cols:
+        return PairedData(
+            dataframe=pd.DataFrame(),
+            n_pairs=0,
+            single_method=config.single_agent_method,
+            multi_method=config.multi_agent_method,
+            model_name=model_name,
+        )
 
     # Check if both methods have at least one non-null value
     has_single = wide[single_cols].notna().any(axis=1)

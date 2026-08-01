@@ -1,0 +1,17 @@
+ablation,metric,model_a,model_b,delta_a,delta_b,delta_diff,same_sign
+bj_no_judge,bleu3,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.0158194701291931,0.03398596228488681,-0.01816649215569371,True
+bj_no_judge,exact_match,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.07079646017699115,0.14994002399040385,-0.0791435638134127,True
+bj_no_judge,rouge_l,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.013110587599932085,0.03723777897130331,-0.024127191371371225,True
+bj_no_judge,similarity,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.018883014787057374,0.05874203332746731,-0.039859018540409935,True
+bj_no_plan,bleu3,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.002169153712871119,-0.0022614817743617757,0.004430635487232895,False
+bj_no_plan,exact_match,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.015486725663716814,0.0011995201919232307,0.014287205471793584,True
+bj_no_plan,rouge_l,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.00033789222609140163,-0.0011835606333250022,0.0015214528594164039,False
+bj_no_plan,similarity,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.0004655030402299554,-0.001591555092395025,0.0020570581326249805,False
+bj_no_review,bleu3,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,-0.004077097888840367,-0.0009601410532957279,-0.003116956835544639,True
+bj_no_review,exact_match,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,0.0029498525073746312,-0.0007996801279488205,0.0037495326353234517,False
+bj_no_review,rouge_l,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,-0.003643319083181928,-0.0008437161632329983,-0.0027996029199489295,True
+bj_no_review,similarity,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,-0.0048285779087549755,-0.0020014186841878596,-0.002827159224567116,True
+bj_no_summary,bleu3,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,-0.004139674123846489,0.003037864029866702,-0.00717753815371319,False
+bj_no_summary,exact_match,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,-0.00663716814159292,0.012794882047181128,-0.019432050188774048,False
+bj_no_summary,rouge_l,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,-0.0025526745233401755,0.005228952395380698,-0.0077816269187208735,False
+bj_no_summary,similarity,openai/gpt-5-nano,openrouter/meta-llama/llama-3.1-8b-instruct,-0.005266208305546008,0.006618336895378546,-0.011884545200924555,False

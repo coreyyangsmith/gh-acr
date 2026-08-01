@@ -2,8 +2,11 @@
 # Install:
 #   uv sync
 #   uv sync --extra analysis
-#   uv sync --extra local-llm
+#   uv sync --extra local-llm   # Torch + transformers for local HF inference
 #   uv sync --extra dev
+#
+# Note: tokenizers + huggingface_hub are base deps (native OpenRouter/Groq
+# token counting for qwen/llama). Torch/transformers remain optional.
 #
 # Run scripts:
 #   uv run python -m src.cli.run_all --help
